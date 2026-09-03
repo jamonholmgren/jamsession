@@ -1,0 +1,490 @@
+#!/usr/bin/env bash
+
+set -u
+
+JAMSESSION_VERSION="0.1.0-dev"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ -z "${JAMSESSION_HOME:-}" ]; then
+  if [ -d "$SCRIPT_DIR/adapters" ]; then
+    JAMSESSION_HOME="$SCRIPT_DIR"
+  elif [ -d "$SCRIPT_DIR/../adapters" ]; then
+    JAMSESSION_HOME="$(cd "$SCRIPT_DIR/.." && pwd)"
+  else
+    JAMSESSION_HOME="$HOME/.agents/jamsession"
+  fi
+fi
+
+JAMSESSION_ADAPTER_DIR="${JAMSESSION_ADAPTER_DIR:-$JAMSESSION_HOME/adapters}"
+JAMSESSION_CONFIG="${JAMSESSION_CONFIG:-$JAMSESSION_HOME/jamsession.conf}"
+JAMSESSION_SKILL_DIR="${JAMSESSION_SKILL_DIR:-$HOME/.agents/skills}"
+JAMSESSION_PACK_DIR="${JAMSESSION_PACK_DIR:-$JAMSESSION_HOME/packs}"
+export JAMSESSION_HOME JAMSESSION_ADAPTER_DIR JAMSESSION_CONFIG JAMSESSION_SKILL_DIR JAMSESSION_PACK_DIR
+
+if [ -f "$JAMSESSION_CONFIG" ]; then
+  # The config is intentionally a user-owned shell file.
+  # shellcheck source=/dev/null
+  source "$JAMSESSION_CONFIG"
+fi
+
+usage() {
+  cat <<'EOF'
+jamsession — one small interface for coding-agent CLIs
+
+Usage:
+  jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
+  jamsession list <provider> [count]
+  jamsession models <provider>
+  jamsession usage <provider>
+  jamsession status <provider>
+  jamsession doctor [provider]
+  jamsession adapters
+  jamsession init
+  jamsession make-adapter <provider> [--force]
+  jamsession skills [list|install <name|all>]
+  jamsession packs
+  jamsession recommend <pack> [role] [provider]
+  jamsession update
+  jamsession help [command|provider]
+
+The prompt may be `-` to read stdin. Provider output goes to stdout; session
+IDs, hints, warnings, and diagnostics go to stderr.
+
+`recommend` prints dated advice from one named pack. It never runs an agent and
+never becomes a default for `run`.
+EOF
+}
+
+# Temporary files live in a private mktemp directory rather than a predictable
+# path, so a hostile file in a shared /tmp cannot be targeted or substituted.
+JAMSESSION_TEMP_DIR=""
+
+clean_temp_dir() {
+  [ -n "$JAMSESSION_TEMP_DIR" ] || return 0
+  rm -rf "$JAMSESSION_TEMP_DIR"
+  JAMSESSION_TEMP_DIR=""
+}
+
+make_temp_dir() {
+  clean_temp_dir
+  JAMSESSION_TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/jamsession.XXXXXX")" || \
+    die "could not create a private temporary directory"
+  trap 'clean_temp_dir' EXIT
+  trap 'clean_temp_dir; exit 130' HUP INT TERM
+}
+
+bundled_skills() {
+  printf '%s\n' \
+    run-subagents-with-jamsession \
+    jamsession-select-agent-model \
+    jamsession-ping-pong-planning \
+    jamsession-contrarian-review \
+    jamsession-ask-agent-panel \
+    jamsession-orchestrate-agent-work \
+    jamsession-execute-agent-slice \
+    jamsession-work-over-ssh \
+    jamsession-run-remote-agents
+}
+
+known_skill() {
+  local wanted="$1" skill
+  while IFS= read -r skill; do
+    [ "$skill" = "$wanted" ] && return 0
+  done < <(bundled_skills)
+  return 1
+}
+
+list_skills() {
+  local skill state
+  while IFS= read -r skill; do
+    state="available"
+    [ -f "$JAMSESSION_SKILL_DIR/$skill/SKILL.md" ] && state="installed"
+    printf '%-36s %s\n' "$skill" "$state"
+  done < <(bundled_skills)
+}
+
+install_one_skill() {
+  local skill="$1" target temp source_root
+  known_skill "$skill" || die "unknown bundled skill '$skill'"
+  command -v curl >/dev/null 2>&1 || die "installing skills requires curl"
+  target="$JAMSESSION_SKILL_DIR/$skill"
+  source_root="${JAMSESSION_SOURCE_URL:-https://raw.githubusercontent.com/jamonholmgren/jamsession/main}"
+  make_temp_dir
+  temp="$JAMSESSION_TEMP_DIR/SKILL.md"
+  curl -fsSL "$source_root/skills/$skill/SKILL.md" -o "$temp" || \
+    die "could not download skill '$skill'"
+  [ -s "$temp" ] || die "downloaded skill '$skill' is empty"
+  chmod 644 "$temp"
+  mkdir -p "$target"
+  mv "$temp" "$target/SKILL.md"
+  clean_temp_dir
+  printf 'Installed %s\n' "$target/SKILL.md"
+}
+
+skills_command() {
+  local action="${1:-list}" requested skill
+  case "$action" in
+    list)
+      [ $# -le 1 ] || die "skills list takes no other arguments"
+      list_skills
+      ;;
+    install)
+      [ $# -eq 2 ] || die "skills install needs <name|all>"
+      requested="$2"
+      if [ "$requested" = all ]; then
+        while IFS= read -r skill; do install_one_skill "$skill"; done < <(bundled_skills)
+      else
+        install_one_skill "$requested"
+      fi
+      ;;
+    *) die "unknown skills command '$action'" ;;
+  esac
+}
+
+valid_pack_name() {
+  case "$1" in
+    ""|*[!a-zA-Z0-9_-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+list_packs() {
+  local path name
+  [ -d "$JAMSESSION_PACK_DIR" ] || return 0
+  for path in "$JAMSESSION_PACK_DIR"/*.tsv; do
+    [ -f "$path" ] || continue
+    name="${path##*/}"
+    printf '%s\n' "${name%.tsv}"
+  done
+  return 0
+}
+
+# Reads exactly one named pack. Packs are never merged, ranked across files, or
+# substituted for one another, and nothing here selects a model to run.
+recommend_command() {
+  [ $# -ge 1 ] && [ $# -le 3 ] || die "recommend needs <pack> [role] [provider]"
+  local pack="$1" role="${2:-}" provider="${3:-}"
+  local path line tab rest row_role row_provider matched=0
+  valid_pack_name "$pack" || die "invalid pack name '$pack'"
+  [ -z "$provider" ] || valid_provider "$provider" || die "invalid provider '$provider'"
+  path="$JAMSESSION_PACK_DIR/$pack.tsv"
+  [ -f "$path" ] || fail "pack '$pack' is not installed; run 'jamsession packs'"
+  tab="$(printf '\t')"
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      "") continue ;;
+      '#'*) printf '%s\n' "$line"; continue ;;
+    esac
+    row_role="${line%%"$tab"*}"
+    rest="${line#*"$tab"}"
+    row_provider="${rest%%"$tab"*}"
+    [ -z "$role" ] || [ "$row_role" = "$role" ] || continue
+    [ -z "$provider" ] || [ "$row_provider" = "$provider" ] || continue
+    printf '%s\n' "$line"
+    matched=1
+  done <"$path"
+  [ "$matched" -eq 1 ] || fail "pack '$pack' has no row matching role '${role:-any}' and provider '${provider:-any}'"
+}
+
+compact_usage() {
+  cat >&2 <<'EOF'
+Usage: jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
+       jamsession <list|models|usage|status> <provider> [arguments]
+       jamsession recommend <pack> [role] [provider]
+       jamsession <doctor|adapters|init|make-adapter|skills|packs|update|help>
+EOF
+}
+
+die() {
+  printf 'jamsession: %s\n' "$*" >&2
+  compact_usage
+  exit 2
+}
+
+# A well-formed request that found nothing. The command contract was correct, so
+# repeating it in a usage block would only bury the answer.
+fail() {
+  printf 'jamsession: %s\n' "$*" >&2
+  exit 1
+}
+
+valid_provider() {
+  case "$1" in
+    ""|*[!a-zA-Z0-9_-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+adapter_path() {
+  valid_provider "$1" || die "invalid provider '$1'"
+  printf '%s/jamsession_%s\n' "$JAMSESSION_ADAPTER_DIR" "$1"
+}
+
+require_adapter() {
+  local path
+  path="$(adapter_path "$1")"
+  [ -f "$path" ] || die "provider '$1' is not installed; run 'jamsession adapters'"
+  [ -x "$path" ] || die "adapter is not executable: $path"
+  printf '%s\n' "$path"
+}
+
+list_adapters() {
+  local path name
+  [ -d "$JAMSESSION_ADAPTER_DIR" ] || return 0
+  for path in "$JAMSESSION_ADAPTER_DIR"/jamsession_*; do
+    [ -f "$path" ] && [ -x "$path" ] || continue
+    name="${path##*/jamsession_}"
+    printf '%s\n' "$name"
+  done
+  return 0
+}
+
+init_config() {
+  local pair provider command variable resolved configured
+  umask 077
+  mkdir -p "$JAMSESSION_HOME" "$JAMSESSION_ADAPTER_DIR" "$JAMSESSION_PACK_DIR"
+  if [ ! -f "$JAMSESSION_CONFIG" ]; then
+    cat >"$JAMSESSION_CONFIG" <<'EOF'
+# Jam Session configuration. This file is sourced as shell code.
+# Keep it owned by you and do not make it writable by other users.
+
+EOF
+    printf 'Created %s\n' "$JAMSESSION_CONFIG"
+  fi
+
+  for pair in \
+    'codex:codex:JAMSESSION_CODEX_BIN' \
+    'claude:claude:JAMSESSION_CLAUDE_BIN' \
+    'cursor:cursor-agent:JAMSESSION_CURSOR_BIN' \
+    'grok:grok:JAMSESSION_GROK_BIN' \
+    'copilot:copilot:JAMSESSION_COPILOT_BIN'; do
+    provider="${pair%%:*}"
+    command="${pair#*:}"; command="${command%%:*}"
+    variable="${pair##*:}"
+    eval "configured=\${$variable+x}"
+    if [ "$configured" = x ]; then
+      eval "resolved=\${$variable}"
+      printf '%-8s configured: %s\n' "$provider" "$resolved"
+    elif resolved="$(command -v "$command" 2>/dev/null)"; then
+      printf '%s=%q\n' "$variable" "$resolved" >>"$JAMSESSION_CONFIG"
+      printf '%-8s found: %s\n' "$provider" "$resolved"
+    else
+      printf '%-8s not found on PATH\n' "$provider"
+    fi
+  done
+
+  cat <<'EOF'
+
+Agent guidance:
+jamsession normalizes non-interactive coding-agent CLIs so an agent can start or
+resume explicit provider-native sessions. Run `jamsession help` for the command
+contract, `jamsession doctor` for installed providers, and `jamsession help configure`
+before changing configuration.
+EOF
+}
+
+make_adapter() {
+  [ $# -ge 1 ] && [ $# -le 2 ] || die "make-adapter needs <provider> [--force]"
+  local provider="$1" force=0 target
+  valid_provider "$provider" || die "invalid provider '$provider'"
+  if [ $# -eq 2 ]; then
+    [ "$2" = "--force" ] || die "unknown make-adapter argument '$2'"
+    force=1
+  fi
+  mkdir -p "$JAMSESSION_ADAPTER_DIR"
+  target="$JAMSESSION_ADAPTER_DIR/jamsession_$provider"
+  [ ! -e "$target" ] || [ "$force" -eq 1 ] || die "$target already exists; add --force to replace it"
+  cat >"$target" <<'EOF'
+#!/usr/bin/env bash
+
+set -u
+
+PROVIDER="${0##*jamsession_}"
+
+unsupported() {
+  printf 'jamsession_%s: %s is not available for this provider\n' "$PROVIDER" "$1" >&2
+  exit 3
+}
+
+die() {
+  printf 'jamsession_%s: %s\n' "$PROVIDER" "$*" >&2
+  exit 2
+}
+
+help_text() {
+  cat <<HELP
+jamsession_$PROVIDER adapter
+
+Commands:
+  jamsession_$PROVIDER run <new|session> <model> <effort> <read|edit> <prompt>
+  jamsession_$PROVIDER list [count]
+  jamsession_$PROVIDER models
+  jamsession_$PROVIDER usage
+  jamsession_$PROVIDER status
+  jamsession_$PROVIDER doctor
+  jamsession_$PROVIDER help
+
+Implement each command using the provider CLI's native non-interactive and
+resume features. A read run must hard-error unless writes are mechanically
+blocked. Print agent output to stdout and metadata or warnings to stderr.
+See the bundled adapters in ~/.agents/jamsession/adapters/ for small examples.
+HELP
+}
+
+case "${1:-help}" in
+  run)
+    [ $# -eq 6 ] || die "run needs <new|session> <model> <effort> <read|edit> <prompt>"
+    unsupported run
+    ;;
+  list|models|usage|status|doctor) unsupported "$1" ;;
+  help|-h|--help) help_text ;;
+  *) die "unknown command '$1'" ;;
+esac
+EOF
+  chmod 755 "$target"
+  printf 'Created %s\n' "$target"
+  printf 'Edit it, then run: jamsession doctor %s\n' "$provider"
+}
+
+help_topic() {
+  case "${1:-}" in
+    "") usage ;;
+    configure)
+      cat <<EOF
+Configuration: $JAMSESSION_CONFIG
+
+jamsession sources this file as Bash. Run 'jamsession init' to add paths it can
+discover without replacing existing values. Supported overrides:
+
+  JAMSESSION_CODEX_BIN=/path/to/codex
+  JAMSESSION_CLAUDE_BIN=/path/to/claude
+  JAMSESSION_CURSOR_BIN=/path/to/cursor-agent
+  JAMSESSION_GROK_BIN=/path/to/grok
+  JAMSESSION_COPILOT_BIN=/path/to/copilot
+
+Custom adapters belong in: $JAMSESSION_ADAPTER_DIR
+EOF
+      ;;
+    make-adapter)
+      cat <<'EOF'
+Usage: jamsession make-adapter <provider> [--force]
+
+Creates an executable adapter template in the configured adapter directory.
+The command refuses to replace an existing file unless --force is explicit.
+EOF
+      ;;
+    packs|recommend)
+      cat <<EOF
+Usage: jamsession packs
+       jamsession recommend <pack> [role] [provider]
+
+Packs are recommendation files in: $JAMSESSION_PACK_DIR
+
+Each pack is a tab-separated file named <pack>.tsv with the columns role,
+provider, model, effort, rank, and note. Lines starting with # are metadata
+describing the schema, author, update date, and evidence or limitations.
+
+'recommend' requires the pack name, reads only that file, prints its metadata
+and every matching row, and exits nonzero when the pack is missing or nothing
+matches. It never runs an agent, never fills in a default pack, never merges
+packs, and never picks a fallback for you. Recommendations are dated advice:
+confirm availability with 'jamsession models <provider>' and pass the chosen
+values to 'jamsession run' yourself.
+
+Add your own pack by placing an ordinary <name>.tsv file beside the bundled
+ones. The installer only updates jamon.tsv and leaves other packs alone.
+EOF
+      ;;
+    run)
+      cat <<'EOF'
+Usage: jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
+
+Use `new` to create a session or pass an exact provider-native session ID to
+resume. Use `default` to let the provider choose its model or effort. `read`
+must be enforced by the adapter; `edit` permits unattended workspace changes.
+Pass `-` as the prompt to read stdin.
+EOF
+      ;;
+    *)
+      local path
+      path="$(require_adapter "$1")"
+      exec "$path" help
+      ;;
+  esac
+}
+
+[ $# -gt 0 ] || { usage; exit 0; }
+
+command_name="$1"
+shift
+
+case "$command_name" in
+  run)
+    [ $# -eq 6 ] || die "run needs <provider> <new|session> <model> <effort> <read|edit> <prompt>"
+    provider="$1"; shift
+    case "$4" in read|edit) ;; *) die "access must be read or edit" ;; esac
+    exec "$(require_adapter "$provider")" run "$@"
+    ;;
+  list)
+    [ $# -ge 1 ] && [ $# -le 2 ] || die "list needs <provider> [count]"
+    provider="$1"; shift
+    exec "$(require_adapter "$provider")" list "$@"
+    ;;
+  models|usage|status)
+    [ $# -eq 1 ] || die "$command_name needs <provider>"
+    provider="$1"
+    exec "$(require_adapter "$provider")" "$command_name"
+    ;;
+  doctor)
+    [ $# -le 1 ] || die "doctor takes at most one provider"
+    if [ $# -eq 1 ]; then
+      exec "$(require_adapter "$1")" doctor
+    fi
+    failures=0
+    while IFS= read -r provider; do
+      [ -n "$provider" ] || continue
+      printf '\n%s:\n' "$provider"
+      "$(require_adapter "$provider")" doctor || failures=$((failures + 1))
+    done < <(list_adapters)
+    exit "$failures"
+    ;;
+  adapters|providers|agents)
+    [ $# -eq 0 ] || die "$command_name takes no arguments"
+    list_adapters
+    ;;
+  init)
+    [ $# -eq 0 ] || die "init takes no arguments"
+    init_config
+    ;;
+  make-adapter)
+    make_adapter "$@"
+    ;;
+  skills)
+    skills_command "$@"
+    ;;
+  packs)
+    [ $# -eq 0 ] || die "packs takes no arguments"
+    list_packs
+    ;;
+  recommend)
+    recommend_command "$@"
+    ;;
+  update)
+    [ $# -eq 0 ] || die "update takes no arguments"
+    command -v curl >/dev/null 2>&1 || die "update requires curl"
+    make_temp_dir
+    update_file="$JAMSESSION_TEMP_DIR/install.sh"
+    curl -fsSL "${JAMSESSION_INSTALL_URL:-https://raw.githubusercontent.com/jamonholmgren/jamsession/main/install.sh}" -o "$update_file" || exit $?
+    [ -s "$update_file" ] || die "downloaded installer is empty"
+    sh "$update_file"
+    ;;
+  help|-h|--help)
+    [ $# -le 1 ] || die "help takes at most one topic"
+    help_topic "${1:-}"
+    ;;
+  version|-v|--version)
+    [ $# -eq 0 ] || die "version takes no arguments"
+    printf 'jamsession %s\n' "$JAMSESSION_VERSION"
+    ;;
+  *) die "unknown command '$command_name'" ;;
+esac

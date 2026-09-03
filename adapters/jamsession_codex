@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+
+set -u
+
+ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_jamsession_adapter_common
+source "$ADAPTER_DIR/_jamsession_adapter_common"
+jamsession_adapter_setup codex codex JAMSESSION_CODEX_BIN
+
+help_text() {
+  cat <<'EOF'
+jamsession_codex
+
+Run:    jamsession_codex run <new|session> <model> <effort> <read|edit> <prompt>
+Other:  jamsession_codex <list|models|usage|status|doctor|help>
+
+Codex read mode uses its read-only sandbox. Edit mode uses workspace-write with
+interactive approvals disabled. Codex does not expose a non-interactive native
+session or model listing, so those operations report unavailable.
+EOF
+}
+
+run_agent() {
+  jamsession_validate_run "$@"
+  jamsession_require_binary
+
+  local temp_events temp_last temp_error status session_id line
+  local -a command_args
+  jamsession_make_temp_dir
+  temp_events="$JAMSESSION_TEMP_DIR/events"
+  temp_last="$JAMSESSION_TEMP_DIR/last"
+  temp_error="$JAMSESSION_TEMP_DIR/error"
+  : >"$temp_events"; : >"$temp_last"; : >"$temp_error"
+
+  if [ "$JAMSESSION_SESSION" = new ]; then
+    command_args=(exec --json --skip-git-repo-check -C "$JAMSESSION_CWD" -o "$temp_last")
+  else
+    command_args=(exec resume --json --skip-git-repo-check -o "$temp_last")
+  fi
+  [ "$JAMSESSION_MODEL" = default ] || command_args+=(-m "$JAMSESSION_MODEL")
+  [ "$JAMSESSION_EFFORT" = default ] || command_args+=(-c "model_reasoning_effort=$JAMSESSION_EFFORT")
+
+  if [ "$JAMSESSION_ACCESS" = read ]; then
+    if [ "$JAMSESSION_SESSION" = new ]; then
+      command_args+=(-s read-only)
+    else
+      command_args+=(-c 'sandbox_mode="read-only"')
+    fi
+    command_args+=(-c 'approval_policy="never"')
+    jamsession_hint "Codex is running in its read-only sandbox."
+  else
+    if [ "$JAMSESSION_SESSION" = new ]; then
+      command_args+=(-s workspace-write)
+    else
+      command_args+=(-c 'sandbox_mode="workspace-write"')
+    fi
+    command_args+=(-c 'approval_policy="never"')
+    jamsession_hint "Codex may edit the current workspace without asking for approval."
+  fi
+
+  if [ "$JAMSESSION_SESSION" = new ]; then
+    command_args+=("$JAMSESSION_PROMPT")
+  else
+    command_args+=("$JAMSESSION_SESSION" "$JAMSESSION_PROMPT")
+  fi
+
+  status=0
+  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${command_args[@]}" </dev/null >"$temp_events" 2>"$temp_error") || status=$?
+  [ ! -s "$temp_error" ] || cat "$temp_error" >&2
+
+  session_id=""
+  while IFS= read -r line; do
+    session_id="$line"
+    break
+  done < <(sed -n 's/.*"thread_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$temp_events")
+  if [ -n "$session_id" ]; then
+    jamsession_session "$session_id"
+  elif [ "$JAMSESSION_SESSION" != new ]; then
+    jamsession_session "$JAMSESSION_SESSION"
+  else
+    printf 'jamsession_codex: provider returned no session identifier\n' >&2
+  fi
+
+  if [ -s "$temp_last" ]; then
+    cat "$temp_last"
+    printf '\n'
+  elif [ "$status" -ne 0 ] && [ -s "$temp_events" ]; then
+    cat "$temp_events" >&2
+  fi
+  exit "$status"
+}
+
+case "${1:-help}" in
+  run) shift; run_agent "$@" ;;
+  list|models|usage|status) jamsession_unsupported "$1" ;;
+  doctor)
+    jamsession_require_binary
+    "$JAMSESSION_PROVIDER_BIN" --version
+    "$JAMSESSION_PROVIDER_BIN" login status
+    ;;
+  help|-h|--help) help_text ;;
+  *) jamsession_die "unknown command '$1'" ;;
+esac

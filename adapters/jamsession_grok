@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+
+set -u
+
+ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_jamsession_adapter_common
+source "$ADAPTER_DIR/_jamsession_adapter_common"
+jamsession_adapter_setup grok grok JAMSESSION_GROK_BIN
+
+help_text() {
+  cat <<'EOF'
+jamsession_grok
+
+Run:    jamsession_grok run <new|session> <model> <effort> <read|edit> <prompt>
+Other:  jamsession_grok <list|models|usage|status|doctor|help>
+
+Grok edit mode uses bypassPermissions because headless approval modes can end a
+session without returning its answer. This adapter rejects read mode: Grok's
+current read-only controls do not reliably prevent shell writes. Grok reasoning
+effort stops at high, so xhigh or max is an error rather than a quiet downgrade.
+EOF
+}
+
+run_agent() {
+  jamsession_validate_run "$@"
+  jamsession_require_binary
+  [ "$JAMSESSION_ACCESS" = edit ] || jamsession_die "read access is unsupported because this Grok CLI cannot guarantee no writes"
+
+  local session_id status
+  local -a args
+  args=(-p "$JAMSESSION_PROMPT" --cwd "$JAMSESSION_CWD" --output-format plain --permission-mode bypassPermissions)
+  [ "$JAMSESSION_MODEL" = default ] || args+=(-m "$JAMSESSION_MODEL")
+  case "$JAMSESSION_EFFORT" in
+    default) ;;
+    xhigh|max) jamsession_die "Grok supports up to high effort; pass high or default" ;;
+    none) jamsession_die "Grok has no none effort; pass default or a supported effort" ;;
+    *) args+=(--reasoning-effort "$JAMSESSION_EFFORT") ;;
+  esac
+
+  if [ "$JAMSESSION_SESSION" = new ]; then
+    session_id="$(jamsession_uuid)"
+    args+=(--session-id "$session_id")
+  else
+    session_id="$JAMSESSION_SESSION"
+    args+=(--resume "$session_id")
+  fi
+
+  jamsession_hint "Grok bypassPermissions may act beyond the workspace; use a trusted environment."
+  jamsession_session "$session_id"
+  status=0
+  "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null || status=$?
+  exit "$status"
+}
+
+case "${1:-help}" in
+  run) shift; run_agent "$@" ;;
+  list)
+    shift
+    [ $# -le 1 ] || jamsession_die "list takes an optional count"
+    count="${1:-5}"; jamsession_positive_count "$count"
+    jamsession_require_binary
+    "$JAMSESSION_PROVIDER_BIN" sessions list --limit "$count"
+    ;;
+  models) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" models ;;
+  usage|status) jamsession_unsupported "$1" ;;
+  doctor)
+    jamsession_require_binary
+    "$JAMSESSION_PROVIDER_BIN" --version
+    doctor_output="$("$JAMSESSION_PROVIDER_BIN" models 2>&1)" || {
+      printf '%s\n' "$doctor_output" >&2
+      exit 1
+    }
+    case "$doctor_output" in
+      *'not authenticated'*|*'Not authenticated'*)
+        printf 'authentication: unavailable\n' >&2
+        exit 1
+        ;;
+      *) printf 'authentication: ready\n' ;;
+    esac
+    ;;
+  help|-h|--help) help_text ;;
+  *) jamsession_die "unknown command '$1'" ;;
+esac

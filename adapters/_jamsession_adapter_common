@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+
+# Shared implementation details for bundled adapters. Custom adapters do not
+# need to source this file; `jamsession make-adapter` creates a standalone script.
+
+jamsession_adapter_setup() {
+  JAMSESSION_PROVIDER="$1"
+  JAMSESSION_DEFAULT_BIN="$2"
+  JAMSESSION_BIN_VARIABLE="$3"
+  JAMSESSION_CONFIG="${JAMSESSION_CONFIG:-${JAMSESSION_HOME:-$HOME/.agents/jamsession}/jamsession.conf}"
+  if [ -f "$JAMSESSION_CONFIG" ]; then
+    # shellcheck source=/dev/null
+    source "$JAMSESSION_CONFIG"
+  fi
+  eval "JAMSESSION_PROVIDER_BIN=\${$JAMSESSION_BIN_VARIABLE:-$JAMSESSION_DEFAULT_BIN}"
+  JAMSESSION_CWD="${JAMSESSION_CWD:-$PWD}"
+}
+
+# Adapter scratch files live in a private mktemp directory. A predictable path
+# in a shared /tmp could be pre-created or symlinked by another user.
+JAMSESSION_TEMP_DIR=""
+
+jamsession_clean_temp_dir() {
+  [ -n "$JAMSESSION_TEMP_DIR" ] || return 0
+  rm -rf "$JAMSESSION_TEMP_DIR"
+  JAMSESSION_TEMP_DIR=""
+}
+
+jamsession_make_temp_dir() {
+  jamsession_clean_temp_dir
+  JAMSESSION_TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/jamsession-$JAMSESSION_PROVIDER.XXXXXX")" || \
+    jamsession_die "could not create a private temporary directory"
+  trap 'jamsession_clean_temp_dir' EXIT
+  trap 'jamsession_clean_temp_dir; exit 130' HUP INT TERM
+}
+
+jamsession_die() {
+  printf 'jamsession_%s: %s\n' "$JAMSESSION_PROVIDER" "$*" >&2
+  exit 2
+}
+
+jamsession_unsupported() {
+  printf 'jamsession_%s: %s is not available from this provider CLI\n' "$JAMSESSION_PROVIDER" "$1" >&2
+  exit 3
+}
+
+jamsession_require_binary() {
+  command -v "$JAMSESSION_PROVIDER_BIN" >/dev/null 2>&1 || \
+    jamsession_die "CLI not found: $JAMSESSION_PROVIDER_BIN; run 'jamsession init' or edit jamsession.conf"
+}
+
+jamsession_read_prompt() {
+  JAMSESSION_PROMPT="$1"
+  if [ "$JAMSESSION_PROMPT" = "-" ]; then
+    JAMSESSION_PROMPT="$(cat)"
+  fi
+  [ -n "$JAMSESSION_PROMPT" ] || jamsession_die "prompt must not be empty"
+}
+
+jamsession_validate_run() {
+  [ $# -eq 5 ] || jamsession_die "run needs <new|session> <model> <effort> <read|edit> <prompt>"
+  JAMSESSION_SESSION="$1"
+  JAMSESSION_MODEL="$2"
+  JAMSESSION_EFFORT="$3"
+  JAMSESSION_ACCESS="$4"
+  [ -n "$JAMSESSION_SESSION" ] || jamsession_die "session must be new or a provider-native ID"
+  [ -n "$JAMSESSION_MODEL" ] || jamsession_die "model must not be empty"
+  [ -n "$JAMSESSION_EFFORT" ] || jamsession_die "effort must not be empty"
+  case "$JAMSESSION_ACCESS" in read|edit) ;; *) jamsession_die "access must be read or edit" ;; esac
+  jamsession_read_prompt "$5"
+}
+
+jamsession_uuid() {
+  printf '%04x%04x-%04x-4%03x-%x%03x-%04x%04x%04x\n' \
+    "$RANDOM" "$RANDOM" "$RANDOM" "$((RANDOM & 4095))" \
+    "$((8 + RANDOM % 4))" "$((RANDOM & 4095))" \
+    "$RANDOM" "$RANDOM" "$RANDOM"
+}
+
+jamsession_session() {
+  printf 'session: %s\n' "$1" >&2
+}
+
+jamsession_hint() {
+  [ "$JAMSESSION_SESSION" = new ] || return 0
+  printf 'hint: %s\n' "$*" >&2
+}
+
+jamsession_positive_count() {
+  case "$1" in ""|*[!0-9]*|0) jamsession_die "count must be a positive integer" ;; esac
+}
+
+# Extract one string from compact provider JSON. This intentionally implements
+# only JSON string escaping, not a general JSON parser.
+jamsession_json_string() {
+  local json="$1" field="$2" needle rest character escape output hex index
+  needle="\"$field\":\""
+  case "$json" in *"$needle"*) ;; *) return 1 ;; esac
+  rest="${json#*"$needle"}"
+  output=""
+  while [ -n "$rest" ]; do
+    character="${rest%"${rest#?}"}"
+    rest="${rest#?}"
+    if [ "$character" = '"' ]; then
+      printf '%s' "$output"
+      return 0
+    fi
+    if [ "$character" != '\' ]; then
+      output="$output$character"
+      continue
+    fi
+    [ -n "$rest" ] || return 1
+    escape="${rest%"${rest#?}"}"
+    rest="${rest#?}"
+    case "$escape" in
+      '"'|'\'|/) output="$output$escape" ;;
+      b) printf -v character '\b'; output="$output$character" ;;
+      f) printf -v character '\f'; output="$output$character" ;;
+      n) printf -v character '\n'; output="$output$character" ;;
+      r) printf -v character '\r'; output="$output$character" ;;
+      t) printf -v character '\t'; output="$output$character" ;;
+      u)
+        hex=""
+        for index in 1 2 3 4; do
+          [ -n "$rest" ] || return 1
+          character="${rest%"${rest#?}"}"
+          rest="${rest#?}"
+          hex="$hex$character"
+        done
+        # Provider output normally contains UTF-8 directly. Preserve uncommon
+        # escaped code points rather than guessing at surrogate-pair handling.
+        output="${output}\\u${hex}"
+        ;;
+      *) return 1 ;;
+    esac
+  done
+  return 1
+}

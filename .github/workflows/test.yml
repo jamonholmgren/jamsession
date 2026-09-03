@@ -1,0 +1,20 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  shell:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell syntax
+        run: |
+          /bin/bash -n jamsession adapters/* tests/test_jamsession.sh
+          /bin/sh -n install.sh
+      - name: Test Jam Session
+        run: /bin/bash tests/test_jamsession.sh

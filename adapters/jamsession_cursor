@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+
+set -u
+
+ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_jamsession_adapter_common
+source "$ADAPTER_DIR/_jamsession_adapter_common"
+jamsession_adapter_setup cursor cursor-agent JAMSESSION_CURSOR_BIN
+
+help_text() {
+  cat <<'EOF'
+jamsession_cursor
+
+Run:    jamsession_cursor run <new|session> <model> <effort> <read|edit> <prompt>
+Other:  jamsession_cursor <list|models|usage|status|doctor|help>
+
+Cursor read mode uses ask mode. Edit mode uses --force and --trust so the
+non-interactive session cannot stall at an approval prompt. Explicit effort is
+encoded as a Cursor parameterized-model override, so it is an error to request
+effort with the default model or with a model that already carries overrides.
+EOF
+}
+
+run_agent() {
+  jamsession_validate_run "$@"
+  jamsession_require_binary
+
+  local session_id model status raw result
+  local -a args model_args
+
+  # Resolve the model before creating a chat so a rejected run leaves no
+  # orphaned Cursor session behind.
+  model_args=()
+  if [ "$JAMSESSION_MODEL" = default ]; then
+    [ "$JAMSESSION_EFFORT" = default ] || \
+      jamsession_die "Cursor encodes effort in the model, so explicit effort needs an explicit model"
+  else
+    model="$JAMSESSION_MODEL"
+    case "$JAMSESSION_EFFORT" in
+      default) ;;
+      none) jamsession_die "Cursor has no none effort; pass default or a supported effort" ;;
+      *)
+        case "$model" in
+          *'['*) jamsession_die "model '$model' already contains overrides; pass default effort or remove them" ;;
+        esac
+        model="$model[effort=$JAMSESSION_EFFORT]"
+        ;;
+    esac
+    model_args=(--model "$model")
+  fi
+
+  if [ "$JAMSESSION_SESSION" = new ]; then
+    session_id="$("$JAMSESSION_PROVIDER_BIN" create-chat)" || jamsession_die "create-chat failed"
+    [ -n "$session_id" ] || jamsession_die "create-chat returned no session identifier"
+  else
+    session_id="$JAMSESSION_SESSION"
+  fi
+
+  args=(-p --output-format json --trust --workspace "$JAMSESSION_CWD" --resume "$session_id")
+  [ "${#model_args[@]}" -eq 0 ] || args+=("${model_args[@]}")
+
+  if [ "$JAMSESSION_ACCESS" = read ]; then
+    args+=(--mode ask)
+    jamsession_hint "Cursor ask mode blocks edits while allowing unattended inspection."
+  else
+    args+=(--force)
+    jamsession_hint "Cursor may run commands and edit the trusted workspace without asking."
+  fi
+  args+=("$JAMSESSION_PROMPT")
+
+  jamsession_session "$session_id"
+  status=0
+  # Cursor is asked for JSON and parsed here on purpose. Live testing showed its
+  # plain output drops the final response after the agent uses tools, so the
+  # cheaper-looking plain format silently returns nothing. Do not "simplify".
+  raw="$("$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null)" || status=$?
+  if result="$(jamsession_json_string "$raw" result)"; then
+    printf '%s\n' "$result"
+  elif [ -n "$raw" ]; then
+    printf '%s\n' "$raw"
+    [ "$status" -ne 0 ] || status=2
+    printf 'jamsession_cursor: could not extract the final response from provider JSON\n' >&2
+  fi
+  exit "$status"
+}
+
+case "${1:-help}" in
+  run) shift; run_agent "$@" ;;
+  models) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" --list-models ;;
+  list|usage|status) jamsession_unsupported "$1" ;;
+  doctor) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" status ;;
+  help|-h|--help) help_text ;;
+  *) jamsession_die "unknown command '$1'" ;;
+esac

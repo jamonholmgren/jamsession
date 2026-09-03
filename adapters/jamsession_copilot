@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+
+set -u
+
+ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_jamsession_adapter_common
+source "$ADAPTER_DIR/_jamsession_adapter_common"
+jamsession_adapter_setup copilot copilot JAMSESSION_COPILOT_BIN
+
+help_text() {
+  cat <<'EOF'
+jamsession_copilot
+
+Run:    jamsession_copilot run <new|session> <model> <effort> <read|edit> <prompt>
+Other:  jamsession_copilot <list|models|usage|status|doctor|help>
+
+Copilot edit mode allows its tools to run without confirmation. This adapter
+rejects read mode until Copilot's plan mode is verified to block every write
+path in non-interactive sessions. The auto model selects its own effort, so
+combining it with an explicit effort is an error.
+EOF
+}
+
+run_agent() {
+  jamsession_validate_run "$@"
+  jamsession_require_binary
+  [ "$JAMSESSION_ACCESS" = edit ] || jamsession_die "read access is unsupported because this Copilot CLI adapter cannot yet guarantee no writes"
+
+  local session_id status
+  local -a args
+  args=(-p "$JAMSESSION_PROMPT" --silent --no-color --allow-all-tools -C "$JAMSESSION_CWD")
+  [ "$JAMSESSION_MODEL" = default ] || args+=(--model "$JAMSESSION_MODEL")
+  if [ "$JAMSESSION_EFFORT" != default ]; then
+    [ "$JAMSESSION_MODEL" != auto ] || \
+      jamsession_die "Copilot rejects explicit effort with the auto model; name a model or pass default effort"
+    args+=(--effort "$JAMSESSION_EFFORT")
+  fi
+
+  if [ "$JAMSESSION_SESSION" = new ]; then
+    session_id="$(jamsession_uuid)"
+  else
+    session_id="$JAMSESSION_SESSION"
+  fi
+  args+=(--session-id "$session_id")
+
+  jamsession_hint "Copilot may run allowed tools without confirmation; path and URL checks remain provider-owned."
+  jamsession_session "$session_id"
+  status=0
+  "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null || status=$?
+  exit "$status"
+}
+
+case "${1:-help}" in
+  run) shift; run_agent "$@" ;;
+  list|models|usage|status) jamsession_unsupported "$1" ;;
+  doctor)
+    jamsession_require_binary
+    "$JAMSESSION_PROVIDER_BIN" --version
+    printf 'authentication: not checkable without a request\n'
+    ;;
+  help|-h|--help) help_text ;;
+  *) jamsession_die "unknown command '$1'" ;;
+esac

@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+set -u
+
+ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_jamsession_adapter_common
+source "$ADAPTER_DIR/_jamsession_adapter_common"
+jamsession_adapter_setup claude claude JAMSESSION_CLAUDE_BIN
+
+help_text() {
+  cat <<'EOF'
+jamsession_claude
+
+Run:    jamsession_claude run <new|session> <model> <effort> <read|edit> <prompt>
+Other:  jamsession_claude <list|models|usage|status|doctor|help>
+
+Claude read mode uses plan permission mode. Edit mode uses bypassPermissions
+because headless sessions cannot answer permission prompts; use it only in a
+trusted workspace. Claude has no none effort, so that request is an error
+rather than a silent default. Claude exposes no non-interactive native session,
+model, or usage listing through this adapter.
+EOF
+}
+
+run_agent() {
+  jamsession_validate_run "$@"
+  jamsession_require_binary
+
+  local session_id status
+  local -a args
+  args=(-p --output-format text)
+  [ "$JAMSESSION_MODEL" = default ] || args+=(--model "$JAMSESSION_MODEL")
+  case "$JAMSESSION_EFFORT" in
+    default) ;;
+    none) jamsession_die "Claude has no none effort; pass default or a supported effort" ;;
+    *) args+=(--effort "$JAMSESSION_EFFORT") ;;
+  esac
+
+  if [ "$JAMSESSION_ACCESS" = read ]; then
+    args+=(--permission-mode plan)
+    jamsession_hint "Claude plan mode mechanically blocks edits."
+  else
+    args+=(--permission-mode bypassPermissions)
+    jamsession_hint "Claude bypassPermissions is broader than workspace-only access; use a trusted environment."
+  fi
+
+  if [ "$JAMSESSION_SESSION" = new ]; then
+    session_id="$(jamsession_uuid)"
+    args+=(--session-id "$session_id")
+  else
+    session_id="$JAMSESSION_SESSION"
+    args+=(--resume "$session_id")
+  fi
+  args+=("$JAMSESSION_PROMPT")
+
+  jamsession_session "$session_id"
+  status=0
+  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null) || status=$?
+  exit "$status"
+}
+
+case "${1:-help}" in
+  run) shift; run_agent "$@" ;;
+  list|models|usage|status) jamsession_unsupported "$1" ;;
+  doctor)
+    jamsession_require_binary
+    "$JAMSESSION_PROVIDER_BIN" --version
+    if "$JAMSESSION_PROVIDER_BIN" auth status >/dev/null 2>&1; then
+      printf 'authentication: ready\n'
+    else
+      printf 'authentication: unavailable\n' >&2
+      exit 1
+    fi
+    ;;
+  help|-h|--help) help_text ;;
+  *) jamsession_die "unknown command '$1'" ;;
+esac
