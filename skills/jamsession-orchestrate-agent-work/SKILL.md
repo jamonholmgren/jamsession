@@ -1,6 +1,6 @@
 ---
 name: jamsession-orchestrate-agent-work
-description: Coordinate explicitly requested multi-agent work through supervisor, manager, and worker roles with bounded ownership and verified integration. Use only when the user asks to delegate, orchestrate, fan out, or run parallel agent work; do not use for an ordinary single-agent task.
+description: Coordinate explicitly requested multi-agent work through supervisor, manager, and worker roles with specific ownership. Use only when the user asks to delegate, orchestrate, fan out, or run parallel agent work; do not use for an ordinary single-agent task.
 ---
 
 # Orchestrate Agent Work
