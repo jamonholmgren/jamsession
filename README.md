@@ -4,7 +4,7 @@ A tiny CLI your coding agent uses to summon other coding agents.
 
 Summon Codex, Claude Code, Cursor, Grok, and Copilot (more on the way) agents and resume their sessions, view usage data, and more.
 
-All in a few small bash scripts.
+All in a few small bash scripts. **Star this repo if you find it interesting!**
 
 <img width="615" height="192" alt="Codex with Jam Session" src="https://github.com/user-attachments/assets/892d5225-6c1b-42c2-a0ab-c002b2d6569d" />
 
