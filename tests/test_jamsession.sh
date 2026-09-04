@@ -53,9 +53,24 @@ check "bundled providers are discovered" contains "$stdout_file" codex
 check "adapter helper is not exposed as a provider" sh -c "! grep -Fq _jamsession '$stdout_file'"
 
 run_command "$ROOT/jamsession" providers
-check "providers is an adapter-list alias" contains "$stdout_file" claude
+check "providers lists the bundled adapters" contains "$stdout_file" claude
+cp "$stdout_file" "$TEMP_ROOT/providers-output"
+run_command "$ROOT/jamsession" adapters
+check "adapters is an exact alias for providers" sh -c "diff -q '$TEMP_ROOT/providers-output' '$stdout_file' >/dev/null"
 run_command "$ROOT/jamsession" agents
-check "agents is an adapter-list alias" contains "$stdout_file" copilot
+check "agents remains an exact alias" sh -c "diff -q '$TEMP_ROOT/providers-output' '$stdout_file' >/dev/null"
+run_command "$ROOT/jamsession" providers extra
+check "providers rejects arguments" test "$status" -eq 2
+
+run_command "$ROOT/jamsession" help
+check "main help documents providers" contains "$stdout_file" "jamsession providers"
+check "main help notes the adapters alias" contains "$stdout_file" "\`adapters\` is an exact alias"
+check "main help does not present adapters as the primary name" sh -c "! grep -q '^  jamsession adapters\$' '$stdout_file'"
+check "main help documents skills uninstall" contains "$stdout_file" "uninstall <name|all>"
+
+run_command "$ROOT/jamsession" help providers
+check "provider help explains the listing" contains "$stdout_file" "Usage: jamsession providers"
+check "provider help names the alias" contains "$stdout_file" "exact alias"
 
 run_command "$ROOT/jamsession" help configure
 check "configure help does not execute its examples" test ! -s "$stderr_file"
@@ -417,6 +432,251 @@ run_command "$ROOT/jamsession" recommend jamon nosuchrole
 check "recommend fails when no row matches" test "$status" -ne 0
 check "recommend names the unmatched filters" contains "$stderr_file" "nosuchrole"
 
+# --- skills uninstall --------------------------------------------------------
+# A skill directory holding bundled skills, a custom prefixed skill, and skills
+# Jam Session must never remove.
+SKILLS_ONLY="$TEMP_ROOT/skills-only"
+build_skill_dir() {
+  rm -rf "$SKILLS_ONLY"
+  mkdir -p "$SKILLS_ONLY/jamsession-summon-agent" "$SKILLS_ONLY/jamsession-work-over-ssh" \
+    "$SKILLS_ONLY/jamsession-my-custom" "$SKILLS_ONLY/my-own-skill" \
+    "$SKILLS_ONLY/notjamsession-thing"
+  printf -- '---\nname: jamsession-summon-agent\n---\n' >"$SKILLS_ONLY/jamsession-summon-agent/SKILL.md"
+  printf -- '---\nname: jamsession-work-over-ssh\n---\n' >"$SKILLS_ONLY/jamsession-work-over-ssh/SKILL.md"
+  printf -- '---\nname: jamsession-my-custom\n---\n' >"$SKILLS_ONLY/jamsession-my-custom/SKILL.md"
+  printf -- '---\nname: my-own-skill\n---\n' >"$SKILLS_ONLY/my-own-skill/SKILL.md"
+  printf -- '---\nname: notjamsession-thing\n---\n' >"$SKILLS_ONLY/notjamsession-thing/SKILL.md"
+  printf '%s\n' loose >"$SKILLS_ONLY/loose-file.md"
+}
+
+run_skills() {
+  run_command env JAMSESSION_SKILL_DIR="$SKILLS_ONLY" "$ROOT/jamsession" skills "$@"
+}
+
+build_skill_dir
+run_skills uninstall jamsession-work-over-ssh
+check "named skill uninstall succeeds" test "$status" -eq 0
+check "named skill uninstall removes the directory" test ! -e "$SKILLS_ONLY/jamsession-work-over-ssh"
+check "named skill uninstall reports the path" contains "$stdout_file" "jamsession-work-over-ssh"
+check "named skill uninstall keeps other bundled skills" test -f "$SKILLS_ONLY/jamsession-summon-agent/SKILL.md"
+check "named skill uninstall keeps unrelated skills" test -f "$SKILLS_ONLY/my-own-skill/SKILL.md"
+
+run_skills uninstall jamsession-work-over-ssh
+check "uninstalling a missing skill fails clearly" test "$status" -eq 1
+check "uninstalling a missing skill says so" contains "$stderr_file" "is not installed"
+
+run_skills uninstall jamsession-my-custom
+check "a custom prefixed skill can be named" test "$status" -eq 0
+check "a custom prefixed skill is removed" test ! -e "$SKILLS_ONLY/jamsession-my-custom"
+
+# Names outside the namespace, and anything path-shaped, are refused outright.
+build_skill_dir
+for bad_name in my-own-skill notjamsession-thing jamsession ../../etc /etc/passwd \
+  "jamsession-../escape" "jamsession-a/b" "jamsession-..";
+do
+  run_skills uninstall "$bad_name"
+  check "skills uninstall rejects '$bad_name'" test "$status" -eq 2
+done
+check "a rejected name removes nothing" test -f "$SKILLS_ONLY/my-own-skill/SKILL.md"
+check "a rejected name leaves bundled skills alone" test -f "$SKILLS_ONLY/jamsession-summon-agent/SKILL.md"
+check "a rejected name leaves the lookalike alone" test -f "$SKILLS_ONLY/notjamsession-thing/SKILL.md"
+
+run_skills uninstall
+check "skills uninstall requires an argument" test "$status" -eq 2
+
+run_skills uninstall jamsession-summon-agent extra
+check "skills uninstall rejects extra arguments" test "$status" -eq 2
+
+# `all` covers every prefixed directory, including custom ones, and nothing else.
+build_skill_dir
+printf '%s\n' notes >"$SKILLS_ONLY/jamsession-summon-agent/NOTES.md"
+run_skills uninstall all
+check "skills uninstall all succeeds" test "$status" -eq 0
+check "all removes a bundled skill" test ! -e "$SKILLS_ONLY/jamsession-summon-agent"
+check "all removes a second bundled skill" test ! -e "$SKILLS_ONLY/jamsession-work-over-ssh"
+check "all removes a custom prefixed skill" test ! -e "$SKILLS_ONLY/jamsession-my-custom"
+check "all announces removing extra files" contains "$stdout_file" "including files Jam Session did not install"
+check "all keeps an unrelated skill" test -f "$SKILLS_ONLY/my-own-skill/SKILL.md"
+check "all keeps a lookalike prefix" test -f "$SKILLS_ONLY/notjamsession-thing/SKILL.md"
+check "all keeps loose files in the skill directory" equals "$SKILLS_ONLY/loose-file.md" loose
+check "all keeps the skill directory itself" test -d "$SKILLS_ONLY"
+
+run_skills uninstall all
+check "a second skills uninstall all succeeds" test "$status" -eq 0
+check "a second all reports nothing to remove" contains "$stdout_file" "No jamsession-* skills"
+check "a second all still keeps unrelated skills" test -f "$SKILLS_ONLY/my-own-skill/SKILL.md"
+
+# A symlink is never followed or removed as if it were a skill directory.
+build_skill_dir
+mkdir -p "$TEMP_ROOT/link-target"
+printf '%s\n' precious >"$TEMP_ROOT/link-target/keep.txt"
+ln -sfn "$TEMP_ROOT/link-target" "$SKILLS_ONLY/jamsession-linked"
+run_skills uninstall all
+check "all refuses a symlinked skill" test "$status" -eq 1
+check "all keeps the symlink" test -L "$SKILLS_ONLY/jamsession-linked"
+check "all never touches the symlink target" equals "$TEMP_ROOT/link-target/keep.txt" precious
+
+run_command env JAMSESSION_SKILL_DIR="$TEMP_ROOT/no-such-skill-dir" \
+  "$ROOT/jamsession" skills uninstall all
+check "skills uninstall all tolerates a missing directory" test "$status" -eq 0
+
+run_command env JAMSESSION_SKILL_DIR="$ROOT/skills" "$ROOT/jamsession" skills uninstall all
+check "skills uninstall refuses a checkout skill directory" test "$status" -eq 2
+check "the checkout skills survived" test -f "$ROOT/skills/jamsession-summon-agent/SKILL.md"
+
+run_command env JAMSESSION_SKILL_DIR="relative/skills" "$ROOT/jamsession" skills uninstall all
+check "skills uninstall refuses a relative skill directory" test "$status" -eq 2
+
+run_command "$ROOT/jamsession" help skills
+check "skill help documents uninstall" contains "$stdout_file" "uninstall <name|all>"
+check "skill help states the prefix rule" contains "$stdout_file" "jamsession-"
+check "skill help explains whole-directory removal" contains "$stdout_file" "removed with it"
+
+# --- uninstall ---------------------------------------------------------------
+# Every scenario gets its own private HOME holding a complete installation plus
+# artifacts Jam Session must never touch.
+build_installation() {
+  rm -rf "$1"
+  mkdir -p "$1"
+  env HOME="$1" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$ROOT/install.sh" >/dev/null 2>&1
+  env HOME="$1" JAMSESSION_HOME="$1/.agents/jamsession" \
+    JAMSESSION_SKILL_DIR="$1/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
+    "$ROOT/jamsession" skills install jamsession-work-over-ssh >/dev/null 2>&1
+  mkdir -p "$1/.agents/skills/my-own-skill"
+  printf -- '---\nname: my-own-skill\n---\n' >"$1/.agents/skills/my-own-skill/SKILL.md"
+  printf '%s\n' keep >"$1/.agents/keep-me.txt"
+  printf '%s\n' custom >"$1/.agents/jamsession/adapters/jamsession_custom"
+}
+
+run_uninstall() {
+  run_command env HOME="$1" JAMSESSION_HOME="$1/.agents/jamsession" \
+    JAMSESSION_SKILL_DIR="$1/.agents/skills" "$ROOT/jamsession" uninstall
+}
+
+UNINSTALL_HOME="$TEMP_ROOT/uninstall-user"
+build_installation "$UNINSTALL_HOME"
+check "the fixture installed the command" test -x "$UNINSTALL_HOME/.agents/jamsession/bin/jamsession"
+check "the fixture installed an optional skill" test -f "$UNINSTALL_HOME/.agents/skills/jamsession-work-over-ssh/SKILL.md"
+
+run_uninstall "$UNINSTALL_HOME"
+check "uninstall succeeds on a clean installation" test "$status" -eq 0
+check "uninstall reports completion" contains "$stdout_file" "Jam Session is uninstalled."
+check "uninstall removes the installation tree" test ! -e "$UNINSTALL_HOME/.agents/jamsession"
+check "uninstall removes the command symlink" test ! -e "$UNINSTALL_HOME/.local/bin/jamsession"
+check "uninstall removes the default skill" test ! -e "$UNINSTALL_HOME/.agents/skills/jamsession-summon-agent"
+check "uninstall removes an installed optional skill" test ! -e "$UNINSTALL_HOME/.agents/skills/jamsession-work-over-ssh"
+check "uninstall keeps an unrelated skill" contains "$UNINSTALL_HOME/.agents/skills/my-own-skill/SKILL.md" "name: my-own-skill"
+check "uninstall keeps the skill directory itself" test -d "$UNINSTALL_HOME/.agents/skills"
+check "uninstall keeps the agents directory" test -d "$UNINSTALL_HOME/.agents"
+check "uninstall keeps unrelated files under the agents directory" equals "$UNINSTALL_HOME/.agents/keep-me.txt" keep
+check "uninstall keeps the local bin directory" test -d "$UNINSTALL_HOME/.local/bin"
+
+run_uninstall "$UNINSTALL_HOME"
+check "a second uninstall succeeds" test "$status" -eq 0
+check "a second uninstall reports the missing tree" contains "$stderr_file" "no installation tree"
+check "a second uninstall still keeps the unrelated skill" test -f "$UNINSTALL_HOME/.agents/skills/my-own-skill/SKILL.md"
+
+# A jamsession-* directory is Jam Session's, so files kept inside it are removed
+# with it and the removal is announced.
+build_installation "$UNINSTALL_HOME"
+printf '%s\n' notes >"$UNINSTALL_HOME/.agents/skills/jamsession-summon-agent/NOTES.md"
+run_uninstall "$UNINSTALL_HOME"
+check "extra files do not block uninstall" test "$status" -eq 0
+check "uninstall removes a skill directory holding other files" test ! -e "$UNINSTALL_HOME/.agents/skills/jamsession-summon-agent"
+check "uninstall says the extra files went with it" contains "$stdout_file" "including files Jam Session did not install"
+check "uninstall still removes the installation tree" test ! -e "$UNINSTALL_HOME/.agents/jamsession"
+
+# Ownership is the jamsession- prefix, not the bundled list or the name field.
+build_installation "$UNINSTALL_HOME"
+mkdir -p "$UNINSTALL_HOME/.agents/skills/jamsession-my-custom" \
+  "$UNINSTALL_HOME/.agents/skills/notjamsession-thing"
+printf -- '---\nname: jamsession-my-custom\n---\n' \
+  >"$UNINSTALL_HOME/.agents/skills/jamsession-my-custom/SKILL.md"
+printf -- '---\nname: notjamsession-thing\n---\n' \
+  >"$UNINSTALL_HOME/.agents/skills/notjamsession-thing/SKILL.md"
+run_uninstall "$UNINSTALL_HOME"
+check "uninstall removes a custom prefixed skill" test ! -e "$UNINSTALL_HOME/.agents/skills/jamsession-my-custom"
+check "uninstall keeps a skill that only looks prefixed" contains "$UNINSTALL_HOME/.agents/skills/notjamsession-thing/SKILL.md" "name: notjamsession-thing"
+
+# An unrelated file at the link path is never removed.
+build_installation "$UNINSTALL_HOME"
+rm -f "$UNINSTALL_HOME/.local/bin/jamsession"
+printf '%s\n' 'my own script' >"$UNINSTALL_HOME/.local/bin/jamsession"
+run_uninstall "$UNINSTALL_HOME"
+check "uninstall reports the untouched bin file" test "$status" -eq 1
+check "uninstall keeps a non-symlink at the link path" equals "$UNINSTALL_HOME/.local/bin/jamsession" "my own script"
+check "uninstall says why the bin file was kept" contains "$stderr_file" "not a symlink"
+
+# A symlink pointing at something else is never removed.
+build_installation "$UNINSTALL_HOME"
+mkdir -p "$UNINSTALL_HOME/elsewhere"
+printf '%s\n' other >"$UNINSTALL_HOME/elsewhere/jamsession"
+ln -sfn "$UNINSTALL_HOME/elsewhere/jamsession" "$UNINSTALL_HOME/.local/bin/jamsession"
+run_uninstall "$UNINSTALL_HOME"
+check "uninstall reports the untouched symlink" test "$status" -eq 1
+check "uninstall keeps a symlink to another target" equals "$UNINSTALL_HOME/elsewhere/jamsession" other
+check "uninstall keeps the foreign symlink itself" test -L "$UNINSTALL_HOME/.local/bin/jamsession"
+check "uninstall says the symlink did not match" contains "$stderr_file" "does not point at this installation"
+
+# Source-checkout safety. The checkout must survive every one of these.
+SAFE_HOME="$TEMP_ROOT/safe-home"
+mkdir -p "$SAFE_HOME"
+run_command env HOME="$SAFE_HOME" "$ROOT/jamsession" uninstall
+check "uninstall refuses to remove a source checkout it detected" test "$status" -eq 2
+check "uninstall names the checkout marker" contains "$stderr_file" "source checkout"
+
+run_command env HOME="$SAFE_HOME" JAMSESSION_HOME="$ROOT" "$ROOT/jamsession" uninstall
+check "uninstall refuses an explicit source checkout" test "$status" -eq 2
+
+build_installation "$UNINSTALL_HOME"
+run_command env HOME="$UNINSTALL_HOME" JAMSESSION_HOME="$UNINSTALL_HOME/.agents/jamsession" \
+  JAMSESSION_SKILL_DIR="$ROOT/skills" "$ROOT/jamsession" uninstall
+check "uninstall refuses a checkout skills directory" test "$status" -eq 2
+check "uninstall explains the refused skills directory" contains "$stderr_file" "source checkout"
+
+# These must be stopped by the root guard itself, so they assert its wording
+# rather than accepting a refusal from some later check.
+run_command env HOME="$UNINSTALL_HOME" JAMSESSION_HOME="$UNINSTALL_HOME" "$ROOT/jamsession" uninstall
+check "uninstall refuses a home directory as the tree" test "$status" -eq 2
+check "the root guard refuses the home directory" contains "$stderr_file" "refusing to touch"
+
+run_command env HOME="$UNINSTALL_HOME" JAMSESSION_HOME="$UNINSTALL_HOME/.agents" "$ROOT/jamsession" uninstall
+check "uninstall refuses the agents directory as the tree" test "$status" -eq 2
+check "the root guard refuses the agents directory" contains "$stderr_file" "refusing to touch"
+
+# Without the guard, a skill root of $HOME would walk bundled names through the
+# home directory itself.
+run_command env HOME="$UNINSTALL_HOME" JAMSESSION_HOME="$UNINSTALL_HOME/.agents/jamsession" \
+  JAMSESSION_SKILL_DIR="$UNINSTALL_HOME" "$ROOT/jamsession" uninstall
+check "uninstall refuses a home directory as the skill root" test "$status" -eq 2
+check "the root guard refuses the home skill root" contains "$stderr_file" "refusing to touch"
+
+# The marker guard is the only thing standing between uninstall and a checkout
+# that someone has also installed into.
+CHECKOUT_LIKE="$TEMP_ROOT/checkout-like/jamsession"
+mkdir -p "$CHECKOUT_LIKE/bin" "$CHECKOUT_LIKE/adapters"
+printf '%s\n' '#!/bin/sh' >"$CHECKOUT_LIKE/bin/jamsession"
+printf '%s\n' 'source' >"$CHECKOUT_LIKE/install.sh"
+printf '%s\n' 'work' >"$CHECKOUT_LIKE/my-work.txt"
+run_command env HOME="$SAFE_HOME" JAMSESSION_HOME="$CHECKOUT_LIKE" "$ROOT/jamsession" uninstall
+check "uninstall refuses a checkout that also has bin/jamsession" test "$status" -eq 2
+check "uninstall blames the checkout marker" contains "$stderr_file" "source checkout"
+check "the checkout-like tree is untouched" equals "$CHECKOUT_LIKE/my-work.txt" work
+
+run_command env HOME="$UNINSTALL_HOME" JAMSESSION_HOME="relative/path" "$ROOT/jamsession" uninstall
+check "uninstall refuses a relative tree path" test "$status" -eq 2
+
+check "the source checkout survived every refusal" test -x "$ROOT/jamsession"
+check "the checkout skills survived every refusal" test -f "$ROOT/skills/jamsession-summon-agent/SKILL.md"
+check "the checkout worker-task skill survived every refusal" test -f "$ROOT/skills/jamsession-agent-worker-task/SKILL.md"
+check "the refused installation was left alone" test -x "$UNINSTALL_HOME/.agents/jamsession/bin/jamsession"
+
+run_command env HOME="$UNINSTALL_HOME" "$ROOT/jamsession" help uninstall
+check "uninstall help lists what it removes" contains "$stdout_file" "Removes only what the installer created"
+check "uninstall help states the safety rule" contains "$stdout_file" "never removes"
+run_command env HOME="$UNINSTALL_HOME" "$ROOT/jamsession" help
+check "main help lists uninstall" contains "$stdout_file" "jamsession uninstall"
+
 check "the site workflow ships the install guide linked from the home page" \
   sh -c "grep -Fq 'install.md' '$ROOT/.github/workflows/pages.yml'"
 check "the test workflow runs the current test path" \
@@ -426,7 +686,7 @@ check "no workflow still refers to the old name" \
 check "the documented planning recommendation exists" \
   sh -c "grep -q '^planning' '$ROOT/packs/jamon.tsv'"
 check "the remote-agent skill depends on no separately optional skill" \
-  sh -c "! grep -Eq 'jamsession-(execute-agent-slice|work-over-ssh|orchestrate-agent-work)' '$ROOT/skills/jamsession-run-remote-agents/SKILL.md'"
+  sh -c "! grep -Eq 'jamsession-(agent-worker-task|work-over-ssh|orchestrate-agent-work)' '$ROOT/skills/jamsession-run-remote-agents/SKILL.md'"
 
 run_command "$ROOT/jamsession" help packs
 check "help documents the pack schema" contains "$stdout_file" "role,"

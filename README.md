@@ -42,7 +42,7 @@ jamsession list grok 5 # lists the last 5 grok sessions in this code base (if av
 jamsession init # installs jam session in the current project
 ```
 
-Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`.
+Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`.
 
 ## Skills
 
@@ -54,7 +54,9 @@ jamsession skills uninstall jamsession-orchestrate-agent-work
 jamsession skills uninstall all
 ```
 
-`jamsession-summon-agent` is installed by default. The rest are opt-in: model selection, ping-pong planning, contrarian review, agent panels, orchestration, worker slices, and SSH.
+`jamsession-summon-agent` is installed by default. The rest are opt-in: model selection, ping-pong planning, contrarian review, agent panels, orchestration, worker tasks, and SSH.
+
+Uninstalling `all` removes every `jamsession-*` skill directory, including custom ones. It leaves unrelated skills and `~/.agents/skills/` alone.
 
 ## Recommendation packs
 
@@ -81,6 +83,14 @@ jamsession update
 ```
 
 Refreshes core files, bundled adapters, the `jamon` pack, and installed skills. Leaves your config, custom adapters, and custom packs alone.
+
+## Uninstall
+
+```sh
+jamsession uninstall
+```
+
+Removes the command, installation tree, and every `jamsession-*` skill. It leaves unrelated files alone and is safe to run twice. Custom adapters, packs, and config inside `~/.agents/jamsession/` are removed too.
 
 ## Development
 

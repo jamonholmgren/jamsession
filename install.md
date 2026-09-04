@@ -77,6 +77,18 @@ jamsession skills install jamsession-ask-agent-panel
 jamsession skills install all
 ```
 
+Remove skills you no longer want:
+
+```sh
+jamsession skills uninstall jamsession-ask-agent-panel
+jamsession skills uninstall all
+```
+
+Only directories named `jamsession-*` are removed, and `all` includes prefixed
+skills you wrote yourself. Unrelated skills and `~/.agents/skills/` itself stay.
+A `jamsession-*` directory is removed whole, so your own notes inside one go
+with it and the command says so.
+
 Inspect model recommendations without selecting anything implicitly:
 
 ```sh
@@ -86,3 +98,22 @@ jamsession recommend jamon planning
 
 Run `jamsession help` for the complete CLI contract and `jamsession help
 <provider>` for provider-specific behavior.
+
+## Uninstall
+
+Run:
+
+```sh
+jamsession uninstall
+```
+
+This removes the `~/.local/bin/jamsession` symlink, the `~/.agents/jamsession`
+installation tree, and every `jamsession-*` skill directory under
+`~/.agents/skills/`. The installation tree includes `jamsession.conf` and any
+custom adapters or packs kept inside it.
+
+It leaves `~/.agents` itself, skills outside the `jamsession-` namespace, and a
+`~/.local/bin/jamsession` that is not a symlink to this installation. Whatever
+it leaves is named on stderr and the command exits 1. Running it again is safe.
+
+Run `jamsession help uninstall` for the exact paths on your machine.

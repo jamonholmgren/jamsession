@@ -34,6 +34,7 @@ jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
 Jam Session also dispatches these provider operations:
 
 ```text
+jamsession providers
 jamsession list <provider> [count]
 jamsession models <provider>
 jamsession usage <provider>
@@ -41,7 +42,8 @@ jamsession status <provider>
 jamsession doctor [provider]
 ```
 
-Every adapter accepts every operation. Unsupported native functionality emits
+`providers` is the documented name for listing installed adapters; `adapters` is
+an exact alias kept for continuity. Every adapter accepts every operation. Unsupported native functionality emits
 a standard explanation and a nonzero exit status.
 
 ## Adapter contract
@@ -87,6 +89,12 @@ The installer includes `jamsession-summon-agent` by default. Other workflow
 skills are optional and can be listed or installed through `jamsession skills`.
 Skills own reusable agent procedure; the CLI remains only a transport adapter.
 The installer updates `packs/jamon.tsv` and leaves every other pack file alone.
+
+Jam Session owns the `jamsession-` prefix under the skill directory. Removal is
+scoped by that prefix rather than by the bundled list, so `jamsession skills
+uninstall all` and `jamsession uninstall` also remove prefixed skills a user
+wrote. Skills outside the prefix, and the skill directory itself, are never
+removed.
 
 The runtime targets Bash 3.2 or newer. That covers the Bash shipped with macOS,
 normal Linux and WSL installations, and best-effort Git Bash without requiring

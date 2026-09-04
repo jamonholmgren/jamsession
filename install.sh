@@ -14,7 +14,7 @@ PROVIDERS="codex claude cursor grok copilot"
 DEFAULT_SKILL=jamsession-summon-agent
 OPTIONAL_SKILLS="jamsession-select-agent-model jamsession-ping-pong-planning
 jamsession-contrarian-review jamsession-ask-agent-panel
-jamsession-orchestrate-agent-work jamsession-execute-agent-slice
+jamsession-orchestrate-agent-work jamsession-agent-worker-task
 jamsession-work-over-ssh jamsession-run-remote-agents"
 
 command -v curl >/dev/null 2>&1 || {

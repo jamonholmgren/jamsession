@@ -38,17 +38,20 @@ Usage:
   jamsession usage <provider>
   jamsession status <provider>
   jamsession doctor [provider]
-  jamsession adapters
+  jamsession providers
   jamsession init
   jamsession make-adapter <provider> [--force]
-  jamsession skills [list|install <name|all>]
+  jamsession skills [list|install <name|all>|uninstall <name|all>]
   jamsession packs
   jamsession recommend <pack> [role] [provider]
   jamsession update
+  jamsession uninstall
   jamsession help [command|provider]
 
 The prompt may be `-` to read stdin. Provider output goes to stdout; session
 IDs, hints, warnings, and diagnostics go to stderr.
+
+`providers` lists the installed provider adapters. `adapters` is an exact alias.
 
 `recommend` prints dated advice from one named pack. It never runs an agent and
 never becomes a default for `run`.
@@ -81,7 +84,7 @@ bundled_skills() {
     jamsession-contrarian-review \
     jamsession-ask-agent-panel \
     jamsession-orchestrate-agent-work \
-    jamsession-execute-agent-slice \
+    jamsession-agent-worker-task \
     jamsession-work-over-ssh \
     jamsession-run-remote-agents
 }
@@ -121,6 +124,112 @@ install_one_skill() {
   printf 'Installed %s\n' "$target/SKILL.md"
 }
 
+# The `jamsession-` prefix is the ownership rule for removal. Jam Session owns
+# that namespace under the skill directory, so a prefixed directory is removable
+# whether it is bundled or one you wrote yourself. Anything else is untouchable.
+valid_skill_name() {
+  local suffix
+  case "$1" in
+    jamsession-*) suffix="${1#jamsession-}" ;;
+    *) return 1 ;;
+  esac
+  case "$suffix" in
+    ""|*[!a-zA-Z0-9_-]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+JAMSESSION_SKILL_ROOT=""
+
+# Sets JAMSESSION_SKILL_ROOT to the resolved skill directory. Returns 1 when it
+# does not exist, and dies when it exists but is not safe to remove from.
+require_skill_root() {
+  local marker parent
+  JAMSESSION_SKILL_ROOT=""
+  case "$JAMSESSION_SKILL_DIR" in
+    /*) ;;
+    *) die "JAMSESSION_SKILL_DIR must be an absolute path: $JAMSESSION_SKILL_DIR" ;;
+  esac
+  [ -d "$JAMSESSION_SKILL_DIR" ] || return 1
+  JAMSESSION_SKILL_ROOT="$(resolve_removable_dir "the skill directory" "$JAMSESSION_SKILL_DIR")" || exit $?
+  parent="${JAMSESSION_SKILL_ROOT%/*}"
+  for marker in .git install.sh tests; do
+    [ ! -e "$parent/$marker" ] || die \
+      "refusing to remove skills in $JAMSESSION_SKILL_ROOT: its parent contains $marker and looks like a source checkout"
+  done
+  return 0
+}
+
+# Immediate children of the skill root that carry the reserved prefix.
+installed_skill_dirs() {
+  local path name
+  for path in "$JAMSESSION_SKILL_ROOT"/*; do
+    [ -d "$path" ] || continue
+    name="${path##*/}"
+    valid_skill_name "$name" || continue
+    printf '%s\n' "$name"
+  done
+}
+
+# Removes one explicitly targeted skill directory whole. A prefixed directory is
+# Jam Session's, so files you added inside it go with it; that is announced
+# rather than silently skipped, because leaving the skill half-removed would be
+# worse than saying what went. Returns 0 removed, 1 absent, 2 refused.
+remove_skill_dir() {
+  local skill="$1" dir entry extra=0
+  dir="$JAMSESSION_SKILL_ROOT/$skill"
+  if [ -L "$dir" ]; then
+    printf 'jamsession: left %s; it is a symlink, not a skill directory\n' "$dir" >&2
+    return 2
+  fi
+  [ -d "$dir" ] || return 1
+  for entry in "$dir"/* "$dir"/.*; do
+    [ -e "$entry" ] || continue
+    case "${entry##*/}" in
+      .|..|SKILL.md) continue ;;
+    esac
+    extra=1
+    break
+  done
+  rm -rf "$dir"
+  if [ "$extra" -eq 1 ]; then
+    printf 'Removed %s (including files Jam Session did not install)\n' "$dir"
+  else
+    printf 'Removed %s\n' "$dir"
+  fi
+  return 0
+}
+
+uninstall_one_skill() {
+  local skill="$1" outcome=0
+  valid_skill_name "$skill" || \
+    die "invalid skill name '$skill'; jamsession only removes skills named jamsession-*"
+  require_skill_root || fail "no skill directory at $JAMSESSION_SKILL_DIR"
+  remove_skill_dir "$skill" || outcome=$?
+  case "$outcome" in
+    0) ;;
+    1) fail "skill '$skill' is not installed in $JAMSESSION_SKILL_ROOT" ;;
+    *) exit 1 ;;
+  esac
+}
+
+uninstall_all_skills() {
+  local skill removed=0 left=0
+  if ! require_skill_root; then
+    printf 'jamsession: no skill directory at %s\n' "$JAMSESSION_SKILL_DIR" >&2
+    return 0
+  fi
+  while IFS= read -r skill; do
+    if remove_skill_dir "$skill"; then
+      removed=$((removed + 1))
+    else
+      left=1
+    fi
+  done < <(installed_skill_dirs)
+  [ "$removed" -ne 0 ] || printf 'No jamsession-* skills were installed in %s\n' "$JAMSESSION_SKILL_ROOT"
+  [ "$left" -eq 0 ] || exit 1
+}
+
 skills_command() {
   local action="${1:-list}" requested skill
   case "$action" in
@@ -135,6 +244,15 @@ skills_command() {
         while IFS= read -r skill; do install_one_skill "$skill"; done < <(bundled_skills)
       else
         install_one_skill "$requested"
+      fi
+      ;;
+    uninstall)
+      [ $# -eq 2 ] || die "skills uninstall needs <name|all>"
+      requested="$2"
+      if [ "$requested" = all ]; then
+        uninstall_all_skills
+      else
+        uninstall_one_skill "$requested"
       fi
       ;;
     *) die "unknown skills command '$action'" ;;
@@ -186,12 +304,119 @@ recommend_command() {
   [ "$matched" -eq 1 ] || fail "pack '$pack' has no row matching role '${role:-any}' and provider '${provider:-any}'"
 }
 
+# Uninstall removes only what the installer created, at exact paths it validates
+# first. Anything it cannot prove it owns is left in place and reported, so an
+# ambiguous layout never turns into a broad deletion.
+resolved_dir() {
+  ( cd "$1" 2>/dev/null && pwd -P )
+}
+
+# Rejects paths that are not a real directory, or that are roots no Jam Session
+# artifact ever occupies.
+resolve_removable_dir() {
+  local label="$1" path="$2" resolved home_resolved
+  case "$path" in
+    /*) ;;
+    *) die "$label must be an absolute path: $path" ;;
+  esac
+  resolved="$(resolved_dir "$path")"
+  [ -n "$resolved" ] || return 1
+  home_resolved="$(resolved_dir "$HOME")"
+  case "$resolved" in
+    /|/usr|/etc|/var|/opt|/home|/Users) die "refusing to touch $label at $resolved" ;;
+  esac
+  if [ -n "$home_resolved" ]; then
+    case "$resolved" in
+      "$home_resolved"|"$home_resolved"/.agents|"$home_resolved"/.local|"$home_resolved"/.local/bin)
+        die "refusing to touch $label at $resolved" ;;
+    esac
+  fi
+  printf '%s\n' "$resolved"
+}
+
+# A checkout and an installation can both be named jamsession, so the marker
+# files decide. Only the installer produces bin/jamsession without them.
+require_install_tree() {
+  local root="$1" marker
+  [ "${root##*/}" = jamsession ] || \
+    die "refusing to remove an installation tree not named 'jamsession': $root"
+  for marker in .git install.sh tests index.html README.md AGENTS.md; do
+    [ ! -e "$root/$marker" ] || die \
+      "refusing to remove $root: it contains $marker, so it is a source checkout, not an installation. Run the installed command at ~/.local/bin/jamsession, or set JAMSESSION_HOME to the installation tree."
+  done
+  [ -f "$root/bin/jamsession" ] || \
+    die "refusing to remove $root: it has no bin/jamsession, so it is not a Jam Session installation"
+}
+
+uninstall_command() {
+  [ $# -eq 0 ] || die "uninstall takes no arguments"
+  local root="" bin="" link skill left=0
+
+  # Checked before existence: a relative override is a mistake worth reporting,
+  # not a directory that happens to be missing.
+  case "$JAMSESSION_HOME" in
+    /*) ;;
+    *) die "JAMSESSION_HOME must be an absolute path: $JAMSESSION_HOME" ;;
+  esac
+  case "$JAMSESSION_SKILL_DIR" in
+    /*) ;;
+    *) die "JAMSESSION_SKILL_DIR must be an absolute path: $JAMSESSION_SKILL_DIR" ;;
+  esac
+
+  # resolve_removable_dir runs in a subshell, so its refusal has to be
+  # propagated deliberately rather than mistaken for a missing directory.
+  if [ -d "$JAMSESSION_HOME" ]; then
+    root="$(resolve_removable_dir "the installation tree" "$JAMSESSION_HOME")" || exit $?
+    require_install_tree "$root"
+    bin="$root/bin/jamsession"
+  else
+    printf 'jamsession: no installation tree at %s\n' "$JAMSESSION_HOME" >&2
+  fi
+
+  # Remove the link before the tree, while the target still exists to compare.
+  link="$HOME/.local/bin/jamsession"
+  if [ -L "$link" ]; then
+    if [ -n "$bin" ] && [ "$link" -ef "$bin" ]; then
+      rm -f "$link"
+      printf 'Removed %s\n' "$link"
+    else
+      printf 'jamsession: left %s; it does not point at this installation\n' "$link" >&2
+      left=1
+    fi
+  elif [ -e "$link" ]; then
+    printf 'jamsession: left %s; it is not a symlink\n' "$link" >&2
+    left=1
+  fi
+
+  # Skills are removed one validated directory at a time, by the same prefix rule
+  # `skills uninstall all` uses. The skill root itself is never removed, and a
+  # checkout's skills/ directory is refused outright.
+  if require_skill_root; then
+    while IFS= read -r skill; do
+      remove_skill_dir "$skill" || left=1
+    done < <(installed_skill_dirs)
+  fi
+
+  if [ -n "$root" ]; then
+    rm -rf "$root"
+    printf 'Removed %s\n' "$root"
+  fi
+
+  if [ "$left" -eq 1 ]; then
+    printf 'jamsession: some paths were left in place; remove them yourself if you want them gone\n' >&2
+    exit 1
+  fi
+  printf 'Jam Session is uninstalled.\n'
+}
+
 compact_usage() {
   cat >&2 <<'EOF'
 Usage: jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
        jamsession <list|models|usage|status> <provider> [arguments]
        jamsession recommend <pack> [role] [provider]
-       jamsession <doctor|adapters|init|make-adapter|skills|packs|update|help>
+       jamsession <doctor|providers|init|make-adapter|skills|packs|update|help>
+       jamsession skills <list|install|uninstall> <name|all>
+       jamsession uninstall
 EOF
 }
 
@@ -223,7 +448,7 @@ adapter_path() {
 require_adapter() {
   local path
   path="$(adapter_path "$1")"
-  [ -f "$path" ] || die "provider '$1' is not installed; run 'jamsession adapters'"
+  [ -f "$path" ] || die "provider '$1' is not installed; run 'jamsession providers'"
   [ -x "$path" ] || die "adapter is not executable: $path"
   printf '%s\n' "$path"
 }
@@ -373,6 +598,40 @@ Creates an executable adapter template in the configured adapter directory.
 The command refuses to replace an existing file unless --force is explicit.
 EOF
       ;;
+    providers|adapters)
+      cat <<'EOF'
+Usage: jamsession providers
+
+Lists the provider adapters installed in the adapter directory, one per line.
+`jamsession adapters` is an exact alias for the same output.
+
+An adapter appears here when it is a file named jamsession_<provider> and is
+executable. Listing a provider does not mean its CLI is installed or
+authenticated; run `jamsession doctor` for that.
+EOF
+      ;;
+    skills)
+      cat <<EOF
+Usage: jamsession skills [list]
+       jamsession skills install <name|all>
+       jamsession skills uninstall <name|all>
+
+Skill directory: $JAMSESSION_SKILL_DIR
+
+'list' shows every bundled skill and whether it is installed. 'install'
+downloads bundled skills; 'all' means every bundled skill.
+
+'uninstall <name>' removes one installed skill directory. The name must start
+with 'jamsession-'; jamsession does not remove skills outside that namespace.
+'uninstall all' removes every immediate directory under the skill directory
+whose name starts with 'jamsession-', including prefixed skills you wrote
+yourself. Unrelated skills and the skill directory itself are never touched.
+
+Removal takes the whole directory. If you keep your own notes inside a
+jamsession-* skill, they are removed with it and the command says so, because a
+half-removed skill would be worse than a clear report.
+EOF
+      ;;
     packs|recommend)
       cat <<EOF
 Usage: jamsession packs
@@ -393,6 +652,32 @@ values to 'jamsession run' yourself.
 
 Add your own pack by placing an ordinary <name>.tsv file beside the bundled
 ones. The installer only updates jamon.tsv and leaves other packs alone.
+EOF
+      ;;
+    uninstall)
+      cat <<EOF
+Usage: jamsession uninstall
+
+Removes only what the installer created:
+
+  $HOME/.local/bin/jamsession   the symlink, and only when it points at the
+                                installation below
+  $JAMSESSION_HOME              the whole installation tree, including
+                                jamsession.conf and any custom adapters or
+                                packs kept inside it
+  $JAMSESSION_SKILL_DIR/jamsession-*
+                                every immediate skill directory whose name
+                                starts with jamsession-, including prefixed
+                                skills you wrote yourself, and any files you
+                                kept inside them
+
+It never removes the skill directory itself, a skill outside the jamsession-
+namespace, a $HOME/.local/bin/jamsession that is not a symlink to this
+installation, or a source checkout. Anything it cannot prove it owns is left in
+place, named on stderr, and the command exits 1. Running it twice is safe.
+
+Set JAMSESSION_HOME or JAMSESSION_SKILL_DIR to uninstall a non-default
+location. Both must already exist and be exactly the paths you want removed.
 EOF
       ;;
     run)
@@ -448,7 +733,7 @@ case "$command_name" in
     done < <(list_adapters)
     exit "$failures"
     ;;
-  adapters|providers|agents)
+  providers|adapters|agents)
     [ $# -eq 0 ] || die "$command_name takes no arguments"
     list_adapters
     ;;
@@ -477,6 +762,9 @@ case "$command_name" in
     curl -fsSL "${JAMSESSION_INSTALL_URL:-https://raw.githubusercontent.com/jamonholmgren/jamsession/main/install.sh}" -o "$update_file" || exit $?
     [ -s "$update_file" ] || die "downloaded installer is empty"
     sh "$update_file"
+    ;;
+  uninstall)
+    uninstall_command "$@"
     ;;
   help|-h|--help)
     [ $# -le 1 ] || die "help takes at most one topic"
