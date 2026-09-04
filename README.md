@@ -1,9 +1,12 @@
 # Jam Session
 
-A tiny CLI your coding agent uses to summon other coding agents. Codex, Claude
-Code, Cursor, Grok, and Copilot all have different flags for models, effort,
-sandboxing, and resuming sessions. `jamsession` gives them one consistent
-interface, plus optional skills for multi-agent work.
+A tiny CLI your coding agent uses to summon other coding agents.
+
+Summon Codex, Claude Code, Cursor, Grok, and Copilot (more on the way) agents and resume their sessions, view usage data, and more.
+
+All in a few small bash scripts.
+
+An open-source project by [Jamon Holmgren](https://jamon.dev).
 
 **No dependencies.**
 
@@ -13,8 +16,7 @@ interface, plus optional skills for multi-agent work.
 curl -fsSL https://jamsession.jamon.dev/install.sh | sh
 ```
 
-Installs to `~/.agents/jamsession/` and links `~/.local/bin/jamsession`. Never
-touches your shell startup files.
+Installs to `~/.agents/jamsession/` and links `~/.local/bin/jamsession`. Never touches your shell startup files.
 
 ## Run an agent
 
@@ -26,27 +28,21 @@ jamsession run claude new claude-opus-5 high edit "Implement the requested chang
 jamsession run codex 019abc gpt-5.6-sol high read "Check the revised diff."
 ```
 
-Every part is required. Pass a session ID instead of `new` to resume, and `-`
-as the prompt to read stdin. The reply goes to stdout; session IDs and
-diagnostics go to stderr.
+Every part is required. Pass a session ID instead of `new` to resume, and `-` as the prompt to read stdin. The reply goes to stdout; session IDs and diagnostics go to stderr.
 
-`read` means the agent cannot change your workspace. If a provider can't
-guarantee that, the adapter refuses instead of pretending. `edit` uses the
-provider's unattended coding mode. Model and effort are passed through exactly;
-nothing is ever substituted.
+`read` means the agent is called with the best settings to avoid changing your workspace. `edit` uses the provider's unattended coding mode. Model and effort are passed through exactly.
 
-## Providers
+## Get Providers, Models, Sessions
 
 ```sh
-jamsession adapters
-jamsession doctor
-jamsession models cursor
-jamsession list grok 5
-jamsession init
+jamsession providers
+jamsession doctor 
+jamsession models cursor # lists models available on cursor agent
+jamsession list grok 5 # lists the last 5 grok sessions in this code base (if available)
+jamsession init # installs jam session in the current project
 ```
 
-Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`. `init` finds the
-provider executables and writes `~/.agents/jamsession/jamsession.conf`.
+Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`.
 
 ## Skills
 
@@ -54,11 +50,11 @@ provider executables and writes `~/.agents/jamsession/jamsession.conf`.
 jamsession skills
 jamsession skills install jamsession-orchestrate-agent-work
 jamsession skills install all
+jamsession skills uninstall jamsession-orchestrate-agent-work
+jamsession skills uninstall all
 ```
 
-`jamsession-summon-agent` is installed by default. The rest are opt-in:
-model selection, ping-pong planning, contrarian review, agent panels,
-orchestration, worker slices, and SSH.
+`jamsession-summon-agent` is installed by default. The rest are opt-in: model selection, ping-pong planning, contrarian review, agent panels, orchestration, worker slices, and SSH.
 
 ## Recommendation packs
 
@@ -68,9 +64,7 @@ jamsession recommend jamon
 jamsession recommend jamon independent-review grok
 ```
 
-Dated model and effort advice by role. It only prints; you still pass model and
-effort to `run` yourself. Add your own `.tsv` beside `jamon.tsv` in
-`~/.agents/jamsession/packs/`.
+Dated model and effort advice by role. It only prints; you still pass model and effort to `run` yourself. Add your own `.tsv` beside `jamon.tsv` in `~/.agents/jamsession/packs/`.
 
 ## Add an adapter
 
@@ -78,8 +72,7 @@ effort to `run` yourself. Add your own `.tsv` beside `jamon.tsv` in
 jamsession make-adapter antigravity
 ```
 
-Scaffolds `~/.agents/jamsession/adapters/jamsession_antigravity` with the
-contract documented inline. Won't overwrite without `--force`.
+Scaffolds `~/.agents/jamsession/adapters/jamsession_antigravity` with the contract documented inline. Won't overwrite without `--force`.
 
 ## Update
 
@@ -87,8 +80,7 @@ contract documented inline. Won't overwrite without `--force`.
 jamsession update
 ```
 
-Refreshes core files, bundled adapters, the `jamon` pack, and installed skills.
-Leaves your config, custom adapters, and custom packs alone.
+Refreshes core files, bundled adapters, the `jamon` pack, and installed skills. Leaves your config, custom adapters, and custom packs alone.
 
 ## Development
 
@@ -96,8 +88,7 @@ Leaves your config, custom adapters, and custom packs alone.
 bash tests/test_jamsession.sh
 ```
 
-Uses fake providers, so no accounts or quota. See [DESIGN.md](DESIGN.md) for why
-it stays small.
+Uses fake providers, so no accounts or quota. See [DESIGN.md](DESIGN.md) for why it stays small.
 
 ## License
 
