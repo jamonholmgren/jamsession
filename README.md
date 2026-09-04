@@ -6,6 +6,8 @@ Summon Codex, Claude Code, Cursor, Grok, and Copilot (more on the way) agents an
 
 All in a few small bash scripts.
 
+<img width="615" height="192" alt="Codex with Jam Session" src="https://github.com/user-attachments/assets/892d5225-6c1b-42c2-a0ab-c002b2d6569d" />
+
 An open-source project by [Jamon Holmgren](https://jamon.dev).
 
 **No dependencies.**
