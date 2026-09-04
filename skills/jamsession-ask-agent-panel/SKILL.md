@@ -9,8 +9,8 @@ description: Ask a small panel of independent coding agents for complementary ju
    intended outcome, constraints, and requested answer format.
 2. Choose three (or the user-specified amount) of available agents with distinct
    model families, different from your own if possible.
-3. Start every panelist in a fresh session with explicit read access. Do not
-   expose other answers during the independent round.
+3. Start every panelist in a fresh session with explicit read access using `jamsession`.
+   Do not expose other answers during the independent round.
 4. Collect complete answers, deduplicate concrete claims, and preserve which
    session first raised each one. Agreement indicates where to inspect; it does
    not prove correctness.
