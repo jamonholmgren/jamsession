@@ -7,12 +7,11 @@ INSTALL_ROOT=${JAMSESSION_HOME:-"$HOME/.agents/jamsession"}
 SKILL_ROOT=${JAMSESSION_SKILL_DIR:-"$HOME/.agents/skills"}
 BIN_DIR="$INSTALL_ROOT/bin"
 ADAPTER_DIR="$INSTALL_ROOT/adapters"
-PACK_DIR="$INSTALL_ROOT/packs"
 LINK_DIR="$HOME/.local/bin"
 
 PROVIDERS="codex claude cursor grok copilot"
 DEFAULT_SKILL=jamsession-summon-agent
-OPTIONAL_SKILLS="jamsession-select-agent-model jamsession-ping-pong-planning
+OPTIONAL_SKILLS="jamsession-model-recommendations jamsession-ping-pong-planning
 jamsession-contrarian-review jamsession-ask-agent-panel
 jamsession-orchestrate-agent-work jamsession-agent-worker-task
 jamsession-work-over-ssh jamsession-run-remote-agents"
@@ -60,7 +59,6 @@ fetch adapters/_jamsession_adapter_common adapters/_jamsession_adapter_common
 for provider in $PROVIDERS; do
   fetch "adapters/jamsession_$provider" "adapters/jamsession_$provider"
 done
-fetch packs/jamon.tsv packs/jamon.tsv
 
 # The default skill is always refreshed. Optional skills are refreshed only when
 # the user has already installed them.
@@ -78,12 +76,11 @@ require_script jamsession
 for provider in $PROVIDERS; do
   require_script "adapters/jamsession_$provider"
 done
-require_line packs/jamon.tsv '^# pack:' "its pack metadata"
 for skill in $skills; do
   require_line "skills/$skill/SKILL.md" "^name: $skill\$" "its skill name"
 done
 
-mkdir -p "$BIN_DIR" "$ADAPTER_DIR" "$PACK_DIR" "$SKILL_ROOT" "$LINK_DIR"
+mkdir -p "$BIN_DIR" "$ADAPTER_DIR" "$SKILL_ROOT" "$LINK_DIR"
 
 # Rename into place so a reader never sees a half-written file.
 install_file() {
@@ -98,7 +95,6 @@ install_file adapters/_jamsession_adapter_common "$ADAPTER_DIR/_jamsession_adapt
 for provider in $PROVIDERS; do
   install_file "adapters/jamsession_$provider" "$ADAPTER_DIR/jamsession_$provider" 755
 done
-install_file packs/jamon.tsv "$PACK_DIR/jamon.tsv" 644
 for skill in $skills; do
   mkdir -p "$SKILL_ROOT/$skill"
   install_file "skills/$skill/SKILL.md" "$SKILL_ROOT/$skill/SKILL.md" 644

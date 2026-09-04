@@ -61,8 +61,8 @@
         <div class="feed-view" role="img" aria-label="Activity feed of one jam session: your coding agent plans a small habit-tracker app, ping-pongs the plan between Claude and Codex, compares approaches with an agent panel, delegates the edit to Cursor, runs the tests, asks Grok for a contrarian review, and has Codex review the final diff — each step a jamsession command or skill.">
           <ol class="feed-cells">
             <li class="cell cell-prose">Starting a new jam. The goal is a habit tracker with a small CLI and a static web view. First I&rsquo;ll pick which models to bring in.</li>
-            <li class="cell cell-skill" style="--tc:var(--t-teal)"><span class="verb">skill</span><code>jamsession-select-agent-model</code> <span class="note">weighing the dated pack against what&rsquo;s installed here</span></li>
-            <li class="cell cell-cmd"><span class="verb">ran</span><code>jamsession recommend jamon planning</code></li>
+            <li class="cell cell-skill" style="--tc:var(--t-teal)"><span class="verb">skill</span><code>jamsession-model-recommendations</code> <span class="note">checking Jamon&rsquo;s dated recommendations against what&rsquo;s installed here</span></li>
+            <li class="cell cell-cmd"><span class="verb">ran</span><code>jamsession models claude</code></li>
             <li class="cell cell-result">picked claude-opus-5 high to draft, gpt-5.6-sol high as the second family</li>
             <li class="cell cell-skill" style="--tc:var(--t-amber)"><span class="verb">skill</span><code>jamsession-ping-pong-planning</code> <span class="note">two planners volley the plan until it holds</span></li>
             <li class="cell cell-cmd" style="--tc:var(--t-violet)"><span class="verb">ran</span><code>jamsession run claude new claude-opus-5 high read "Draft a plan for streaks: data model, CLI, web view."</code></li>
@@ -178,9 +178,9 @@
       </li>
       <li style="--tc:var(--t-teal)">
         <span class="dot" aria-hidden="true"></span>
-        <span class="skill-name">Model selection</span>
+        <span class="skill-name">Model recommendations</span>
         <span class="skill-desc">Jamon&rsquo;s favorite models for different types of work. Updated frequently as new models come out.</span>
-        <code>jamsession-select-agent-model</code>
+        <code>jamsession-model-recommendations</code>
       </li>
     </ul>
   </section>

@@ -54,19 +54,9 @@ jamsession skills uninstall jamsession-orchestrate-agent-work
 jamsession skills uninstall all
 ```
 
-`jamsession-summon-agent` is installed by default. The rest are opt-in: model selection, ping-pong planning, contrarian review, agent panels, orchestration, worker tasks, and SSH.
+`jamsession-summon-agent` is installed by default. The rest are opt-in: model recommendations, ping-pong planning, contrarian review, agent panels, orchestration, worker tasks, and SSH.
 
 Uninstalling `all` removes every `jamsession-*` skill directory, including custom ones. It leaves unrelated skills and `~/.agents/skills/` alone.
-
-## Recommendation packs
-
-```sh
-jamsession packs
-jamsession recommend jamon
-jamsession recommend jamon independent-review grok
-```
-
-Dated model and effort advice by role. It only prints; you still pass model and effort to `run` yourself. Add your own `.tsv` beside `jamon.tsv` in `~/.agents/jamsession/packs/`.
 
 ## Add an adapter
 
@@ -82,7 +72,7 @@ Scaffolds `~/.agents/jamsession/adapters/jamsession_antigravity` with the contra
 jamsession update
 ```
 
-Refreshes core files, bundled adapters, the `jamon` pack, and installed skills. Leaves your config, custom adapters, and custom packs alone.
+Refreshes core files, bundled adapters, and installed skills. Leaves your config and custom adapters alone.
 
 ## Uninstall
 
@@ -90,7 +80,7 @@ Refreshes core files, bundled adapters, the `jamon` pack, and installed skills. 
 jamsession uninstall
 ```
 
-Removes the command, installation tree, and every `jamsession-*` skill. It leaves unrelated files alone and is safe to run twice. Custom adapters, packs, and config inside `~/.agents/jamsession/` are removed too.
+Removes the command, installation tree, and every `jamsession-*` skill. It leaves unrelated files alone and is safe to run twice. Custom adapters and config inside `~/.agents/jamsession/` are removed too.
 
 ## Development
 
@@ -98,7 +88,7 @@ Removes the command, installation tree, and every `jamsession-*` skill. It leave
 bash tests/test_jamsession.sh
 ```
 
-Uses fake providers, so no accounts or quota. See [DESIGN.md](DESIGN.md) for why it stays small.
+Uses fake providers, so no accounts or quota.
 
 ## License
 

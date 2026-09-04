@@ -89,13 +89,6 @@ skills you wrote yourself. Unrelated skills and `~/.agents/skills/` itself stay.
 A `jamsession-*` directory is removed whole, so your own notes inside one go
 with it and the command says so.
 
-Inspect model recommendations without selecting anything implicitly:
-
-```sh
-jamsession packs
-jamsession recommend jamon planning
-```
-
 Run `jamsession help` for the complete CLI contract and `jamsession help
 <provider>` for provider-specific behavior.
 
@@ -110,7 +103,7 @@ jamsession uninstall
 This removes the `~/.local/bin/jamsession` symlink, the `~/.agents/jamsession`
 installation tree, and every `jamsession-*` skill directory under
 `~/.agents/skills/`. The installation tree includes `jamsession.conf` and any
-custom adapters or packs kept inside it.
+custom adapters kept inside it.
 
 It leaves `~/.agents` itself, skills outside the `jamsession-` namespace, and a
 `~/.local/bin/jamsession` that is not a symlink to this installation. Whatever

@@ -46,7 +46,6 @@ for adapter in "$ROOT"/adapters/jamsession_*; do
 done
 check "every adapter ships executable" test -z "$non_executable_adapter"
 check "the adapter helper ships non-executable" test ! -x "$ROOT/adapters/_jamsession_adapter_common"
-check "the bundled pack ships non-executable" test ! -x "$ROOT/packs/jamon.tsv"
 
 run_command "$ROOT/jamsession" adapters
 check "bundled providers are discovered" contains "$stdout_file" codex
@@ -67,6 +66,10 @@ check "main help documents providers" contains "$stdout_file" "jamsession provid
 check "main help notes the adapters alias" contains "$stdout_file" "\`adapters\` is an exact alias"
 check "main help does not present adapters as the primary name" sh -c "! grep -q '^  jamsession adapters\$' '$stdout_file'"
 check "main help documents skills uninstall" contains "$stdout_file" "uninstall <name|all>"
+check "main help no longer documents recommendation packs" sh -c "! grep -Eq 'jamsession (packs|recommend)' '$stdout_file'"
+
+run_command "$ROOT/jamsession" packs
+check "the removed packs command is rejected" test "$status" -eq 2
 
 run_command "$ROOT/jamsession" help providers
 check "provider help explains the listing" contains "$stdout_file" "Usage: jamsession providers"
@@ -297,15 +300,11 @@ INSTALL_HOME="$TEMP_ROOT/install-user"
 mkdir -p "$INSTALL_HOME/.agents/jamsession/adapters"
 printf '%s\n' custom >"$INSTALL_HOME/.agents/jamsession/adapters/jamsession_custom"
 chmod 755 "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_custom"
-mkdir -p "$INSTALL_HOME/.agents/jamsession/packs"
-printf '%s\n' custom-pack >"$INSTALL_HOME/.agents/jamsession/packs/mine.tsv"
 run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$ROOT/install.sh"
 check "installer installs the command" test -x "$INSTALL_HOME/.agents/jamsession/bin/jamsession"
 check "installer links the command" test -L "$INSTALL_HOME/.local/bin/jamsession"
 check "installer preserves unknown adapters" equals "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_custom" custom
 check "installer installs the summon-agent skill" test -f "$INSTALL_HOME/.agents/skills/jamsession-summon-agent/SKILL.md"
-check "installer installs the bundled pack" contains "$INSTALL_HOME/.agents/jamsession/packs/jamon.tsv" "# pack: jamon"
-check "installer preserves unknown packs" equals "$INSTALL_HOME/.agents/jamsession/packs/mine.tsv" custom-pack
 
 run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
@@ -318,8 +317,9 @@ check "skills lists installed state" contains "$stdout_file" "jamsession-work-ov
 
 run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
-  "$ROOT/jamsession" skills install jamsession-select-agent-model
-check "model-selection skill installs on request" test -f "$INSTALL_HOME/.agents/skills/jamsession-select-agent-model/SKILL.md"
+  "$ROOT/jamsession" skills install jamsession-model-recommendations
+check "model-recommendations skill installs on request" test -f "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md"
+check "model recommendations carry a freshness date" contains "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md" "fresh as of September 3, 2026"
 
 # --- Second run: recognized files refresh, everything else survives ---
 INSTALLED="$INSTALL_HOME/.agents/jamsession"
@@ -327,7 +327,6 @@ INSTALLED_SKILLS="$INSTALL_HOME/.agents/skills"
 printf '%s\n' stale >"$INSTALLED/bin/jamsession"
 printf '%s\n' stale >"$INSTALLED/adapters/jamsession_codex"
 printf '%s\n' stale >"$INSTALLED/adapters/_jamsession_adapter_common"
-printf '%s\n' stale >"$INSTALLED/packs/jamon.tsv"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-summon-agent/SKILL.md"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md"
 printf '%s\n' 'JAMSESSION_CUSTOM_SETTING=kept' >>"$INSTALLED/jamsession.conf"
@@ -337,24 +336,22 @@ check "a second install succeeds" test "$status" -eq 0
 check "second install refreshes the command" contains "$INSTALLED/bin/jamsession" JAMSESSION_VERSION
 check "second install refreshes a bundled adapter" contains "$INSTALLED/adapters/jamsession_codex" jamsession_validate_run
 check "second install refreshes the adapter helper" contains "$INSTALLED/adapters/_jamsession_adapter_common" jamsession_adapter_setup
-check "second install refreshes the bundled pack" contains "$INSTALLED/packs/jamon.tsv" "# pack: jamon"
 check "second install refreshes the default skill" contains "$INSTALLED_SKILLS/jamsession-summon-agent/SKILL.md" "name: jamsession-summon-agent"
 check "second install refreshes an installed optional skill" contains "$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md" "name: jamsession-work-over-ssh"
 check "second install preserves configuration" contains "$INSTALLED/jamsession.conf" JAMSESSION_CUSTOM_SETTING=kept
 check "second install preserves a custom adapter" equals "$INSTALLED/adapters/jamsession_custom" custom
-check "second install preserves a custom pack" equals "$INSTALLED/packs/mine.tsv" custom-pack
 check "second install leaves uninstalled optional skills absent" test ! -e "$INSTALLED_SKILLS/jamsession-ask-agent-panel/SKILL.md"
 check "second install leaves no staging files behind" sh -c "! ls '$INSTALLED/bin/'*.jamsession-new '$INSTALLED/adapters/'*.jamsession-new >/dev/null 2>&1"
 check "installed command stays executable" test -x "$INSTALLED/bin/jamsession"
 check "installed adapters stay executable" test -x "$INSTALLED/adapters/jamsession_codex"
 check "installed adapter helper stays non-executable" test ! -x "$INSTALLED/adapters/_jamsession_adapter_common"
-check "installed pack stays non-executable" test ! -x "$INSTALLED/packs/jamon.tsv"
 
 # --- An incomplete bundle must replace nothing ---
 BROKEN_SOURCE="$TEMP_ROOT/broken-source"
 mkdir -p "$BROKEN_SOURCE"
 cp "$ROOT/jamsession" "$BROKEN_SOURCE/jamsession"
 cp -R "$ROOT/adapters" "$ROOT/skills" "$BROKEN_SOURCE/"
+rm -f "$BROKEN_SOURCE/adapters/jamsession_grok"
 printf '%s\n' stale >"$INSTALLED/bin/jamsession"
 printf '%s\n' stale >"$INSTALLED/adapters/jamsession_codex"
 run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$BROKEN_SOURCE" sh "$ROOT/install.sh"
@@ -381,56 +378,6 @@ while IFS= read -r listed_skill; do
   grep -Fq -- "$listed_skill" "$ROOT/install.sh" || missing_install="$listed_skill"
 done < <(env JAMSESSION_SKILL_DIR="$TEMP_ROOT/none" "$ROOT/jamsession" skills)
 check "every listed skill is known to the installer" test -z "$missing_install"
-
-run_command "$ROOT/jamsession" packs
-check "packs lists the bundled pack" equals "$stdout_file" jamon
-
-run_command "$ROOT/jamsession" recommend jamon
-check "recommend reads the named pack" test "$status" -eq 0
-check "recommend prints the update date" contains "$stdout_file" "# updated:"
-check "recommend prints stated limitations" contains "$stdout_file" "# limitations:"
-check "recommend prints every role by default" contains "$stdout_file" premium-default
-check "recommend writes nothing to stderr on success" test ! -s "$stderr_file"
-
-# A tripwire home: every adapter records that it ran, and a second pack holds a
-# token that must never appear when a different pack was named.
-TRIPWIRE="$TEMP_ROOT/tripwire"
-mkdir -p "$TRIPWIRE/adapters" "$TRIPWIRE/packs"
-cat >"$TRIPWIRE/adapters/jamsession_codex" <<'EOF'
-#!/bin/sh
-printf '%s\n' ADAPTER_EXECUTED >"$FAKE_LOG"
-EOF
-chmod 755 "$TRIPWIRE/adapters/jamsession_codex"
-cp "$ROOT/packs/jamon.tsv" "$TRIPWIRE/packs/jamon.tsv"
-printf '# pack: other\nplanning\tcodex\tOTHER_PACK_MODEL\thigh\t1\tnote\n' \
-  >"$TRIPWIRE/packs/other.tsv"
-rm -f "$LOG"
-run_command env FAKE_LOG="$LOG" JAMSESSION_HOME="$TRIPWIRE" "$ROOT/jamsession" recommend jamon
-check "recommend still prints the named pack from a custom home" contains "$stdout_file" premium-default
-check "recommend never executes an adapter" test ! -e "$LOG"
-check "recommend reads no other installed pack" sh -c "! grep -Fq OTHER_PACK_MODEL '$stdout_file'"
-check "recommend starts no provider session" sh -c "! grep -Fq 'session:' '$stdout_file' '$stderr_file'"
-check "recommend writes no configuration" test ! -e "$TRIPWIRE/jamsession.conf"
-check "recommend creates no temporary directory in the home" test ! -e "$TRIPWIRE/bin"
-
-run_command "$ROOT/jamsession" recommend jamon discovery grok
-check "recommend filters by role and provider" contains "$stdout_file" "grok-4.6"
-check "recommend omits non-matching roles" sh -c "! grep -q '^premium-default' '$stdout_file'"
-check "recommend omits non-matching providers" sh -c "! grep -q '^discovery.cursor' '$stdout_file'"
-
-run_command "$ROOT/jamsession" recommend
-check "recommend requires an explicit pack" test "$status" -eq 2
-
-run_command "$ROOT/jamsession" recommend ../../etc/passwd
-check "recommend rejects a path as a pack name" test "$status" -eq 2
-
-run_command "$ROOT/jamsession" recommend nosuchpack
-check "recommend fails on a missing pack" test "$status" -ne 0
-check "recommend does not substitute another pack" sh -c "! grep -Fq jamon '$stdout_file'"
-
-run_command "$ROOT/jamsession" recommend jamon nosuchrole
-check "recommend fails when no row matches" test "$status" -ne 0
-check "recommend names the unmatched filters" contains "$stderr_file" "nosuchrole"
 
 # --- skills uninstall --------------------------------------------------------
 # A skill directory holding bundled skills, a custom prefixed skill, and skills
@@ -683,14 +630,10 @@ check "the test workflow runs the current test path" \
   sh -c "grep -Fq 'tests/test_jamsession.sh' '$ROOT/.github/workflows/test.yml'"
 check "no workflow still refers to the old name" \
   sh -c "! grep -rqi jamwrap '$ROOT/.github/workflows/'"
-check "the documented planning recommendation exists" \
-  sh -c "grep -q '^planning' '$ROOT/packs/jamon.tsv'"
+check "the model recommendation skill is bundled" \
+  sh -c "grep -q '^name: jamsession-model-recommendations$' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
 check "the remote-agent skill depends on no separately optional skill" \
   sh -c "! grep -Eq 'jamsession-(agent-worker-task|work-over-ssh|orchestrate-agent-work)' '$ROOT/skills/jamsession-run-remote-agents/SKILL.md'"
-
-run_command "$ROOT/jamsession" help packs
-check "help documents the pack schema" contains "$stdout_file" "role,"
-check "help states that recommend never runs an agent" contains "$stdout_file" "never runs an agent"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

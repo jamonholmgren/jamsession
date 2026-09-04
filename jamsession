@@ -18,8 +18,7 @@ fi
 JAMSESSION_ADAPTER_DIR="${JAMSESSION_ADAPTER_DIR:-$JAMSESSION_HOME/adapters}"
 JAMSESSION_CONFIG="${JAMSESSION_CONFIG:-$JAMSESSION_HOME/jamsession.conf}"
 JAMSESSION_SKILL_DIR="${JAMSESSION_SKILL_DIR:-$HOME/.agents/skills}"
-JAMSESSION_PACK_DIR="${JAMSESSION_PACK_DIR:-$JAMSESSION_HOME/packs}"
-export JAMSESSION_HOME JAMSESSION_ADAPTER_DIR JAMSESSION_CONFIG JAMSESSION_SKILL_DIR JAMSESSION_PACK_DIR
+export JAMSESSION_HOME JAMSESSION_ADAPTER_DIR JAMSESSION_CONFIG JAMSESSION_SKILL_DIR
 
 if [ -f "$JAMSESSION_CONFIG" ]; then
   # The config is intentionally a user-owned shell file.
@@ -42,8 +41,6 @@ Usage:
   jamsession init
   jamsession make-adapter <provider> [--force]
   jamsession skills [list|install <name|all>|uninstall <name|all>]
-  jamsession packs
-  jamsession recommend <pack> [role] [provider]
   jamsession update
   jamsession uninstall
   jamsession help [command|provider]
@@ -52,9 +49,6 @@ The prompt may be `-` to read stdin. Provider output goes to stdout; session
 IDs, hints, warnings, and diagnostics go to stderr.
 
 `providers` lists the installed provider adapters. `adapters` is an exact alias.
-
-`recommend` prints dated advice from one named pack. It never runs an agent and
-never becomes a default for `run`.
 EOF
 }
 
@@ -79,7 +73,7 @@ make_temp_dir() {
 bundled_skills() {
   printf '%s\n' \
     jamsession-summon-agent \
-    jamsession-select-agent-model \
+    jamsession-model-recommendations \
     jamsession-ping-pong-planning \
     jamsession-contrarian-review \
     jamsession-ask-agent-panel \
@@ -259,51 +253,6 @@ skills_command() {
   esac
 }
 
-valid_pack_name() {
-  case "$1" in
-    ""|*[!a-zA-Z0-9_-]*) return 1 ;;
-    *) return 0 ;;
-  esac
-}
-
-list_packs() {
-  local path name
-  [ -d "$JAMSESSION_PACK_DIR" ] || return 0
-  for path in "$JAMSESSION_PACK_DIR"/*.tsv; do
-    [ -f "$path" ] || continue
-    name="${path##*/}"
-    printf '%s\n' "${name%.tsv}"
-  done
-  return 0
-}
-
-# Reads exactly one named pack. Packs are never merged, ranked across files, or
-# substituted for one another, and nothing here selects a model to run.
-recommend_command() {
-  [ $# -ge 1 ] && [ $# -le 3 ] || die "recommend needs <pack> [role] [provider]"
-  local pack="$1" role="${2:-}" provider="${3:-}"
-  local path line tab rest row_role row_provider matched=0
-  valid_pack_name "$pack" || die "invalid pack name '$pack'"
-  [ -z "$provider" ] || valid_provider "$provider" || die "invalid provider '$provider'"
-  path="$JAMSESSION_PACK_DIR/$pack.tsv"
-  [ -f "$path" ] || fail "pack '$pack' is not installed; run 'jamsession packs'"
-  tab="$(printf '\t')"
-  while IFS= read -r line || [ -n "$line" ]; do
-    case "$line" in
-      "") continue ;;
-      '#'*) printf '%s\n' "$line"; continue ;;
-    esac
-    row_role="${line%%"$tab"*}"
-    rest="${line#*"$tab"}"
-    row_provider="${rest%%"$tab"*}"
-    [ -z "$role" ] || [ "$row_role" = "$role" ] || continue
-    [ -z "$provider" ] || [ "$row_provider" = "$provider" ] || continue
-    printf '%s\n' "$line"
-    matched=1
-  done <"$path"
-  [ "$matched" -eq 1 ] || fail "pack '$pack' has no row matching role '${role:-any}' and provider '${provider:-any}'"
-}
-
 # Uninstall removes only what the installer created, at exact paths it validates
 # first. Anything it cannot prove it owns is left in place and reported, so an
 # ambiguous layout never turns into a broad deletion.
@@ -413,8 +362,7 @@ compact_usage() {
   cat >&2 <<'EOF'
 Usage: jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
        jamsession <list|models|usage|status> <provider> [arguments]
-       jamsession recommend <pack> [role] [provider]
-       jamsession <doctor|providers|init|make-adapter|skills|packs|update|help>
+       jamsession <doctor|providers|init|make-adapter|skills|update|help>
        jamsession skills <list|install|uninstall> <name|all>
        jamsession uninstall
 EOF
@@ -467,7 +415,7 @@ list_adapters() {
 init_config() {
   local pair provider command variable resolved configured
   umask 077
-  mkdir -p "$JAMSESSION_HOME" "$JAMSESSION_ADAPTER_DIR" "$JAMSESSION_PACK_DIR"
+  mkdir -p "$JAMSESSION_HOME" "$JAMSESSION_ADAPTER_DIR"
   if [ ! -f "$JAMSESSION_CONFIG" ]; then
     cat >"$JAMSESSION_CONFIG" <<'EOF'
 # Jam Session configuration. This file is sourced as shell code.
@@ -632,28 +580,6 @@ jamsession-* skill, they are removed with it and the command says so, because a
 half-removed skill would be worse than a clear report.
 EOF
       ;;
-    packs|recommend)
-      cat <<EOF
-Usage: jamsession packs
-       jamsession recommend <pack> [role] [provider]
-
-Packs are recommendation files in: $JAMSESSION_PACK_DIR
-
-Each pack is a tab-separated file named <pack>.tsv with the columns role,
-provider, model, effort, rank, and note. Lines starting with # are metadata
-describing the schema, author, update date, and evidence or limitations.
-
-'recommend' requires the pack name, reads only that file, prints its metadata
-and every matching row, and exits nonzero when the pack is missing or nothing
-matches. It never runs an agent, never fills in a default pack, never merges
-packs, and never picks a fallback for you. Recommendations are dated advice:
-confirm availability with 'jamsession models <provider>' and pass the chosen
-values to 'jamsession run' yourself.
-
-Add your own pack by placing an ordinary <name>.tsv file beside the bundled
-ones. The installer only updates jamon.tsv and leaves other packs alone.
-EOF
-      ;;
     uninstall)
       cat <<EOF
 Usage: jamsession uninstall
@@ -663,8 +589,8 @@ Removes only what the installer created:
   $HOME/.local/bin/jamsession   the symlink, and only when it points at the
                                 installation below
   $JAMSESSION_HOME              the whole installation tree, including
-                                jamsession.conf and any custom adapters or
-                                packs kept inside it
+                                jamsession.conf and any custom adapters kept
+                                inside it
   $JAMSESSION_SKILL_DIR/jamsession-*
                                 every immediate skill directory whose name
                                 starts with jamsession-, including prefixed
@@ -746,13 +672,6 @@ case "$command_name" in
     ;;
   skills)
     skills_command "$@"
-    ;;
-  packs)
-    [ $# -eq 0 ] || die "packs takes no arguments"
-    list_packs
-    ;;
-  recommend)
-    recommend_command "$@"
     ;;
   update)
     [ $# -eq 0 ] || die "update takes no arguments"

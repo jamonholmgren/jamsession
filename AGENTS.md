@@ -9,8 +9,8 @@ access level, and prompt. Keep one write-capable agent per checkout. The primary
 agent owns scope, integration, and final verification.
 
 Preserve the positional run contract and strict workspace access semantics.
-Never silently choose, downgrade, or substitute a model or effort. Model packs
-are dated advice only and must not become execution defaults.
+Never silently choose, downgrade, or substitute a model or effort. Model
+recommendations are dated advice only and must not become execution defaults.
 
 Before handoff, run:
 
