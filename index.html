@@ -36,47 +36,50 @@
   <section class="jam" aria-labelledby="jam-h">
     <h2 id="jam-h" class="visually-hidden">What a jam looks like</h2>
     <figure>
-      <div class="diagram" role="img" aria-label="Diagram of one jam session: your agent, on a conductor track, summons sessions from Claude, Codex, Cursor, Grok, and Copilot — each a colored block on its own track, like takes in a multitrack recording.">
-        <div class="lanes" aria-hidden="true">
-          <div class="lane conductor">
-            <span class="tlabel">you + your agent</span>
-            <span class="block ink" style="--x:2%; --w:96%; --xn:2">your jam</span>
-          </div>
-          <div class="lane" style="--tc:var(--t-violet)">
-            <span class="tlabel">claude</span>
-            <span class="block" style="--x:6%; --w:22%; --xn:6">plan</span>
-            <span class="block ahead" style="--x:58%; --w:18%; --xn:58">review</span>
-          </div>
-          <div class="lane" style="--tc:var(--t-amber)">
-            <span class="tlabel">codex</span>
-            <span class="block" style="--x:14%; --w:26%; --xn:14">panel</span>
-          </div>
-          <div class="lane" style="--tc:var(--t-teal)">
-            <span class="tlabel">cursor</span>
-            <span class="block" style="--x:34%; --w:20%; --xn:34">edit</span>
-            <span class="block ahead" style="--x:80%; --w:14%; --xn:80">fix</span>
-          </div>
-          <div class="lane" style="--tc:var(--t-coral)">
-            <span class="tlabel">grok</span>
-            <span class="block ahead" style="--x:44%; --w:24%; --xn:44">contrarian</span>
-          </div>
-          <div class="lane lane-copilot" style="--tc:var(--t-leaf)">
-            <span class="tlabel">copilot</span>
-            <span class="block" style="--x:24%; --w:16%; --xn:24">review</span>
-            <span class="block ahead" style="--x:66%; --w:16%; --xn:66">review</span>
-          </div>
-          <i class="tick" style="--x:6%;  --row:1"></i>
-          <i class="tick" style="--x:58%; --row:1"></i>
-          <i class="tick" style="--x:14%; --row:2"></i>
-          <i class="tick" style="--x:34%; --row:3"></i>
-          <i class="tick" style="--x:80%; --row:3"></i>
-          <i class="tick" style="--x:44%; --row:4"></i>
-          <i class="tick tick-copilot" style="--x:24%; --row:5"></i>
-          <i class="tick tick-copilot" style="--x:66%; --row:5"></i>
-          <i class="playhead"></i>
+      <div class="feed" role="img" aria-label="Activity feed of one jam session: your coding agent plans a small habit-tracker app, ping-pongs the plan between Claude and Codex, compares approaches with an agent panel, delegates the edit to Cursor, runs the tests, asks Grok for a contrarian review, and has Codex review the final diff — each step a jamsession command or skill.">
+        <div class="feed-head" aria-hidden="true">
+          <span class="mark"><i></i><i></i><i></i></span>
+          <span class="feed-title">your agent &middot; jamming on <b>streaks</b></span>
+          <span class="feed-meta">7 sessions &middot; 5 providers</span>
         </div>
+        <div class="feed-view" aria-hidden="true">
+          <ol class="feed-cells">
+            <li class="cell cell-status"><span class="tag">agent</span><span class="body">Starting a new jam. Goal: a habit tracker with a small CLI and a static web view.</span></li>
+            <li class="cell cell-skill" style="--tc:var(--t-teal)"><span class="tag">skill</span><span class="body"><code>jamsession-select-agent-model</code> <span>weigh the dated pack against what&rsquo;s installed</span></span></li>
+            <li class="cell cell-cmd"><span class="tag">cli</span><span class="body"><code>jamsession recommend jamon planning</code></span></li>
+            <li class="cell cell-result"><span class="tag"></span><span class="body">picked claude-opus-5 high to draft, gpt-5.6-sol high as the second family</span></li>
+            <li class="cell cell-skill" style="--tc:var(--t-amber)"><span class="tag">skill</span><span class="body"><code>jamsession-ping-pong-planning</code> <span>two planners volley until the plan holds</span></span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-violet)"><span class="tag">claude</span><span class="body"><code>jamsession run claude new claude-opus-5 high read "Draft a plan for streaks: data model, CLI, web view."</code></span></li>
+            <li class="cell cell-result" style="--tc:var(--t-violet)"><span class="tag"></span><span class="body">plan v1 &middot; SQLite store, four subcommands, one static page &middot; session 7f3a</span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="tag">codex</span><span class="body"><code>jamsession run codex new gpt-5.6-sol high read "Revise this plan. Keep what holds, cut what doesn't."</code></span></li>
+            <li class="cell cell-result" style="--tc:var(--t-amber)"><span class="tag"></span><span class="body">plan v2 &middot; drops SQLite for a flat JSON file, adds an import path &middot; session 2b8e</span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-violet)"><span class="tag">claude</span><span class="body"><code>jamsession run claude 7f3a claude-opus-5 high read "Codex prefers a flat JSON file. Accept or defend SQLite."</code></span></li>
+            <li class="cell cell-result" style="--tc:var(--t-violet)"><span class="tag"></span><span class="body">accepts JSON &middot; asks for a documented upgrade path to SQLite</span></li>
+            <li class="cell cell-status"><span class="tag">agent</span><span class="body">Comparing the two approaches. JSON wins on zero dependencies; SQLite stays as a note in the README. Plan v2 is the plan.</span></li>
+            <li class="cell cell-skill" style="--tc:var(--t-teal)"><span class="tag">skill</span><span class="body"><code>jamsession-ask-agent-panel</code> <span>same question to three agents, compare the takes</span></span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="tag">codex</span><span class="body"><code>jamsession run codex new gpt-5.6-sol medium read "CLI shape: subcommands, or one verb with flags?"</code></span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-leaf)"><span class="tag">copilot</span><span class="body"><code>jamsession run copilot new auto default read "CLI shape: subcommands, or one verb with flags?"</code></span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-coral)"><span class="tag">grok</span><span class="body"><code>jamsession run grok new grok-4.6 high edit "CLI shape: subcommands, or one verb with flags? Answer only."</code></span></li>
+            <li class="cell cell-result"><span class="tag"></span><span class="body">panel 2&ndash;1 for subcommands &middot; <code>streak add</code>, <code>streak done</code>, <code>streak show</code></span></li>
+            <li class="cell cell-skill" style="--tc:var(--t-leaf)"><span class="tag">skill</span><span class="body"><code>jamsession-orchestrate-agent-work</code> <span>one write-capable worker per checkout</span></span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-teal)"><span class="tag">cursor</span><span class="body"><code>jamsession run cursor new composer-2.5 default edit "Implement streak add/done/show over store.json. Add tests."</code></span></li>
+            <li class="cell cell-result" style="--tc:var(--t-teal)"><span class="tag"></span><span class="body">6 files changed &middot; 14 tests added &middot; session c91d</span></li>
+            <li class="cell cell-cmd"><span class="tag">test</span><span class="body"><code>./tests/run.sh</code></span></li>
+            <li class="cell cell-result"><span class="tag"></span><span class="body">14 passed &middot; 0 failed &middot; 0.8s</span></li>
+            <li class="cell cell-skill" style="--tc:var(--t-coral)"><span class="tag">skill</span><span class="body"><code>jamsession-contrarian-review</code> <span>a rival agent tries hard to break it</span></span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-coral)"><span class="tag">grok</span><span class="body"><code>jamsession run grok new grok-4.6 high edit "Try hard to break this diff. Findings only, touch nothing."</code></span></li>
+            <li class="cell cell-result" style="--tc:var(--t-coral)"><span class="tag"></span><span class="body">2 findings &middot; concurrent writes clobber store.json &middot; <code>done</code> ignores the local timezone</span></li>
+            <li class="cell cell-status"><span class="tag">agent</span><span class="body">Reviewing the objections. The timezone bug is real. Concurrent writes are out of scope for a single-user CLI; noting it in the README instead.</span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-teal)"><span class="tag">cursor</span><span class="body"><code>jamsession run cursor c91d composer-2.5 default edit "Store the local date with its offset in done entries. Update tests."</code></span></li>
+            <li class="cell cell-result" style="--tc:var(--t-teal)"><span class="tag"></span><span class="body">2 files changed &middot; 16 passed &middot; 0 failed</span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="tag">codex</span><span class="body"><code>jamsession run codex 2b8e gpt-5.6-sol high read "Review the final diff against plan v2."</code></span></li>
+            <li class="cell cell-result" style="--tc:var(--t-amber)"><span class="tag"></span><span class="body">approved &middot; one nit on the help text, fixed inline</span></li>
+            <li class="cell cell-status"><span class="tag">agent</span><span class="body">CLI done. Seven sessions, five providers, one worker with write access. Next up: the web view.</span></li>
+          </ol>
+        </div>
+        <div class="feed-thinking" aria-hidden="true"><span class="tag">agent</span><span class="body">Thinking <i class="caret">&rsaquo;</i></span></div>
       </div>
-      <figcaption>One jam: your agent conducts sessions across multiple providers, like tracks in a recording.</figcaption>
+      <figcaption>One jam: your agent conducts sessions across several providers &mdash; every step is a <code>jamsession</code> command or skill.</figcaption>
     </figure>
   </section>
 
@@ -217,26 +220,41 @@ for (const btn of document.querySelectorAll("[data-copy]")) {
   });
 }
 
-// Playhead-synced block states: gray ahead of the line, ignite in provider
-// color as it arrives, settle slightly faded. Shared 14s timeline with
-// startTime 0 keeps every block exactly in phase with the playhead.
-const lanes = document.querySelector(".lanes");
-if (lanes && "animate" in Element.prototype && !matchMedia("(prefers-reduced-motion: reduce)").matches) {
-  const D = 14000;
-  const playhead = lanes.querySelector(".playhead");
-  playhead.style.animation = "none";
-  const anims = [playhead.animate([{ left: "0%" }, { left: "100%" }], { duration: D, iterations: Infinity })];
-  for (const b of lanes.querySelectorAll(".lane:not(.conductor) .block")) {
-    const x = parseFloat(b.style.getPropertyValue("--xn")) / 100;
-    anims.push(b.animate([
-      { filter: "grayscale(1)", opacity: 0.55, offset: 0 },
-      { filter: "grayscale(1)", opacity: 0.55, offset: Math.max(x - 0.004, 0) },
-      { filter: "grayscale(0) brightness(1.4) saturate(1.8)", opacity: 1, offset: Math.min(x + 0.012, 1) },
-      { filter: "grayscale(0)", opacity: 0.92, offset: Math.min(x + 0.07, 1) },
-      { filter: "grayscale(0)", opacity: 0.92, offset: 1 }
-    ], { duration: D, iterations: Infinity }));
-  }
-  for (const a of anims) a.startTime = 0;
+// Endless activity feed. The cell list scrolls upward at a steady pace; when
+// the top cell has fully left the viewport it is moved to the end of the list
+// and the offset is rewound by its height, so the same nodes recycle forever
+// and the DOM never grows. Paused while offscreen, hidden, or reduced-motion.
+const view = document.querySelector(".feed-view");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+if (view) {
+  const list = view.querySelector(".feed-cells");
+  const SPEED = 18; // px per second
+  let y = 0, last = 0, raf = 0, visible = false;
+
+  const place = () => { list.style.transform = `translate3d(0, ${-y}px, 0)`; };
+
+  const step = (now) => {
+    if (last) y += Math.min(now - last, 100) * SPEED / 1000;
+    last = now;
+    place();
+    const top = view.getBoundingClientRect().top;
+    while (list.firstElementChild.getBoundingClientRect().bottom < top) {
+      // Reuse the same row at the bottom and rewind by its exact occupied
+      // height, including the list gap, so the loop never jumps or grows.
+      const first = list.firstElementChild;
+      const shift = list.children[1].getBoundingClientRect().top - first.getBoundingClientRect().top;
+      list.append(first);
+      y -= shift;
+      place();
+    }
+    raf = requestAnimationFrame(step);
+  };
+  const play = () => { if (!raf && visible && !document.hidden && !reduce.matches) { last = 0; raf = requestAnimationFrame(step); } };
+  const pause = () => { cancelAnimationFrame(raf); raf = 0; };
+
+  new IntersectionObserver(([e]) => { visible = e.isIntersecting; visible ? play() : pause(); }).observe(view);
+  document.addEventListener("visibilitychange", () => document.hidden ? pause() : play());
+  reduce.addEventListener("change", () => { if (reduce.matches) { pause(); list.style.transform = ""; } else play(); });
 }
 </script>
 

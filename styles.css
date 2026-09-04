@@ -211,7 +211,7 @@ main > section > p { max-width: 62ch; color: var(--ink-soft); }
   color: var(--ink-faint);
 }
 
-/* ---------- multitrack diagram ---------- */
+/* ---------- activity feed ---------- */
 
 .jam figure { margin: 0; }
 .jam figcaption {
@@ -219,6 +219,7 @@ main > section > p { max-width: 62ch; color: var(--ink-soft); }
   font-size: 0.85rem;
   color: var(--ink-faint);
 }
+.jam figcaption code { font-size: 0.92em; }
 
 .liner-note {
   max-width: 44rem;
@@ -233,96 +234,136 @@ main > section > p { max-width: 62ch; color: var(--ink-soft); }
   font-weight: 650;
 }
 
-.diagram {
-  --laneh: 40px;
-  --gap: 12px;
-  --pitch: calc(var(--laneh) + var(--gap));
+.feed {
+  --tagw: 4.25rem;
+  --padx: 1.1rem;
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--paper);
+  box-shadow: 4px 4px 0 var(--line);
+  overflow: hidden;
 }
 
-.lanes {
-  position: relative;
-  display: grid;
-  gap: var(--gap);
-  margin-left: 118px;
-}
-
-.lane {
-  position: relative;
-  height: var(--laneh);
-  background: linear-gradient(var(--line), var(--line)) 0 50% / 100% 1px no-repeat;
-}
-
-.tlabel {
-  position: absolute;
-  right: 100%;
-  margin-right: 16px;
-  line-height: var(--laneh);
+.feed-head {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem var(--padx);
+  border-bottom: 1px solid var(--line);
   font-family: var(--mono);
   font-size: 0.72rem;
   color: var(--ink-faint);
-  white-space: nowrap;
 }
-.conductor .tlabel { color: var(--ink-soft); font-weight: 600; }
+.feed-head .mark { width: 20px; }
+.feed-head .mark i { height: 3px; }
+.feed-title { color: var(--ink-soft); }
+.feed-title b { color: var(--ink); font-weight: 650; }
+.feed-meta { margin-left: auto; white-space: nowrap; }
 
-.block {
-  position: absolute;
-  left: var(--x);
-  width: var(--w);
-  top: 7px;
-  bottom: 7px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding-inline: 11px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--tc) 16%, transparent);
-  border: 1.5px solid color-mix(in srgb, var(--tc) 55%, transparent);
+/* the scrolling window: cells fade out as they leave through the top */
+.feed-view {
+  position: relative;
+  height: 22rem;
+  padding-inline: var(--padx);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 3.5rem);
+  mask-image: linear-gradient(to bottom, transparent, #000 3.5rem);
+}
+
+.feed-cells {
+  list-style: none;
+  margin: 0;
+  padding: 0.5rem 0 0;
+  display: grid;
+  row-gap: 0.6rem;
+  will-change: transform;
+}
+
+.cell, .feed-thinking {
+  display: grid;
+  grid-template-columns: var(--tagw) minmax(0, 1fr);
+  column-gap: 0.85rem;
+  align-items: baseline;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+/* track tag: mono label + dot in the track color; ink for the conductor */
+.feed .tag {
   font-family: var(--mono);
   font-size: 0.68rem;
-  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+  text-align: right;
   white-space: nowrap;
-  overflow: hidden;
+  color: var(--tc, var(--ink-faint));
 }
-.block::before {
+.feed .tag::after {
   content: "";
+  display: inline-block;
   width: 7px;
   height: 7px;
+  margin-left: 7px;
   border-radius: 50%;
-  background: var(--tc);
-  flex-shrink: 0;
+  background: var(--tc, var(--line-strong));
+  vertical-align: 0.05em;
+}
+.cell-status .tag, .feed-thinking .tag { color: var(--ink); font-weight: 600; }
+.cell-status .tag::after, .feed-thinking .tag::after { background: var(--ink); }
+
+.feed .body { min-width: 0; overflow-wrap: anywhere; }
+
+.cell-cmd code {
+  font-size: 0.78rem;
+  color: var(--ink);
 }
 
-.block.ink {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper);
+/* skills echo the multitrack pills */
+.cell-skill code {
+  display: inline-block;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--tc) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--tc) 50%, transparent);
+  border-radius: 999px;
+  padding: 0.05rem 0.6rem;
+  margin-right: 0.35rem;
 }
-.block.ink::before { background: var(--paper); }
+.cell-skill .body > span { color: var(--ink-faint); font-size: 0.82rem; }
 
-.tick {
-  position: absolute;
-  top: var(--laneh);
-  left: var(--x);
-  width: 1.5px;
-  height: calc(var(--row) * var(--pitch) - var(--laneh));
-  background: var(--line-strong);
+.cell-result { margin-top: -0.25rem; }
+.cell-result .body { font-size: 0.82rem; color: var(--ink-faint); }
+.cell-result code { font-size: 0.92em; }
+.cell-result .tag::after {
+  content: "\21B3";
+  width: auto;
+  height: auto;
+  margin: 0;
+  border-radius: 0;
+  background: none;
+  vertical-align: baseline;
+  color: var(--tc, var(--ink-faint));
+  opacity: 0.8;
 }
 
-.playhead {
-  position: absolute;
-  top: -6px;
-  bottom: -6px;
-  left: 0;
-  width: 2px;
-  border-radius: 2px;
-  background: var(--accent);
-  opacity: 0.65;
-  animation: sweep 14s linear infinite;
+.feed-thinking {
+  padding: 0.75rem var(--padx) 0.85rem;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  background: var(--paper);
+}
+.feed-thinking .caret {
+  display: inline-block;
+  font-style: normal;
+  font-weight: 700;
+  color: var(--accent);
+  animation: nudge 1.4s ease-in-out infinite;
 }
 
-@keyframes sweep {
-  from { left: 0%; }
-  to   { left: 100%; }
+@keyframes nudge {
+  0%, 100% { transform: translateX(0); opacity: 0.5; }
+  50%      { transform: translateX(3px); opacity: 1; }
 }
 
 /* ---------- section divider ---------- */
@@ -446,20 +487,13 @@ footer p { margin: 0; }
     line-height: 1.5;
   }
 
-  /* labels move inside the lanes; blocks drop to the bottom */
-  .diagram { --laneh: 52px; --gap: 10px; }
-  .lanes { margin-left: 0; }
-  .tlabel {
-    right: auto;
-    left: 2px;
-    top: 2px;
-    margin: 0;
-    line-height: 1;
-    font-size: 0.62rem;
-  }
-  .lane { background-position: 0 calc(50% + 9px); }
-  .block { top: 20px; bottom: 4px; font-size: 0.62rem; padding-inline: 8px; }
-  .lane-copilot, .tick-copilot { display: none; }
+  .feed { --tagw: 3.4rem; --padx: 0.8rem; }
+  .feed-meta { display: none; }
+  .feed-view { height: 20rem; }
+  .cell, .feed-thinking { font-size: 0.8rem; column-gap: 0.6rem; }
+  .feed .tag { font-size: 0.62rem; }
+  .cell-cmd code { font-size: 0.7rem; }
+  .cell-skill code { font-size: 0.64rem; }
 
   .how-grid { grid-template-columns: 1fr; gap: 1.75rem; }
 
@@ -480,10 +514,14 @@ footer p { margin: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .playhead { animation: none; left: 38%; }
-  /* static story: blocks the frozen playhead has passed stay colored,
-     blocks ahead of it sit in the neutral gray waiting state */
-  .block.ahead { filter: grayscale(1); opacity: 0.6; }
+  /* static story: the feed sits still on the opening of the jam and
+     trails off toward the Thinking row instead of scrolling */
+  .feed-view {
+    -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent);
+    mask-image: linear-gradient(to bottom, #000 72%, transparent);
+  }
+  .feed-cells { padding-top: 0.9rem; }
+  .feed-thinking .caret { animation: none; opacity: 0.85; }
   .copy { transition: none; }
   .copy.copied { transform: none; }
 }
