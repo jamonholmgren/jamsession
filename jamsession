@@ -289,7 +289,7 @@ require_install_tree() {
   local root="$1" marker
   [ "${root##*/}" = jamsession ] || \
     die "refusing to remove an installation tree not named 'jamsession': $root"
-  for marker in .git install.sh tests index.html README.md AGENTS.md; do
+  for marker in .git install.sh tests index.html README.md; do
     [ ! -e "$root/$marker" ] || die \
       "refusing to remove $root: it contains $marker, so it is a source checkout, not an installation. Run the installed command at ~/.local/bin/jamsession, or set JAMSESSION_HOME to the installation tree."
   done

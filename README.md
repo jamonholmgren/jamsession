@@ -92,4 +92,4 @@ Uses fake providers, so no accounts or quota.
 
 ## License
 
-[MIT](LICENSE)
+[MIT licensed](https://opensource.org/license/mit).
