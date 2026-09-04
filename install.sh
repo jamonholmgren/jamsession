@@ -11,7 +11,7 @@ PACK_DIR="$INSTALL_ROOT/packs"
 LINK_DIR="$HOME/.local/bin"
 
 PROVIDERS="codex claude cursor grok copilot"
-DEFAULT_SKILL=run-subagents-with-jamsession
+DEFAULT_SKILL=jamsession-summon-agent
 OPTIONAL_SKILLS="jamsession-select-agent-model jamsession-ping-pong-planning
 jamsession-contrarian-review jamsession-ask-agent-panel
 jamsession-orchestrate-agent-work jamsession-execute-agent-slice

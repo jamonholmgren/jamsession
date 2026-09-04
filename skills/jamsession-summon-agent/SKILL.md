@@ -1,9 +1,9 @@
 ---
-name: run-subagents-with-jamsession
-description: Run or resume a coding-agent CLI through Jam Session with an explicit provider, model, effort, access level, and provider-native session. Use for non-interactive subagent work through Jam Session; do not use for built-in collaboration agents or interactive CLI sessions.
+name: jamsession-summon-agent
+description: Summon or resume one coding agent through Jam Session with an explicit provider, model, effort, access level, and provider-native session. Use for non-interactive agent work through Jam Session; do not use for built-in collaboration agents or interactive CLI sessions.
 ---
 
-# Run Subagents With Jam Session
+# Summon an Agent
 
 1. Run `jamsession help` for the current command contract and `jamsession doctor` to
    see which installed adapters are usable.

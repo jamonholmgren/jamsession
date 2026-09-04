@@ -75,7 +75,7 @@ make_temp_dir() {
 
 bundled_skills() {
   printf '%s\n' \
-    run-subagents-with-jamsession \
+    jamsession-summon-agent \
     jamsession-select-agent-model \
     jamsession-ping-pong-planning \
     jamsession-contrarian-review \

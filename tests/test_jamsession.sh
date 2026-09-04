@@ -288,7 +288,7 @@ run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$R
 check "installer installs the command" test -x "$INSTALL_HOME/.agents/jamsession/bin/jamsession"
 check "installer links the command" test -L "$INSTALL_HOME/.local/bin/jamsession"
 check "installer preserves unknown adapters" equals "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_custom" custom
-check "installer installs the direct-use skill" test -f "$INSTALL_HOME/.agents/skills/run-subagents-with-jamsession/SKILL.md"
+check "installer installs the summon-agent skill" test -f "$INSTALL_HOME/.agents/skills/jamsession-summon-agent/SKILL.md"
 check "installer installs the bundled pack" contains "$INSTALL_HOME/.agents/jamsession/packs/jamon.tsv" "# pack: jamon"
 check "installer preserves unknown packs" equals "$INSTALL_HOME/.agents/jamsession/packs/mine.tsv" custom-pack
 
@@ -313,7 +313,7 @@ printf '%s\n' stale >"$INSTALLED/bin/jamsession"
 printf '%s\n' stale >"$INSTALLED/adapters/jamsession_codex"
 printf '%s\n' stale >"$INSTALLED/adapters/_jamsession_adapter_common"
 printf '%s\n' stale >"$INSTALLED/packs/jamon.tsv"
-printf '%s\n' stale >"$INSTALLED_SKILLS/run-subagents-with-jamsession/SKILL.md"
+printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-summon-agent/SKILL.md"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md"
 printf '%s\n' 'JAMSESSION_CUSTOM_SETTING=kept' >>"$INSTALLED/jamsession.conf"
 
@@ -323,7 +323,7 @@ check "second install refreshes the command" contains "$INSTALLED/bin/jamsession
 check "second install refreshes a bundled adapter" contains "$INSTALLED/adapters/jamsession_codex" jamsession_validate_run
 check "second install refreshes the adapter helper" contains "$INSTALLED/adapters/_jamsession_adapter_common" jamsession_adapter_setup
 check "second install refreshes the bundled pack" contains "$INSTALLED/packs/jamon.tsv" "# pack: jamon"
-check "second install refreshes the default skill" contains "$INSTALLED_SKILLS/run-subagents-with-jamsession/SKILL.md" "name: run-subagents-with-jamsession"
+check "second install refreshes the default skill" contains "$INSTALLED_SKILLS/jamsession-summon-agent/SKILL.md" "name: jamsession-summon-agent"
 check "second install refreshes an installed optional skill" contains "$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md" "name: jamsession-work-over-ssh"
 check "second install preserves configuration" contains "$INSTALLED/jamsession.conf" JAMSESSION_CUSTOM_SETTING=kept
 check "second install preserves a custom adapter" equals "$INSTALLED/adapters/jamsession_custom" custom

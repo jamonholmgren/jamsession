@@ -56,7 +56,7 @@ jamsession skills install jamsession-orchestrate-agent-work
 jamsession skills install all
 ```
 
-`run-subagents-with-jamsession` is installed by default. The rest are opt-in:
+`jamsession-summon-agent` is installed by default. The rest are opt-in:
 model selection, ping-pong planning, contrarian review, agent panels,
 orchestration, worker slices, and SSH.
 

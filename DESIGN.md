@@ -83,7 +83,7 @@ idempotently discovers provider executables, preserves existing configuration,
 and prints concise next steps for an agent. Configuration is shell-sourceable
 and therefore must remain user-owned and non-writable by other users.
 
-The installer includes `run-subagents-with-jamsession` by default. Other workflow
+The installer includes `jamsession-summon-agent` by default. Other workflow
 skills are optional and can be listed or installed through `jamsession skills`.
 Skills own reusable agent procedure; the CLI remains only a transport adapter.
 The installer updates `packs/jamon.tsv` and leaves every other pack file alone.

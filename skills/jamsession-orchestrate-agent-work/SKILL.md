@@ -22,7 +22,7 @@ context.
   stopping conditions, and commit authority.
 - Keep one write-capable worker per checkout. Parallel work needs separate,
   explicitly authorized workspaces with disjoint ownership.
-- Use `run-subagents-with-jamsession` for provider CLI workers. For remote workers,
+- Use `jamsession-summon-agent` for provider CLI workers. For remote workers,
   use `jamsession-run-remote-agents` and the exact authorized host and path.
 
 ## Integrate from evidence
