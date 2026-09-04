@@ -11,10 +11,13 @@
 <body>
 
 <header class="top">
-  <a class="wordmark" href="/">
-    <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
-    Jam Session
-  </a>
+  <div class="wordmark">
+    <a class="home" href="/">
+      <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      Jam Session
+    </a>
+    <span class="by">by <a href="https://jamon.dev">Jamon</a></span>
+  </div>
   <nav aria-label="Site">
     <a href="#skills">Skills</a>
     <a href="https://github.com/jamonholmgren/jamsession">GitHub</a>
@@ -25,69 +28,82 @@
 
   <section class="hero">
     <h1>Summon <em>other</em> agents.</h1>
-    <p class="lede">A tiny CLI your coding agent uses to call Codex, Claude, Cursor, Grok, and Copilot — plus skills for multi&#8209;agent planning, review, panels, and delegation.</p>
+    <p class="lede">A tiny CLI your coding agent uses to call Codex, Claude, Cursor, Grok, and Copilot &mdash; plus skills for multi&#8209;agent planning, review, panels, and delegation.</p>
+    <p class="trust">macOS &middot; Linux &middot; WSL &mdash; totally free, MIT licensed.</p>
+  </section>
+
+  <section class="start" aria-labelledby="start-h">
+    <h2 id="start-h">Getting started</h2>
+    <p>Let your agent install Jam Session. Paste this prompt into your coding agent:</p>
+    <div class="prompt-card">
+      <p id="agent-prompt">Install Jam Session by following <a href="https://jamsession.jamon.dev/install.md">https://jamsession.jamon.dev/install.md</a>, then onboard.</p>
+      <button type="button" class="copy" data-copy="agent-prompt" aria-label="Copy agent prompt">Copy prompt</button>
+    </div>
+    <p class="aside">Your agent installs it, reads the docs, and teaches you the ropes. That&rsquo;s the whole onboarding.</p>
+    <p class="or">Or do it yourself:</p>
     <div class="install">
       <code id="install-cmd">curl -fsSL https://jamsession.jamon.dev/install.sh | sh</code>
       <button type="button" class="copy" data-copy="install-cmd" aria-label="Copy install command">Copy</button>
     </div>
-    <p class="trust">macOS &middot; Linux &middot; WSL &mdash; totally free, MIT licensed.</p>
   </section>
+
+  <div class="divider" aria-hidden="true"><span class="mark"><i></i><i></i><i></i></span></div>
 
   <section class="jam" aria-labelledby="jam-h">
     <h2 id="jam-h" class="visually-hidden">What a jam looks like</h2>
     <figure>
-      <div class="feed" role="img" aria-label="Activity feed of one jam session: your coding agent plans a small habit-tracker app, ping-pongs the plan between Claude and Codex, compares approaches with an agent panel, delegates the edit to Cursor, runs the tests, asks Grok for a contrarian review, and has Codex review the final diff — each step a jamsession command or skill.">
-        <div class="feed-head" aria-hidden="true">
-          <span class="mark"><i></i><i></i><i></i></span>
+      <div class="feed">
+        <div class="feed-head">
+          <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
           <span class="feed-title">your agent &middot; jamming on <b>streaks</b></span>
-          <span class="feed-meta">7 sessions &middot; 5 providers</span>
+          <a class="feed-share" href="https://x.com/intent/post?text=I%27m%20trying%20out%20JamSession%20by%20%40jamonholmgren%20to%20run%20multiple%20agents.%20https%3A%2F%2Fjamsession.jamon.dev" target="_blank" rel="noopener noreferrer" aria-label="Share Jam Session on X (opens in a new tab)">Share <span aria-hidden="true">&#x21A5;</span></a>
         </div>
-        <div class="feed-view" aria-hidden="true">
+        <div class="feed-view" role="img" aria-label="Activity feed of one jam session: your coding agent plans a small habit-tracker app, ping-pongs the plan between Claude and Codex, compares approaches with an agent panel, delegates the edit to Cursor, runs the tests, asks Grok for a contrarian review, and has Codex review the final diff — each step a jamsession command or skill.">
           <ol class="feed-cells">
-            <li class="cell cell-status"><span class="tag">agent</span><span class="body">Starting a new jam. Goal: a habit tracker with a small CLI and a static web view.</span></li>
-            <li class="cell cell-skill" style="--tc:var(--t-teal)"><span class="tag">skill</span><span class="body"><code>jamsession-select-agent-model</code> <span>weigh the dated pack against what&rsquo;s installed</span></span></li>
-            <li class="cell cell-cmd"><span class="tag">cli</span><span class="body"><code>jamsession recommend jamon planning</code></span></li>
-            <li class="cell cell-result"><span class="tag"></span><span class="body">picked claude-opus-5 high to draft, gpt-5.6-sol high as the second family</span></li>
-            <li class="cell cell-skill" style="--tc:var(--t-amber)"><span class="tag">skill</span><span class="body"><code>jamsession-ping-pong-planning</code> <span>two planners volley until the plan holds</span></span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-violet)"><span class="tag">claude</span><span class="body"><code>jamsession run claude new claude-opus-5 high read "Draft a plan for streaks: data model, CLI, web view."</code></span></li>
-            <li class="cell cell-result" style="--tc:var(--t-violet)"><span class="tag"></span><span class="body">plan v1 &middot; SQLite store, four subcommands, one static page &middot; session 7f3a</span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="tag">codex</span><span class="body"><code>jamsession run codex new gpt-5.6-sol high read "Revise this plan. Keep what holds, cut what doesn't."</code></span></li>
-            <li class="cell cell-result" style="--tc:var(--t-amber)"><span class="tag"></span><span class="body">plan v2 &middot; drops SQLite for a flat JSON file, adds an import path &middot; session 2b8e</span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-violet)"><span class="tag">claude</span><span class="body"><code>jamsession run claude 7f3a claude-opus-5 high read "Codex prefers a flat JSON file. Accept or defend SQLite."</code></span></li>
-            <li class="cell cell-result" style="--tc:var(--t-violet)"><span class="tag"></span><span class="body">accepts JSON &middot; asks for a documented upgrade path to SQLite</span></li>
-            <li class="cell cell-status"><span class="tag">agent</span><span class="body">Comparing the two approaches. JSON wins on zero dependencies; SQLite stays as a note in the README. Plan v2 is the plan.</span></li>
-            <li class="cell cell-skill" style="--tc:var(--t-teal)"><span class="tag">skill</span><span class="body"><code>jamsession-ask-agent-panel</code> <span>same question to three agents, compare the takes</span></span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="tag">codex</span><span class="body"><code>jamsession run codex new gpt-5.6-sol medium read "CLI shape: subcommands, or one verb with flags?"</code></span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-leaf)"><span class="tag">copilot</span><span class="body"><code>jamsession run copilot new auto default read "CLI shape: subcommands, or one verb with flags?"</code></span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-coral)"><span class="tag">grok</span><span class="body"><code>jamsession run grok new grok-4.6 high edit "CLI shape: subcommands, or one verb with flags? Answer only."</code></span></li>
-            <li class="cell cell-result"><span class="tag"></span><span class="body">panel 2&ndash;1 for subcommands &middot; <code>streak add</code>, <code>streak done</code>, <code>streak show</code></span></li>
-            <li class="cell cell-skill" style="--tc:var(--t-leaf)"><span class="tag">skill</span><span class="body"><code>jamsession-orchestrate-agent-work</code> <span>one write-capable worker per checkout</span></span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-teal)"><span class="tag">cursor</span><span class="body"><code>jamsession run cursor new composer-2.5 default edit "Implement streak add/done/show over store.json. Add tests."</code></span></li>
-            <li class="cell cell-result" style="--tc:var(--t-teal)"><span class="tag"></span><span class="body">6 files changed &middot; 14 tests added &middot; session c91d</span></li>
-            <li class="cell cell-cmd"><span class="tag">test</span><span class="body"><code>./tests/run.sh</code></span></li>
-            <li class="cell cell-result"><span class="tag"></span><span class="body">14 passed &middot; 0 failed &middot; 0.8s</span></li>
-            <li class="cell cell-skill" style="--tc:var(--t-coral)"><span class="tag">skill</span><span class="body"><code>jamsession-contrarian-review</code> <span>a rival agent tries hard to break it</span></span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-coral)"><span class="tag">grok</span><span class="body"><code>jamsession run grok new grok-4.6 high edit "Try hard to break this diff. Findings only, touch nothing."</code></span></li>
-            <li class="cell cell-result" style="--tc:var(--t-coral)"><span class="tag"></span><span class="body">2 findings &middot; concurrent writes clobber store.json &middot; <code>done</code> ignores the local timezone</span></li>
-            <li class="cell cell-status"><span class="tag">agent</span><span class="body">Reviewing the objections. The timezone bug is real. Concurrent writes are out of scope for a single-user CLI; noting it in the README instead.</span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-teal)"><span class="tag">cursor</span><span class="body"><code>jamsession run cursor c91d composer-2.5 default edit "Store the local date with its offset in done entries. Update tests."</code></span></li>
-            <li class="cell cell-result" style="--tc:var(--t-teal)"><span class="tag"></span><span class="body">2 files changed &middot; 16 passed &middot; 0 failed</span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="tag">codex</span><span class="body"><code>jamsession run codex 2b8e gpt-5.6-sol high read "Review the final diff against plan v2."</code></span></li>
-            <li class="cell cell-result" style="--tc:var(--t-amber)"><span class="tag"></span><span class="body">approved &middot; one nit on the help text, fixed inline</span></li>
-            <li class="cell cell-status"><span class="tag">agent</span><span class="body">CLI done. Seven sessions, five providers, one worker with write access. Next up: the web view.</span></li>
+            <li class="cell cell-prose">Starting a new jam. The goal is a habit tracker with a small CLI and a static web view. First I&rsquo;ll pick which models to bring in.</li>
+            <li class="cell cell-skill" style="--tc:var(--t-teal)"><span class="verb">skill</span><code>jamsession-select-agent-model</code> <span class="note">weighing the dated pack against what&rsquo;s installed here</span></li>
+            <li class="cell cell-cmd"><span class="verb">ran</span><code>jamsession recommend jamon planning</code></li>
+            <li class="cell cell-result">picked claude-opus-5 high to draft, gpt-5.6-sol high as the second family</li>
+            <li class="cell cell-skill" style="--tc:var(--t-amber)"><span class="verb">skill</span><code>jamsession-ping-pong-planning</code> <span class="note">two planners volley the plan until it holds</span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-violet)"><span class="verb">ran</span><code>jamsession run claude new claude-opus-5 high read "Draft a plan for streaks: data model, CLI, web view."</code></li>
+            <li class="cell cell-result" style="--tc:var(--t-violet)">plan v1 &middot; SQLite store, four subcommands, one static page &middot; session 7f3a</li>
+            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="verb">ran</span><code>jamsession run codex new gpt-5.6-sol high read "Revise this plan. Keep what holds, cut what doesn't."</code></li>
+            <li class="cell cell-result" style="--tc:var(--t-amber)">plan v2 &middot; drops SQLite for a flat JSON file, adds an import path &middot; session 2b8e</li>
+            <li class="cell cell-cmd" style="--tc:var(--t-violet)"><span class="verb">ran</span><code>jamsession run claude 7f3a claude-opus-5 high read "Codex prefers a flat JSON file. Accept or defend SQLite."</code></li>
+            <li class="cell cell-result" style="--tc:var(--t-violet)">accepts JSON &middot; asks for a documented upgrade path to SQLite</li>
+            <li class="cell cell-prose">Comparing the two approaches. JSON wins on zero dependencies; SQLite stays as a note in the README. Plan v2 is the plan.</li>
+            <li class="cell cell-skill" style="--tc:var(--t-teal)"><span class="verb">skill</span><code>jamsession-ask-agent-panel</code> <span class="note">same question to three agents, then compare the takes</span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="verb">ran</span><code>jamsession run codex new gpt-5.6-sol medium read "CLI shape: subcommands, or one verb with flags?"</code></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-leaf)"><span class="verb">ran</span><code>jamsession run copilot new auto default read "CLI shape: subcommands, or one verb with flags?"</code></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-coral)"><span class="verb">ran</span><code>jamsession run grok new grok-4.6 high edit "CLI shape: subcommands, or one verb with flags? Answer only."</code></li>
+            <li class="cell cell-result">panel 2&ndash;1 for subcommands &middot; <code>streak add</code>, <code>streak done</code>, <code>streak show</code></li>
+            <li class="cell cell-skill" style="--tc:var(--t-leaf)"><span class="verb">skill</span><code>jamsession-orchestrate-agent-work</code> <span class="note">one write-capable worker per checkout</span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-teal)"><span class="verb">ran</span><code>jamsession run cursor new composer-2.5 default edit "Implement streak add/done/show over store.json. Add tests."</code></li>
+            <li class="cell cell-result" style="--tc:var(--t-teal)">6 files changed &middot; 14 tests added &middot; session c91d</li>
+            <li class="cell cell-cmd"><span class="verb">ran</span><code>./tests/run.sh</code></li>
+            <li class="cell cell-result">14 passed &middot; 0 failed &middot; 0.8s</li>
+            <li class="cell cell-skill" style="--tc:var(--t-coral)"><span class="verb">skill</span><code>jamsession-contrarian-review</code> <span class="note">a rival agent tries hard to break it</span></li>
+            <li class="cell cell-cmd" style="--tc:var(--t-coral)"><span class="verb">ran</span><code>jamsession run grok new grok-4.6 high edit "Try hard to break this diff. Findings only, touch nothing."</code></li>
+            <li class="cell cell-result" style="--tc:var(--t-coral)">2 findings &middot; concurrent writes clobber store.json &middot; <code>done</code> ignores the local timezone</li>
+            <li class="cell cell-prose">Reviewing the objections. The timezone bug is real. Concurrent writes are out of scope for a single-user CLI; I&rsquo;ll note it in the README instead.</li>
+            <li class="cell cell-cmd" style="--tc:var(--t-teal)"><span class="verb">ran</span><code>jamsession run cursor c91d composer-2.5 default edit "Store the local date with its offset in done entries. Update tests."</code></li>
+            <li class="cell cell-result" style="--tc:var(--t-teal)">2 files changed &middot; 16 passed &middot; 0 failed</li>
+            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="verb">ran</span><code>jamsession run codex 2b8e gpt-5.6-sol high read "Review the final diff against plan v2."</code></li>
+            <li class="cell cell-result" style="--tc:var(--t-amber)">approved &middot; one nit on the help text, fixed inline</li>
+            <li class="cell cell-prose">CLI done. Seven sessions, five providers, one worker with write access. Next up: the web view.</li>
           </ol>
         </div>
-        <div class="feed-thinking" aria-hidden="true"><span class="tag">agent</span><span class="body">Thinking <i class="caret">&rsaquo;</i></span></div>
+        <div class="feed-thinking" aria-hidden="true">Thinking <i class="caret">&rsaquo;</i></div>
       </div>
       <figcaption>One jam: your agent conducts sessions across several providers &mdash; every step is a <code>jamsession</code> command or skill.</figcaption>
     </figure>
   </section>
 
-  <aside class="liner-note" aria-label="A note from Jamon Holmgren">
-    <p>I&rsquo;ve been using Jam Session for months now, happy to open source it!</p>
-    <p>You can have your agent summon other agents and it gives them a consistent CLI and some really useful skills for basic orchestration.</p>
-    <p>Check it out: <a href="https://jamsession.jamon.dev">https://jamsession.jamon.dev</a></p>
-    <p class="liner-note-byline">&mdash; <a href="https://jamon.dev">Jamon Holmgren</a></p>
+  <aside class="liner-note" aria-label="A note from Jamon">
+    <p>I&rsquo;ve been creating and curating a set of skills and scripts since late 2025 and wanted to share a few of my most useful with my friends in the coding community. That&rsquo;s where Jam Session came from.</p>
+    <p>My favorites are ping-pong-planning and orchestrate-agent-work. I don&rsquo;t think a day goes by that I&rsquo;m not using those.</p>
+    <p>I&rsquo;d love to hear how you&rsquo;re using Jam Session! Send me a <a href="https://x.com/jamonholmgren">tweet</a> or an email at <a href="mailto:jamsession@jamon.dev">jamsession at jamon.dev</a>.</p>
+    <p class="liner-note-byline">Jamon</p>
   </aside>
 
   <div class="divider" aria-hidden="true"><span class="mark"><i></i><i></i><i></i></span></div>
@@ -97,7 +113,7 @@
     <div class="how-grid">
       <div>
         <h3>No runtime stack</h3>
-        <p>Jam Session is a few Bash scripts and Markdown skill files. It needs Bash and the provider CLIs you already use &mdash; and nothing else. No service, no daemon, no Python, no Node, no database, and no API keys of its own.</p>
+        <p>Jam Session is just a few bash scripts and markdown skill files. No database, super lightweight, built to work with your agent first.</p>
       </div>
       <div>
         <h3>Use your favorite agent</h3>
@@ -108,38 +124,26 @@
 
   <div class="divider" aria-hidden="true"><span class="mark"><i></i><i></i><i></i></span></div>
 
-  <section class="start" aria-labelledby="start-h">
-    <h2 id="start-h">Getting started</h2>
-    <p>Install it yourself with the one-liner above &mdash; or skip the manual and let your agent do it. Paste this prompt into your coding agent:</p>
-    <div class="prompt-card">
-      <p id="agent-prompt">Install Jam Session by following <a href="https://jamsession.jamon.dev/install.md">https://jamsession.jamon.dev/install.md</a>, then show me how to use it to summon other coding agents.</p>
-      <button type="button" class="copy" data-copy="agent-prompt" aria-label="Copy agent prompt">Copy prompt</button>
-    </div>
-    <p class="aside">Your agent installs it, reads the docs, and teaches you the ropes. That&rsquo;s the whole onboarding.</p>
-  </section>
-
-  <div class="divider" aria-hidden="true"><span class="mark"><i></i><i></i><i></i></span></div>
-
   <section class="skills" id="skills" aria-labelledby="skills-h">
     <h2 id="skills-h">Skills in the box</h2>
-    <p>Each skill is a Markdown file that teaches your agent a way to jam with the others.</p>
+    <p>Each skill teaches your agent how to jam with the others. It&rsquo;s how Jamon likes to do work.</p>
     <ul class="skill-list">
       <li style="--tc:var(--t-violet)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Summon agent</span>
-        <span class="skill-desc">Fire one prompt at one agent and get the answer back.</span>
+        <span class="skill-desc">Starts or resumes any agent session.</span>
         <code>jamsession-summon-agent</code>
       </li>
       <li style="--tc:var(--t-amber)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Ping-pong planning</span>
-        <span class="skill-desc">Two agents volley a plan back and forth until it holds up.</span>
+        <span class="skill-desc">Two or more agents volley a plan back and forth to improve it.</span>
         <code>jamsession-ping-pong-planning</code>
       </li>
       <li style="--tc:var(--t-coral)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Contrarian review</span>
-        <span class="skill-desc">A rival agent tries hard to poke holes in your work.</span>
+        <span class="skill-desc">A rival agent tries hard to poke holes in your agent&rsquo;s work.</span>
         <code>jamsession-contrarian-review</code>
       </li>
       <li style="--tc:var(--t-teal)">
@@ -150,20 +154,20 @@
       </li>
       <li style="--tc:var(--t-leaf)">
         <span class="dot" aria-hidden="true"></span>
-        <span class="skill-name">Delegation</span>
-        <span class="skill-desc">Supervisor, managers, workers &mdash; big jobs split across agents.</span>
+        <span class="skill-name">Orchestrator</span>
+        <span class="skill-desc">Your agent is the supervisor who summons managers and workers.</span>
         <code>jamsession-orchestrate-agent-work</code>
       </li>
       <li style="--tc:var(--t-coral)">
         <span class="dot" aria-hidden="true"></span>
-        <span class="skill-name">Worker slices</span>
-        <span class="skill-desc">Give one agent a bounded piece of work with a clear handoff.</span>
-        <code>jamsession-execute-agent-slice</code>
+        <span class="skill-name">Worker</span>
+        <span class="skill-desc">Give one worker agent a bounded piece of work with a clear handoff.</span>
+        <code>jamsession-agent-worker-task</code>
       </li>
       <li style="--tc:var(--t-violet)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Scoped SSH work</span>
-        <span class="skill-desc">Do tightly scoped work directly on another authorized machine &mdash; no agent needs to run there.</span>
+        <span class="skill-desc">Do work directly on another authorized machine, remotely.</span>
         <code>jamsession-work-over-ssh</code>
       </li>
       <li style="--tc:var(--t-amber)">
@@ -175,7 +179,7 @@
       <li style="--tc:var(--t-teal)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Model selection</span>
-        <span class="skill-desc">Agents weigh a named, dated recommendation pack against native provider availability, then make and record the actual provider, model, and effort choice. Recommendations never become run defaults.</span>
+        <span class="skill-desc">Jamon&rsquo;s favorite models for different types of work. Updated frequently as new models come out.</span>
         <code>jamsession-select-agent-model</code>
       </li>
     </ul>
@@ -190,13 +194,15 @@
       <p id="adapter-prompt">Use the <code>jamsession</code> CLI to add a new provider adapter. Ask me which provider CLI I want to add, and make sure it is already installed and authenticated. Run <code>jamsession help make-adapter</code> first, then create and test the adapter.</p>
       <button type="button" class="copy" data-copy="adapter-prompt" aria-label="Copy adapter prompt">Copy prompt</button>
     </div>
+    <p>If your Jam Session provider adapter is working well for you, please have your agent open a pull request! I&rsquo;d love to support more agent providers.</p>
   </section>
 
 </main>
 
 <footer>
   <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
-  <p>MIT licensed &middot; <a href="https://github.com/jamonholmgren/jamsession">Source on GitHub</a> &middot; made by <a href="https://jamon.dev">Jamon Holmgren</a></p>
+  <p class="footer-by">Created by <a href="https://jamon.dev">Jamon</a> <a class="footer-x" href="https://x.com/jamonholmgren" aria-label="Jamon Holmgren on X">&#x1D54F;</a></p>
+  <p class="footer-meta">MIT licensed &middot; <a href="https://github.com/jamonholmgren/jamsession">Source on GitHub</a></p>
 </footer>
 
 <script>
@@ -220,41 +226,41 @@ for (const btn of document.querySelectorAll("[data-copy]")) {
   });
 }
 
-// Endless activity feed. The cell list scrolls upward at a steady pace; when
-// the top cell has fully left the viewport it is moved to the end of the list
-// and the offset is rewound by its height, so the same nodes recycle forever
-// and the DOM never grows. Paused while offscreen, hidden, or reduced-motion.
+// Activity feed. The agent holds on a row for a few seconds, then exactly one
+// more row scrolls smoothly into view above the fixed Thinking row. The row
+// that left through the top is appended and the list snaps back by its exact
+// height, so the same nodes recycle forever and the DOM never grows.
+// Paused while offscreen, hidden, or reduced-motion.
 const view = document.querySelector(".feed-view");
 const reduce = matchMedia("(prefers-reduced-motion: reduce)");
 if (view) {
   const list = view.querySelector(".feed-cells");
-  const SPEED = 18; // px per second
-  let y = 0, last = 0, raf = 0, visible = false;
+  // A fixed cadence of 2–8s holds reads like an agent working, not a ticker.
+  const HOLDS = [2600, 4200, 3100, 7400, 2200, 5300, 3800, 6600, 2900, 4700, 3400];
+  const MOVE = 450;
+  let i = 0, timer = 0, moving = false, visible = false;
 
-  const place = () => { list.style.transform = `translate3d(0, ${-y}px, 0)`; };
-
-  const step = (now) => {
-    if (last) y += Math.min(now - last, 100) * SPEED / 1000;
-    last = now;
-    place();
-    const top = view.getBoundingClientRect().top;
-    while (list.firstElementChild.getBoundingClientRect().bottom < top) {
-      // Reuse the same row at the bottom and rewind by its exact occupied
-      // height, including the list gap, so the loop never jumps or grows.
-      const first = list.firstElementChild;
-      const shift = list.children[1].getBoundingClientRect().top - first.getBoundingClientRect().top;
-      list.append(first);
-      y -= shift;
-      place();
-    }
-    raf = requestAnimationFrame(step);
+  const settle = () => {
+    if (moving) list.append(list.firstElementChild);
+    moving = false;
+    list.style.transition = "none";
+    list.style.transform = "";
   };
-  const play = () => { if (!raf && visible && !document.hidden && !reduce.matches) { last = 0; raf = requestAnimationFrame(step); } };
-  const pause = () => { cancelAnimationFrame(raf); raf = 0; };
+  const move = () => {
+    const [first, next] = list.children;
+    const shift = next.getBoundingClientRect().top - first.getBoundingClientRect().top;
+    moving = true;
+    list.style.transition = `transform ${MOVE}ms cubic-bezier(0.2, 0.7, 0.2, 1)`;
+    list.style.transform = `translate3d(0, ${-shift}px, 0)`;
+    timer = setTimeout(() => { settle(); hold(); }, MOVE);
+  };
+  const hold = () => { timer = setTimeout(move, HOLDS[i++ % HOLDS.length]); };
+  const play = () => { if (!timer && visible && !document.hidden && !reduce.matches) hold(); };
+  const pause = () => { clearTimeout(timer); timer = 0; settle(); };
 
   new IntersectionObserver(([e]) => { visible = e.isIntersecting; visible ? play() : pause(); }).observe(view);
   document.addEventListener("visibilitychange", () => document.hidden ? pause() : play());
-  reduce.addEventListener("change", () => { if (reduce.matches) { pause(); list.style.transform = ""; } else play(); });
+  reduce.addEventListener("change", () => reduce.matches ? pause() : play());
 }
 </script>
 
