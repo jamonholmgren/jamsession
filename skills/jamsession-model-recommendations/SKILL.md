@@ -1,6 +1,6 @@
 ---
 name: jamsession-model-recommendations
-description: Consult Jamon's dated model recommendations when choosing a provider, model, and effort for agent work. Use when the caller has not already made that choice.
+description: Consult Jamon's model recommendations when choosing a provider, model, and effort for agent work. Use when the caller has not already made that choice.
 ---
 
 # Jam Session Model Recommendations
