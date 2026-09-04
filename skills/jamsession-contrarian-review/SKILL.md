@@ -7,8 +7,9 @@ description: Ask an independent agent to make the strongest evidence-based case 
 
 1. Identify the exact review target and state its intended outcome, evidence,
    assumptions, completed checks, and excluded scope.
-2. Select a different model family from the author. Start a fresh session with
-   explicit read access using `jamsession`.
+2. Run `jamsession doctor` and choose an available model from a different family
+   than the author. Choose provider, model, effort, and read access explicitly,
+   then start a fresh session using `jamsession`.
 3. Ask the reviewer to attack the strongest assumptions, trace failure cases,
    distinguish facts from guesses, and return concrete counterevidence. Require
    it to say `PASS` when it cannot support a meaningful objection.

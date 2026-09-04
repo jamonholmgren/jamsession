@@ -6,9 +6,10 @@ description: Consult Jamon's model recommendations when choosing a provider, mod
 # Jam Session Model Recommendations
 
 These recommendations are fresh as of September 3, 2026. If that date is more
-than two months old, warn that the recommendations could be stale. Confirm that
-the chosen model is currently available and note to the user if it is not.
-Substitute with an equivalent model tier from another family.
+than two months old, warn that the recommendations could be stale. Run
+`jamsession doctor`, then choose the provider, model, effort, and access level
+explicitly from what is available. If the preferred model is unavailable, note
+that to the user and choose an equivalent model tier from another family.
 
 Here are Jamon's model recommendations, in order of usefulness and preference. They're balanced for best token efficiency vs results.
 
