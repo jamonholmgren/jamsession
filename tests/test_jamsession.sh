@@ -724,6 +724,10 @@ check "the home page teaches the combined status command" \
   sh -c "grep -Fq 'jamsession status' '$ROOT/index.html'"
 check "the home page documents machine-readable usage" \
   sh -c "grep -Fq 'jamsession usage --json' '$ROOT/index.html'"
+check "the home page uses the orchestration screenshot" \
+  sh -c "grep -Fq 'assets/jamsession-orchestration-example.png' '$ROOT/index.html'"
+check "the orchestration screenshot ships with the site" \
+  test -s "$ROOT/assets/jamsession-orchestration-example.png"
 check "the test workflow runs the current test path" \
   sh -c "grep -Fq 'tests/test_jamsession.sh' '$ROOT/.github/workflows/test.yml'"
 check "no workflow still refers to the old name" \

@@ -1,6 +1,5 @@
 /* Jam Session — the arrangement view.
-   Light-first, warm paper + near-black ink, five instrument colors.
-   No webfonts, no images, no external assets. */
+   Light-first, warm paper + near-black ink, five instrument colors. */
 
 :root {
   color-scheme: light dark;
@@ -261,9 +260,14 @@ main > section > p { max-width: 62ch; color: var(--ink-soft); }
 .install .copy:hover, .install .copy.copied { background: var(--term-accent); color: var(--term); }
 .install .copy:focus-visible { outline-color: var(--term-accent); }
 
-/* ---------- activity feed ---------- */
+/* ---------- Jam Session example ---------- */
 
 .jam figure { margin: 0; }
+.jam-shot {
+  display: block;
+  width: 100%;
+  height: auto;
+}
 .jam figcaption {
   margin-top: 1.1rem;
   font-size: 0.85rem;
@@ -282,134 +286,6 @@ main > section > p { max-width: 62ch; color: var(--ink-soft); }
 .liner-note-byline {
   margin-top: 1.25rem;
   font-weight: 650;
-}
-
-.feed {
-  --padx: 1.1rem;
-  border: 1.5px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--paper);
-  box-shadow: 4px 4px 0 var(--line);
-  overflow: hidden;
-}
-
-.feed-head {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.7rem var(--padx);
-  border-bottom: 1px solid var(--line);
-  font-family: var(--mono);
-  font-size: 0.72rem;
-  color: var(--ink-faint);
-}
-.feed-head .mark { width: 20px; }
-.feed-head .mark i { height: 3px; }
-.feed-title { color: var(--ink-soft); }
-.feed-title b { color: var(--ink); font-weight: 650; }
-.feed-share {
-  margin-left: auto;
-  padding-block: 0.4rem; /* comfortable tap target */
-  white-space: nowrap;
-  font-weight: 600;
-  color: var(--accent);
-  text-decoration: none;
-}
-.feed-share:hover { text-decoration: underline; }
-
-/* the scrolling window: rows fade out as they leave through the top */
-.feed-view {
-  position: relative;
-  height: 22rem;
-  padding-inline: var(--padx);
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 3.5rem);
-  mask-image: linear-gradient(to bottom, transparent, #000 3.5rem);
-}
-
-.feed-cells {
-  list-style: none;
-  margin: 0;
-  padding: 0.5rem 0 0;
-  display: grid;
-  row-gap: 0.7rem;
-  will-change: transform;
-}
-
-.cell {
-  font-size: 0.86rem;
-  line-height: 1.5;
-  color: var(--ink-soft);
-  overflow-wrap: anywhere;
-}
-
-/* the agent's own working notes read as ink prose */
-.cell-prose { color: var(--ink); max-width: 60ch; }
-
-/* tool activity: a small verb in the track color, then what ran */
-.verb {
-  font-family: var(--mono);
-  font-size: 0.64rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--tc, var(--ink-faint));
-  margin-right: 0.6rem;
-}
-
-.cell-cmd code {
-  font-size: 0.78rem;
-  color: var(--ink);
-}
-
-/* skills echo the multitrack pills */
-.cell-skill code {
-  display: inline-block;
-  font-size: 0.7rem;
-  line-height: 1.5;
-  color: var(--ink);
-  background: color-mix(in srgb, var(--tc) 14%, transparent);
-  border: 1px solid color-mix(in srgb, var(--tc) 50%, transparent);
-  border-radius: 999px;
-  padding: 0.05rem 0.6rem;
-  margin-right: 0.35rem;
-}
-.cell-skill .note { color: var(--ink-faint); font-size: 0.82rem; }
-
-.cell-result {
-  margin-top: -0.35rem;
-  padding-left: 1.2rem;
-  font-size: 0.82rem;
-  color: var(--ink-faint);
-}
-.cell-result::before {
-  content: "\21B3";
-  display: inline-block;
-  width: 1.2rem;
-  margin-left: -1.2rem;
-  color: var(--tc, var(--ink-faint));
-  opacity: 0.8;
-}
-.cell-result code { font-size: 0.92em; }
-
-.feed-thinking {
-  padding: 0.75rem var(--padx) 0.85rem;
-  border-top: 1px solid var(--line);
-  font-size: 0.86rem;
-  font-weight: 600;
-  color: var(--ink);
-  background: var(--paper);
-}
-.feed-thinking .caret {
-  display: inline-block;
-  font-style: normal;
-  font-weight: 700;
-  color: var(--accent);
-  animation: nudge 1.4s ease-in-out infinite;
-}
-
-@keyframes nudge {
-  0%, 100% { transform: translateX(0); opacity: 0.5; }
-  50%      { transform: translateX(3px); opacity: 1; }
 }
 
 /* ---------- section divider ---------- */
@@ -446,6 +322,7 @@ main > section > p { max-width: 62ch; color: var(--ink-soft); }
   padding: 0;
   border-bottom: 1px solid var(--line);
 }
+.skills > p { max-width: none; }
 .skill-list li {
   display: grid;
   grid-template-columns: 14px 1fr auto;
@@ -527,11 +404,6 @@ footer p { margin: 0; }
     line-height: 1.5;
   }
 
-  .feed { --padx: 0.8rem; }
-  .feed-view { height: 20rem; }
-  .cell, .feed-thinking { font-size: 0.8rem; }
-  .cell-cmd code { font-size: 0.7rem; }
-  .cell-skill code { font-size: 0.64rem; }
 
   .how-grid { grid-template-columns: 1fr; gap: 1.75rem; }
 
@@ -554,14 +426,6 @@ footer p { margin: 0; }
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  /* static story: the feed sits still on the opening of the jam and
-     trails off toward the Thinking row instead of scrolling */
-  .feed-view {
-    -webkit-mask-image: linear-gradient(to bottom, #000 72%, transparent);
-    mask-image: linear-gradient(to bottom, #000 72%, transparent);
-  }
-  .feed-cells { padding-top: 0.9rem; }
-  .feed-thinking .caret { animation: none; opacity: 0.85; }
   .copy { transition: none; }
   .copy.copied { transform: none; }
 }

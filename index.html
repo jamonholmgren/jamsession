@@ -58,50 +58,8 @@
   <section class="jam" aria-labelledby="jam-h">
     <h2 id="jam-h" class="visually-hidden">What a jam looks like</h2>
     <figure>
-      <div class="feed">
-        <div class="feed-head">
-          <span class="mark" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="feed-title">your agent &middot; jamming on <b>streaks</b></span>
-          <a class="feed-share" href="https://x.com/intent/post?text=I%27m%20trying%20out%20JamSession%20by%20%40jamonholmgren%20to%20run%20multiple%20agents.%20https%3A%2F%2Fjamsession.jamon.dev" target="_blank" rel="noopener noreferrer" aria-label="Share Jam Session on X (opens in a new tab)">Share <span aria-hidden="true">&#x21A5;</span></a>
-        </div>
-        <div class="feed-view" role="img" aria-label="Activity feed of one jam session: your coding agent plans a small habit-tracker app, ping-pongs the plan between Claude and Codex, compares approaches with an agent panel, delegates the edit to Cursor, runs the tests, asks Grok for a contrarian review, and has Codex review the final diff — each step a jamsession command or skill.">
-          <ol class="feed-cells">
-            <li class="cell cell-prose">Starting a new jam. The goal is a habit tracker with a small CLI and a static web view. First I&rsquo;ll pick which models to bring in.</li>
-            <li class="cell cell-skill" style="--tc:var(--t-teal)"><span class="verb">skill</span><code>jamsession-model-recommendations</code> <span class="note">checking Jamon&rsquo;s dated recommendations against what&rsquo;s installed here</span></li>
-            <li class="cell cell-cmd"><span class="verb">ran</span><code>jamsession models claude</code></li>
-            <li class="cell cell-result">picked claude-opus-5 high to draft, gpt-5.6-sol high as the second family</li>
-            <li class="cell cell-skill" style="--tc:var(--t-amber)"><span class="verb">skill</span><code>jamsession-ping-pong-planning</code> <span class="note">two planners volley the plan until it holds</span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-violet)"><span class="verb">ran</span><code>jamsession run claude new claude-opus-5 high read "Draft a plan for streaks: data model, CLI, web view."</code></li>
-            <li class="cell cell-result" style="--tc:var(--t-violet)">plan v1 &middot; SQLite store, four subcommands, one static page &middot; session 7f3a</li>
-            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="verb">ran</span><code>jamsession run codex new gpt-5.6-sol high read "Revise this plan. Keep what holds, cut what doesn't."</code></li>
-            <li class="cell cell-result" style="--tc:var(--t-amber)">plan v2 &middot; drops SQLite for a flat JSON file, adds an import path &middot; session 2b8e</li>
-            <li class="cell cell-cmd" style="--tc:var(--t-violet)"><span class="verb">ran</span><code>jamsession run claude 7f3a claude-opus-5 high read "Codex prefers a flat JSON file. Accept or defend SQLite."</code></li>
-            <li class="cell cell-result" style="--tc:var(--t-violet)">accepts JSON &middot; asks for a documented upgrade path to SQLite</li>
-            <li class="cell cell-prose">Comparing the two approaches. JSON wins on zero dependencies; SQLite stays as a note in the README. Plan v2 is the plan.</li>
-            <li class="cell cell-skill" style="--tc:var(--t-teal)"><span class="verb">skill</span><code>jamsession-ask-agent-panel</code> <span class="note">same question to three agents, then compare the takes</span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="verb">ran</span><code>jamsession run codex new gpt-5.6-sol medium read "CLI shape: subcommands, or one verb with flags?"</code></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-leaf)"><span class="verb">ran</span><code>jamsession run copilot new auto default read "CLI shape: subcommands, or one verb with flags?"</code></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-coral)"><span class="verb">ran</span><code>jamsession run grok new grok-4.6 high edit "CLI shape: subcommands, or one verb with flags? Answer only."</code></li>
-            <li class="cell cell-result">panel 2&ndash;1 for subcommands &middot; <code>streak add</code>, <code>streak done</code>, <code>streak show</code></li>
-            <li class="cell cell-skill" style="--tc:var(--t-leaf)"><span class="verb">skill</span><code>jamsession-orchestrate-agent-work</code> <span class="note">one write-capable worker per checkout</span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-teal)"><span class="verb">ran</span><code>jamsession run cursor new composer-2.5 default edit "Implement streak add/done/show over store.json. Add tests."</code></li>
-            <li class="cell cell-result" style="--tc:var(--t-teal)">6 files changed &middot; 14 tests added &middot; session c91d</li>
-            <li class="cell cell-cmd"><span class="verb">ran</span><code>./tests/run.sh</code></li>
-            <li class="cell cell-result">14 passed &middot; 0 failed &middot; 0.8s</li>
-            <li class="cell cell-skill" style="--tc:var(--t-coral)"><span class="verb">skill</span><code>jamsession-contrarian-review</code> <span class="note">a rival agent tries hard to break it</span></li>
-            <li class="cell cell-cmd" style="--tc:var(--t-coral)"><span class="verb">ran</span><code>jamsession run grok new grok-4.6 high edit "Try hard to break this diff. Findings only, touch nothing."</code></li>
-            <li class="cell cell-result" style="--tc:var(--t-coral)">2 findings &middot; concurrent writes clobber store.json &middot; <code>done</code> ignores the local timezone</li>
-            <li class="cell cell-prose">Reviewing the objections. The timezone bug is real. Concurrent writes are out of scope for a single-user CLI; I&rsquo;ll note it in the README instead.</li>
-            <li class="cell cell-cmd" style="--tc:var(--t-teal)"><span class="verb">ran</span><code>jamsession run cursor c91d composer-2.5 default edit "Store the local date with its offset in done entries. Update tests."</code></li>
-            <li class="cell cell-result" style="--tc:var(--t-teal)">2 files changed &middot; 16 passed &middot; 0 failed</li>
-            <li class="cell cell-cmd" style="--tc:var(--t-amber)"><span class="verb">ran</span><code>jamsession run codex 2b8e gpt-5.6-sol high read "Review the final diff against plan v2."</code></li>
-            <li class="cell cell-result" style="--tc:var(--t-amber)">approved &middot; one nit on the help text, fixed inline</li>
-            <li class="cell cell-prose">CLI done. Seven sessions, five providers, one worker with write access. Next up: the web view.</li>
-          </ol>
-        </div>
-        <div class="feed-thinking" aria-hidden="true">Thinking <i class="caret">&rsaquo;</i></div>
-      </div>
-      <figcaption>One jam: your agent conducts sessions across several providers &mdash; every step is a <code>jamsession</code> command or skill.</figcaption>
+      <img class="jam-shot" src="assets/jamsession-orchestration-example.png" width="1163" height="984" loading="lazy" alt="A coding agent using Jam Session skills to plan awards and medals with Claude, Codex, and Grok, then orchestrate implementation on another computer over SSH.">
+      <figcaption>One jam: your agent conducts sessions across several providers &mdash; using Jam Session skills to plan, review, orchestrate, and work remotely.</figcaption>
     </figure>
   </section>
 
@@ -244,42 +202,6 @@ for (const btn of document.querySelectorAll("[data-copy]")) {
   });
 }
 
-// Activity feed. The agent holds on a row for a few seconds, then exactly one
-// more row scrolls smoothly into view above the fixed Thinking row. The row
-// that left through the top is appended and the list snaps back by its exact
-// height, so the same nodes recycle forever and the DOM never grows.
-// Paused while offscreen, hidden, or reduced-motion.
-const view = document.querySelector(".feed-view");
-const reduce = matchMedia("(prefers-reduced-motion: reduce)");
-if (view) {
-  const list = view.querySelector(".feed-cells");
-  // A fixed cadence of 2–8s holds reads like an agent working, not a ticker.
-  const HOLDS = [2600, 4200, 3100, 7400, 2200, 5300, 3800, 6600, 2900, 4700, 3400];
-  const MOVE = 450;
-  let i = 0, timer = 0, moving = false, visible = false;
-
-  const settle = () => {
-    if (moving) list.append(list.firstElementChild);
-    moving = false;
-    list.style.transition = "none";
-    list.style.transform = "";
-  };
-  const move = () => {
-    const [first, next] = list.children;
-    const shift = next.getBoundingClientRect().top - first.getBoundingClientRect().top;
-    moving = true;
-    list.style.transition = `transform ${MOVE}ms cubic-bezier(0.2, 0.7, 0.2, 1)`;
-    list.style.transform = `translate3d(0, ${-shift}px, 0)`;
-    timer = setTimeout(() => { settle(); hold(); }, MOVE);
-  };
-  const hold = () => { timer = setTimeout(move, HOLDS[i++ % HOLDS.length]); };
-  const play = () => { if (!timer && visible && !document.hidden && !reduce.matches) hold(); };
-  const pause = () => { clearTimeout(timer); timer = 0; settle(); };
-
-  new IntersectionObserver(([e]) => { visible = e.isIntersecting; visible ? play() : pause(); }).observe(view);
-  document.addEventListener("visibilitychange", () => document.hidden ? pause() : play());
-  reduce.addEventListener("change", () => reduce.matches ? pause() : play());
-}
 </script>
 
 </body>
