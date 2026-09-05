@@ -1,0 +1,4 @@
+interface:
+  display_name: "Individual Worker Workflow"
+  short_description: "Complete one bounded Jam Session worker assignment"
+  default_prompt: "Use $jamsession-individual-worker-workflow to complete this assigned slice."

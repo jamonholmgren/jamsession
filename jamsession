@@ -81,9 +81,9 @@ bundled_skills() {
     jamsession-contrarian-review \
     jamsession-ask-agent-panel \
     jamsession-orchestrate-agent-work \
-    jamsession-agent-worker-task \
+    jamsession-individual-worker-workflow \
     jamsession-work-over-ssh \
-    jamsession-run-remote-agents
+    jamsession-use-remote-agent-over-ssh
 }
 
 known_skill() {

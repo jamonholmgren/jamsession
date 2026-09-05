@@ -1,9 +1,9 @@
 ---
-name: jamsession-agent-worker-task
-description: Complete one bounded worker task assigned by a coordinating agent while preserving ownership, scope, and verifiable handoff evidence. Use when an agent brief assigns a specific implementation, review, research, or validation task; do not broaden or commit without authority.
+name: jamsession-individual-worker-workflow
+description: Guide one worker through a bounded task assigned by a coordinating agent while preserving ownership, scope, and verifiable handoff evidence. Use when an agent brief assigns a specific implementation, review, research, or validation task; do not broaden or commit without authority.
 ---
 
-# Complete An Agent Worker Task
+# Individual Worker Workflow
 
 1. Identify the objective, allowed and forbidden files or systems, required
    inputs, access mode, validation, report destination, stopping conditions,

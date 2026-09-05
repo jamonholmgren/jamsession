@@ -134,64 +134,64 @@
     <h2 id="skills-h">Skills in the box</h2>
     <p>Each skill teaches your agent how to jam with the others. It&rsquo;s how Jamon likes to do work.</p>
     <ul class="skill-list">
-      <li style="--tc:var(--t-leaf)">
-        <span class="dot" aria-hidden="true"></span>
-        <span class="skill-name">Agent usage</span>
-        <span class="skill-desc">Turns provider quotas, remaining capacity, and reset times into one clean table.</span>
-        <code>jamsession-get-agent-usage</code>
-      </li>
       <li style="--tc:var(--t-violet)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Summon agent</span>
-        <span class="skill-desc">Starts or resumes any agent session.</span>
+        <span class="skill-desc">Starts or resumes a provider-native agent session.</span>
         <code>jamsession-summon-agent</code>
       </li>
       <li style="--tc:var(--t-amber)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Ping-pong planning</span>
-        <span class="skill-desc">Two or more agents volley a plan back and forth to improve it.</span>
+        <span class="skill-desc">Agents challenge and refine a plan in sequence.</span>
         <code>jamsession-ping-pong-planning</code>
       </li>
       <li style="--tc:var(--t-coral)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Contrarian review</span>
-        <span class="skill-desc">A rival agent tries hard to poke holes in your agent&rsquo;s work.</span>
+        <span class="skill-desc">An adversarial reviewer tries hard to break the work.</span>
         <code>jamsession-contrarian-review</code>
       </li>
       <li style="--tc:var(--t-teal)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Agent panels</span>
-        <span class="skill-desc">Ask several agents the same question, compare the takes.</span>
+        <span class="skill-desc">Independent agents answer, then your agent synthesizes.</span>
         <code>jamsession-ask-agent-panel</code>
       </li>
       <li style="--tc:var(--t-leaf)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Orchestrator</span>
-        <span class="skill-desc">Your agent is the supervisor who summons managers and workers.</span>
+        <span class="skill-desc">Runs managers and workers for autonomous, parallel work.</span>
         <code>jamsession-orchestrate-agent-work</code>
       </li>
-      <li style="--tc:var(--t-coral)">
+      <li class="skill-child" style="--tc:var(--t-coral)">
         <span class="dot" aria-hidden="true"></span>
-        <span class="skill-name">Worker</span>
-        <span class="skill-desc">Give one worker agent a bounded piece of work with a clear handoff.</span>
-        <code>jamsession-agent-worker-task</code>
+        <span class="skill-name">Individual Worker Workflow</span>
+        <span class="skill-desc">Keeps one assigned worker bounded and verifiable.</span>
+        <code>jamsession-individual-worker-workflow</code>
       </li>
-      <li style="--tc:var(--t-violet)">
+      <li class="skill-child" style="--tc:var(--t-violet)">
         <span class="dot" aria-hidden="true"></span>
-        <span class="skill-name">Scoped SSH work</span>
-        <span class="skill-desc">Do work directly on another authorized machine, remotely.</span>
+        <span class="skill-name">Work Over SSH</span>
+        <span class="skill-desc">Performs a scoped task directly in a remote checkout.</span>
         <code>jamsession-work-over-ssh</code>
       </li>
-      <li style="--tc:var(--t-amber)">
+      <li class="skill-child" style="--tc:var(--t-amber)">
         <span class="dot" aria-hidden="true"></span>
-        <span class="skill-name">Remote agents</span>
-        <span class="skill-desc">Launch agent sessions running elsewhere and check back in.</span>
-        <code>jamsession-run-remote-agents</code>
+        <span class="skill-name">Use Remote Agent Over SSH</span>
+        <span class="skill-desc">Runs a Jam Session agent inside a remote checkout.</span>
+        <code>jamsession-use-remote-agent-over-ssh</code>
+      </li>
+      <li style="--tc:var(--t-leaf)">
+        <span class="dot" aria-hidden="true"></span>
+        <span class="skill-name">Agent usage</span>
+        <span class="skill-desc">Shows provider quotas, remaining capacity, and reset times.</span>
+        <code>jamsession-get-agent-usage</code>
       </li>
       <li style="--tc:var(--t-teal)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Model recommendations</span>
-        <span class="skill-desc">Jamon&rsquo;s favorite models for different types of work. Updated frequently as new models come out.</span>
+        <span class="skill-desc">Chooses Jamon&rsquo;s preferred model for each kind of work.</span>
         <code>jamsession-model-recommendations</code>
       </li>
     </ul>

@@ -13,8 +13,10 @@ PROVIDERS="codex claude cursor grok copilot"
 DEFAULT_SKILLS="jamsession-summon-agent jamsession-get-agent-usage"
 OPTIONAL_SKILLS="jamsession-model-recommendations jamsession-ping-pong-planning
 jamsession-contrarian-review jamsession-ask-agent-panel
-jamsession-orchestrate-agent-work jamsession-agent-worker-task
-jamsession-work-over-ssh jamsession-run-remote-agents"
+jamsession-orchestrate-agent-work jamsession-individual-worker-workflow
+jamsession-work-over-ssh jamsession-use-remote-agent-over-ssh"
+RENAMED_SKILLS="jamsession-agent-worker-task:jamsession-individual-worker-workflow
+jamsession-run-remote-agents:jamsession-use-remote-agent-over-ssh"
 
 command -v curl >/dev/null 2>&1 || {
   echo "jamsession installer: curl is required" >&2
@@ -69,11 +71,17 @@ for skill in $OPTIONAL_SKILLS; do
     skills="$skills $skill"
   fi
 done
+for rename in $RENAMED_SKILLS; do
+  old=${rename%%:*}
+  new=${rename#*:}
+  if [ -f "$SKILL_ROOT/$old/SKILL.md" ]; then
+    skills="$skills $new"
+  fi
+done
 for skill in $skills; do
   fetch "skills/$skill/SKILL.md" "skills/$skill/SKILL.md"
   fetch "skills/$skill/agents/openai.yaml" "skills/$skill/agents/openai.yaml"
 done
-
 require_script jamsession
 require_script usage/jamsession_usage
 for provider in $PROVIDERS; do
@@ -104,6 +112,14 @@ for skill in $skills; do
   mkdir -p "$SKILL_ROOT/$skill/agents"
   install_file "skills/$skill/SKILL.md" "$SKILL_ROOT/$skill/SKILL.md" 644
   install_file "skills/$skill/agents/openai.yaml" "$SKILL_ROOT/$skill/agents/openai.yaml" 644
+done
+for rename in $RENAMED_SKILLS; do
+  old=${rename%%:*}
+  new=${rename#*:}
+  if [ -d "$SKILL_ROOT/$old" ] && [ ! -L "$SKILL_ROOT/$old" ]; then
+    rm -rf "$SKILL_ROOT/$old"
+    echo "Renamed $old to $new" >&2
+  fi
 done
 
 link="$LINK_DIR/jamsession"

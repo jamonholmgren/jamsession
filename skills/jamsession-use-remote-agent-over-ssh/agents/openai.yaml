@@ -1,0 +1,4 @@
+interface:
+  display_name: "Use Remote Agent Over SSH"
+  short_description: "Run a Jam Session agent on an authorized SSH host"
+  default_prompt: "Use $jamsession-use-remote-agent-over-ssh to run this agent task on the remote host."

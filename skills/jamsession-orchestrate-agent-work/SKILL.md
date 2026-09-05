@@ -52,7 +52,7 @@ per checkout; parallel writers need separate authorized workspaces and disjoint
 ownership.
 
 Use `jamsession-summon-agent` to start or resume managers and workers. Use
-`jamsession-run-remote-agents` when they must run on an authorized remote host.
+`jamsession-use-remote-agent-over-ssh` when they must run on an authorized remote host.
 
 ## Keep the hierarchy working
 

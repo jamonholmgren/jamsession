@@ -457,6 +457,9 @@ main > section > p { max-width: 62ch; color: var(--ink-soft); }
   padding-block: 0.95rem;
   border-top: 1px solid var(--line);
 }
+.skill-list li.skill-child {
+  margin-left: 2rem;
+}
 .skill-list .dot {
   grid-area: dot;
   width: 10px;
@@ -540,6 +543,7 @@ footer p { margin: 0; }
       ".   slug";
     row-gap: 0.2rem;
   }
+  .skill-list li.skill-child { margin-left: 1rem; }
   .skill-list code { justify-self: start; margin-top: 0.25rem; }
 
   footer { flex-direction: column; align-items: flex-start; gap: 0.75rem; }

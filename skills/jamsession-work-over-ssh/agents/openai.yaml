@@ -1,4 +1,4 @@
 interface:
   display_name: "Work Over SSH"
-  short_description: "Run an agent against a remote workspace over SSH"
+  short_description: "Perform scoped work directly in a remote checkout"
   default_prompt: "Use $jamsession-work-over-ssh to perform this work on the remote host."

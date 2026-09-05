@@ -1,9 +1,9 @@
 ---
-name: jamsession-run-remote-agents
-description: Launch or resume Jam Session coding-agent sessions on an explicitly authorized SSH host, using that host's agent authentication and checkout. Use for remote agent execution; do not forward credentials, discover hosts, or silently fall back to a local agent.
+name: jamsession-use-remote-agent-over-ssh
+description: Launch or resume a Jam Session coding-agent session on an explicitly authorized SSH host, using that host's authentication and checkout. Use for remote agent execution; do not forward credentials, discover hosts, or silently fall back to a local agent.
 ---
 
-# Run Remote Agents With Jam Session
+# Use A Remote Agent Over SSH
 
 1. Require the authorized SSH alias, remote checkout path, provider, model,
    effort, access, and worker brief. Verify the remote `jamsession status

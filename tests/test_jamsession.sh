@@ -393,6 +393,9 @@ check "model recommendations carry a freshness date" contains "$INSTALL_HOME/.ag
 # --- Second run: recognized files refresh, everything else survives ---
 INSTALLED="$INSTALL_HOME/.agents/jamsession"
 INSTALLED_SKILLS="$INSTALL_HOME/.agents/skills"
+mkdir -p "$INSTALLED_SKILLS/jamsession-agent-worker-task" "$INSTALLED_SKILLS/jamsession-run-remote-agents"
+printf '%s\n' old >"$INSTALLED_SKILLS/jamsession-agent-worker-task/SKILL.md"
+printf '%s\n' old >"$INSTALLED_SKILLS/jamsession-run-remote-agents/SKILL.md"
 printf '%s\n' stale >"$INSTALLED/bin/jamsession"
 printf '%s\n' stale >"$INSTALLED/adapters/jamsession_codex"
 printf '%s\n' stale >"$INSTALLED/adapters/_jamsession_adapter_common"
@@ -410,6 +413,10 @@ check "second install refreshes the adapter helper" contains "$INSTALLED/adapter
 check "second install refreshes the default skill" contains "$INSTALLED_SKILLS/jamsession-summon-agent/SKILL.md" "name: jamsession-summon-agent"
 check "second install refreshes default skill metadata" contains "$INSTALLED_SKILLS/jamsession-summon-agent/agents/openai.yaml" "interface:"
 check "second install refreshes the default usage skill" contains "$INSTALLED_SKILLS/jamsession-get-agent-usage/SKILL.md" "name: jamsession-get-agent-usage"
+check "second install migrates the worker skill name" test -f "$INSTALLED_SKILLS/jamsession-individual-worker-workflow/SKILL.md"
+check "second install removes the retired worker identifier" test ! -e "$INSTALLED_SKILLS/jamsession-agent-worker-task"
+check "second install migrates the remote-agent skill name" test -f "$INSTALLED_SKILLS/jamsession-use-remote-agent-over-ssh/SKILL.md"
+check "second install removes the retired remote-agent identifier" test ! -e "$INSTALLED_SKILLS/jamsession-run-remote-agents"
 check "second install refreshes an installed optional skill" contains "$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md" "name: jamsession-work-over-ssh"
 check "second install preserves configuration" contains "$INSTALLED/jamsession.conf" JAMSESSION_CUSTOM_SETTING=kept
 check "second install preserves a custom adapter" equals "$INSTALLED/adapters/jamsession_custom" custom
@@ -692,7 +699,7 @@ check "uninstall refuses a relative tree path" test "$status" -eq 2
 
 check "the source checkout survived every refusal" test -x "$ROOT/jamsession"
 check "the checkout skills survived every refusal" test -f "$ROOT/skills/jamsession-summon-agent/SKILL.md"
-check "the checkout worker-task skill survived every refusal" test -f "$ROOT/skills/jamsession-agent-worker-task/SKILL.md"
+check "the checkout worker skill survived every refusal" test -f "$ROOT/skills/jamsession-individual-worker-workflow/SKILL.md"
 check "the refused installation was left alone" test -x "$UNINSTALL_HOME/.agents/jamsession/bin/jamsession"
 
 run_command env HOME="$UNINSTALL_HOME" "$ROOT/jamsession" help uninstall
@@ -713,10 +720,20 @@ check "no workflow still refers to the old name" \
   sh -c "! grep -rqi jamwrap '$ROOT/.github/workflows/'"
 check "the model recommendation skill is bundled" \
   sh -c "grep -q '^name: jamsession-model-recommendations$' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
+check "model recommendations prefer Fable slightly over Astra" \
+  sh -c "grep -Fq 'slightly prefers Fable' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
 check "the agent-usage skill requests structured usage" \
   sh -c "grep -Fq 'jamsession usage --json' '$ROOT/skills/jamsession-get-agent-usage/SKILL.md'"
 check "the remote-agent skill depends on no separately optional skill" \
-  sh -c "! grep -Eq 'jamsession-(agent-worker-task|work-over-ssh|orchestrate-agent-work)' '$ROOT/skills/jamsession-run-remote-agents/SKILL.md'"
+  sh -c "! grep -Eq 'jamsession-(individual-worker-workflow|work-over-ssh|orchestrate-agent-work)' '$ROOT/skills/jamsession-use-remote-agent-over-ssh/SKILL.md'"
+check "retired skill identifiers are absent from active source" \
+  sh -c "! grep -R -E 'jamsession-(agent-worker-task|run-remote-agents)' '$ROOT/skills' '$ROOT/jamsession' '$ROOT/README.md' '$ROOT/index.html'"
+check "the website indents the three orchestrator support skills" \
+  test "$(grep -c '<li class=\"skill-child\"' "$ROOT/index.html")" -eq 3
+check "the website uses the renamed worker identifier" \
+  grep -Fq 'jamsession-individual-worker-workflow' "$ROOT/index.html"
+check "the website uses the renamed remote-agent identifier" \
+  grep -Fq 'jamsession-use-remote-agent-over-ssh' "$ROOT/index.html"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
