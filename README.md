@@ -43,7 +43,7 @@ Installs to `~/.agents/jamsession/` and links `~/.local/bin/jamsession`. Never t
 
 I like to have my _agent_ use Jam Session to manage other CLI-based agents.
 
-Currently, we support the providers [listed above](. But here's how I use it.
+Currently, we support the providers [listed above](#supported-agent-providers). But here's how I use it.
 
 When I have a task and want agents to talk to each other, I'll use the proper skills associated with that:
 
