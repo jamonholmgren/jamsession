@@ -5,7 +5,7 @@ description: Consult Jamon's model recommendations when choosing a provider, mod
 
 # Jam Session Model Recommendations
 
-These recommendations are fresh as of September 3, 2026. If that date is more
+These recommendations are fresh as of September 5, 2026. If that date is more
 than two months old, warn that the recommendations could be stale. Run
 `jamsession doctor`, then choose the provider, model, effort, and access level
 explicitly from what is available. If the preferred model is unavailable, note
@@ -13,6 +13,7 @@ that to the user and choose an equivalent model tier from another family.
 
 Here are Jamon's model recommendations, in order of usefulness and preference. They're balanced for best token efficiency vs results.
 
+* GPT-6 Astra - top-tier intelligence similar to Claude Fable 5.x; excellent at medium effort for difficult review, architecture, and work that needs the strongest judgment
 * GPT-5.6 Sol - best general purpose model and supervisor/manager, used at light or medium for most work; high for harder or broad architectural work
 * Claude Fable 5.x - use for targeted highly intelligent review, beautiful UIs; expensive, so preserve tokens, use lower effort levels unless doing architectural work
 * Grok 4.6, GPT-5.6 Terra, Kimi K3 - good for contrarian review, babysitting long-running processes, fan-outs to audit code base, applying well-specified and focused work, or using as a daily driver if you're out of Sol tokens. Use high or xhigh for best results unless doing audits

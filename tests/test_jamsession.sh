@@ -319,7 +319,7 @@ run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jams
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
   "$ROOT/jamsession" skills install jamsession-model-recommendations
 check "model-recommendations skill installs on request" test -f "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md"
-check "model recommendations carry a freshness date" contains "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md" "fresh as of September 3, 2026"
+check "model recommendations carry a freshness date" contains "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md" "fresh as of September 5, 2026"
 
 # --- Second run: recognized files refresh, everything else survives ---
 INSTALLED="$INSTALL_HOME/.agents/jamsession"
