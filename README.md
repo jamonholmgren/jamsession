@@ -31,13 +31,7 @@ The easiest way is to just tell your agent to install it with this prompt:
 Install Jam Session by following https://jamsession.jamon.dev/install.md, then onboard me and teach me to use it effectively.
 ```
 
-Or, if you're doing this old school, here's the install script:
-
-```sh
-curl -fsSL https://jamsession.jamon.dev/install.sh | sh
-```
-
-Installs to `~/.agents/jamsession/` and links `~/.local/bin/jamsession`. Never touches your shell startup files.
+[Manual install steps below.](#install-manually)
 
 ## How to use Jam Session as a human
 
@@ -57,6 +51,16 @@ When I have a task and want agents to talk to each other, I'll use the proper sk
 ## How to use Jam Session as an agent
 
 These instructions are for agents using Jam Session.
+
+### Install manually
+
+Here's the install script:
+
+```sh
+curl -fsSL https://jamsession.jamon.dev/install.sh | sh
+```
+
+Installs to `~/.agents/jamsession/` and links `~/.local/bin/jamsession`. Never touches your shell startup files.
 
 ### Run an agent
 
