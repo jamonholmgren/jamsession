@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Worker Task"
+  short_description: "Complete one bounded Jam Session worker assignment"
+  default_prompt: "Use $jamsession-agent-worker-task to complete this assigned slice."

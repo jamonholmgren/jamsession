@@ -1,0 +1,363 @@
+#!/usr/bin/env bash
+
+set -u
+
+PROVIDERS="copilot codex claude cursor grok"
+TIMEOUT="${JAMSESSION_USAGE_TIMEOUT:-20}"
+TEMP_DIR=""
+CAPTURE_FILE=""
+PROVIDER_WINDOWS=""
+
+cleanup() {
+  [ -n "$TEMP_DIR" ] || return 0
+  if [ -n "${JAMSESSION_USAGE_DEBUG_DIR:-}" ]; then
+    mkdir -p "$JAMSESSION_USAGE_DEBUG_DIR"
+    for debug_file in "$TEMP_DIR"/*.raw "$TEMP_DIR"/*.err; do
+      [ -f "$debug_file" ] || continue
+      cp "$debug_file" "$JAMSESSION_USAGE_DEBUG_DIR/"
+    done
+  fi
+  rm -rf "$TEMP_DIR"
+  TEMP_DIR=""
+}
+
+fail() {
+  printf 'jamsession usage: %s\n' "$*" >&2
+  exit 1
+}
+
+make_temp() {
+  TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/jamsession-usage.XXXXXX")" || fail "could not create temporary directory"
+  trap 'cleanup; exit 130' HUP INT TERM
+}
+
+json_escape() {
+  local value="$1"
+  value="$(printf '%s' "$value" | LC_ALL=C tr -d '\000-\010\013\014\016-\037\177')"
+  value=${value//\\/\\\\}
+  value=${value//\"/\\\"}
+  value=${value//$'\n'/\\n}
+  value=${value//$'\r'/\\r}
+  value=${value//$'\t'/\\t}
+  printf '%s' "$value"
+}
+
+percent_left() {
+  awk -v used="$1" 'BEGIN { left = 100 - used; if (left < 0) left = 0; printf "%g", left }'
+}
+
+format_epoch() {
+  local epoch="$1"
+  [ -n "$epoch" ] || { printf 'not exposed'; return; }
+  if [ "$(uname -s)" = Darwin ]; then
+    date -r "$epoch" '+%Y-%m-%d %H:%M %Z' 2>/dev/null || printf '%s' "$epoch"
+  else
+    date -d "@$epoch" '+%Y-%m-%d %H:%M %Z' 2>/dev/null || printf '%s' "$epoch"
+  fi
+}
+
+clean_text() {
+  local value="$1"
+  value="$(printf '%s' "$value" | sed $'s/\033\\[[0-9;?]*[ -\\/]*[@-~]//g')"
+  value="${value//$'\r'/}"
+  value="${value#${value%%[![:space:]]*}}"
+  value="${value%${value##*[![:space:]]}}"
+  printf '%s' "$value"
+}
+
+window_json() {
+  local bucket="$1" label="$2" used="$3" reset="$4"
+  printf '{"bucket_id":"%s","label":"%s","used_percent":%s,"remaining_percent":%s,"reset_display":"%s"}' \
+    "$(json_escape "$bucket")" "$(json_escape "$label")" "$used" "$(percent_left "$used")" "$(json_escape "$reset")"
+}
+
+field_number() {
+  local text="$1" field="$2" rest
+  case "$text" in *\"$field\":*) ;; *) return 1 ;; esac
+  rest="${text#*\"$field\":}"
+  rest="${rest# }"
+  printf '%s' "${rest%%[^0-9.]*}"
+}
+
+field_string() {
+  local text="$1" field="$2" rest
+  case "$text" in *\"$field\":\"*) ;; *) return 1 ;; esac
+  rest="${text#*\"$field\":\"}"
+  printf '%s' "${rest%%\"*}"
+}
+
+matching_object() {
+  local text="$1" marker="$2" rest char depth=0 quoted=0 escaped=0 output=""
+  case "$text" in *"$marker"*) ;; *) return 1 ;; esac
+  rest="${text#*"$marker"}"
+  while [ -n "$rest" ]; do
+    char="${rest%"${rest#?}"}"
+    rest="${rest#?}"
+    output="$output$char"
+    if [ "$escaped" -eq 1 ]; then escaped=0; continue; fi
+    if [ "$char" = '\' ] && [ "$quoted" -eq 1 ]; then escaped=1; continue; fi
+    if [ "$char" = '"' ]; then quoted=$((1 - quoted)); continue; fi
+    [ "$quoted" -eq 0 ] || continue
+    [ "$char" != '{' ] || depth=$((depth + 1))
+    if [ "$char" = '}' ]; then
+      depth=$((depth - 1))
+      [ "$depth" -ne 0 ] || { printf '%s' "$output"; return 0; }
+    fi
+  done
+  return 1
+}
+
+codex_usage() {
+  local output line limits rest key object primary secondary first=1 windows=""
+  if [ -n "${JAMSESSION_USAGE_FIXTURE_DIR:-}" ]; then
+    [ -f "$JAMSESSION_USAGE_FIXTURE_DIR/codex.json" ] || return 1
+    output="$(cat "$JAMSESSION_USAGE_FIXTURE_DIR/codex.json")"
+  else
+    command -v "${JAMSESSION_CODEX_BIN:-codex}" >/dev/null 2>&1 || return 1
+    output="$({
+      printf '%s\n' '{"method":"initialize","id":1,"params":{"clientInfo":{"name":"jamsession","title":"Jam Session","version":"1"},"capabilities":{"experimentalApi":true,"requestAttestation":false}}}'
+      printf '%s\n' '{"method":"account/rateLimits/read","id":2}'
+      sleep 2
+    } | "${JAMSESSION_CODEX_BIN:-codex}" app-server --stdio 2>/dev/null)"
+  fi
+  line="$(printf '%s\n' "$output" | grep '"id":2' | tail -1)"
+  limits="$(matching_object "$line" '"rateLimitsByLimitId":')" || return 1
+  rest="${limits#\{}"; rest="${rest%\}}"
+  while [ -n "$rest" ]; do
+    case "$rest" in \"*\":\{*) ;; *) break ;; esac
+    key="${rest#\"}"; key="${key%%\"*}"
+    object="$(matching_object "$rest" ':')" || break
+    primary="$(matching_object "$object" '"primary":')" || primary=""
+    secondary="$(matching_object "$object" '"secondary":')" || secondary=""
+    label="$(field_string "$object" limitName || true)"; [ -n "$label" ] || label="$key"
+    for slot in primary secondary; do
+      eval "part=\$$slot"
+      [ -n "$part" ] || continue
+      used="$(field_number "$part" usedPercent || true)"; [ -n "$used" ] || continue
+      reset="$(field_number "$part" resetsAt || true)"
+      [ "$first" -eq 1 ] || windows="$windows,"
+      [ "$slot" = primary ] || slot_label="$label secondary"
+      [ "$slot" != primary ] || slot_label="$label"
+      windows="$windows$(window_json "$key:$slot" "$slot_label" "$used" "$(format_epoch "$reset")")"
+      first=0
+    done
+    rest="${rest#*"$object"}"; rest="${rest#,}"
+  done
+  [ -n "$windows" ] || return 1
+  printf '%s' "$windows"
+}
+
+capture_tui() {
+  local provider="$1" output="$TEMP_DIR/$provider.raw" command_string="" arg pid deadline
+  shift
+  if [ -n "${JAMSESSION_USAGE_FIXTURE_DIR:-}" ]; then
+    CAPTURE_FILE="$JAMSESSION_USAGE_FIXTURE_DIR/$provider.txt"
+    [ -f "$CAPTURE_FILE" ] || return 1
+    return
+  fi
+  command -v script >/dev/null 2>&1 || return 1
+  for arg in "$@"; do printf -v command_string '%s %q' "$command_string" "$arg"; done
+  if [ "$(uname -s)" = Darwin ]; then
+    { feed_tui "$provider" | script -qF "$output" "$@"; } \
+      >"$TEMP_DIR/$provider.stdout" 2>"$TEMP_DIR/$provider.script.err" &
+  else
+    { feed_tui "$provider" | script -qf -c "${command_string# }" "$output"; } \
+      >"$TEMP_DIR/$provider.stdout" 2>"$TEMP_DIR/$provider.script.err" &
+  fi
+  pid=$!
+  deadline=$((SECONDS + TIMEOUT))
+  while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$deadline" ]; do
+    case "$provider" in
+      claude) grep -q 'Current week (Fable)' "$output" 2>/dev/null && break ;;
+      cursor) grep -Eq 'plan [0-9.]+% left|Included.*% used' "$output" 2>/dev/null && break ;;
+      grok) grep -q 'Weekly limit' "$output" 2>/dev/null && break ;;
+      copilot) grep -Eq 'AI credits|premium requests|% (left|used)' "$output" 2>/dev/null && break ;;
+    esac
+    sleep 1
+  done
+  if kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null || true
+    sleep 1
+    kill -9 "$pid" 2>/dev/null || true
+  fi
+  wait "$pid" 2>/dev/null || true
+  [ -s "$output" ] || return 1
+  CAPTURE_FILE="$output"
+}
+
+feed_tui() {
+  local provider="$1"
+  sleep 3
+  printf '/usage\r'
+  if [ "$provider" = cursor ]; then sleep 2; printf '\r'; fi
+  sleep 5
+  printf '\033'
+  sleep 1
+  if [ "$provider" = grok ]; then printf '/quit\r'; else printf '/exit\r'; fi
+  sleep 1
+  printf '\004'
+}
+
+text_windows() {
+  local provider="$1" text="$2" line heading="" used="" reset="not exposed" windows="" first=1 label bucket seen="|"
+  while IFS= read -r line; do
+    line="$(clean_text "$line")"
+    if [ -n "$used" ]; then
+      case "$line" in
+        *Resets:*) reset="${line#*Resets:}" ;;
+        *Resets*) reset="${line#*Resets}" ;;
+        *) continue ;;
+      esac
+      reset="$(clean_text "$reset")"
+      bucket="${heading%%|*}"; label="${heading#*|}"
+      [ "$first" -eq 1 ] || windows="$windows,"
+      windows="$windows$(window_json "$bucket" "$label" "$used" "$reset")"
+      seen="$seen$bucket|"; first=0; heading=""; used=""; reset="not exposed"
+      continue
+    fi
+    case "$line" in
+      *"Current session"*) heading="current_session|Current session" ;;
+      *"Current week (all models)"*) heading="weekly_all|Current week (all models)" ;;
+      *"Current week (Fable)"*) heading="weekly_fable|Current week (Fable)" ;;
+      *"Included"*) heading="monthly_included|Monthly Included" ;;
+      *"Auto"*) heading="monthly_auto|Monthly Auto" ;;
+      *"API"*) heading="monthly_api|Monthly API" ;;
+      *"Weekly limit"*) heading="weekly|Weekly limit" ;;
+      *"AI credits"*) heading="monthly_credits|Monthly AI credits" ;;
+      *"premium requests"*) heading="monthly_premium|Monthly premium requests" ;;
+    esac
+    if [[ "$line" =~ ([0-9]+([.][0-9]+)?)%[[:space:]]+used ]]; then
+      used="${BASH_REMATCH[1]}"
+    elif [[ "$line" =~ plan[[:space:]]+([0-9]+([.][0-9]+)?)%[[:space:]]+left ]]; then
+      heading="monthly_plan|Monthly plan"
+      used="$(awk -v left="${BASH_REMATCH[1]}" 'BEGIN { printf "%g", 100-left }')"
+    else
+      continue
+    fi
+    if [ -z "$heading" ]; then
+      used=""
+      continue
+    fi
+    bucket="${heading%%|*}"; label="${heading#*|}"
+    [ -n "$bucket" ] || continue
+    case "$seen" in *"|$bucket|"*) heading=""; used=""; continue ;; esac
+    case "$line" in
+      *Resets:*) reset="${line#*Resets:}" ;;
+      *Resets*) reset="${line#*Resets}" ;;
+    esac
+    reset="$(clean_text "$reset")"
+    if [ "$provider" != cursor ] && [ "$provider" != copilot ] && [ "$reset" = "not exposed" ]; then
+      continue
+    fi
+    [ "$first" -eq 1 ] || windows="$windows,"
+    windows="$windows$(window_json "$bucket" "$label" "$used" "$reset")"
+    seen="$seen$bucket|"
+    first=0
+    heading=""; used=""; reset="not exposed"
+  done <<<"$text"
+  [ -n "$windows" ] || return 1
+  printf '%s' "$windows"
+}
+
+provider_usage() {
+  local provider="$1" text
+  PROVIDER_WINDOWS=""
+  case "$provider" in
+    codex)
+      PROVIDER_WINDOWS="$(codex_usage)" || {
+        sleep 1
+        PROVIDER_WINDOWS="$(codex_usage)" || return 1
+      }
+      ;;
+    claude)
+      capture_tui claude "${JAMSESSION_CLAUDE_BIN:-claude}" --ax-screen-reader --safe-mode --permission-mode plan || return 1
+      text="$(cat "$CAPTURE_FILE")"
+      PROVIDER_WINDOWS="$(text_windows claude "$text")" || return 1
+      ;;
+    cursor)
+      capture_tui cursor "${JAMSESSION_CURSOR_BIN:-cursor-agent}" --mode ask --trust || return 1
+      text="$(cat "$CAPTURE_FILE")"
+      PROVIDER_WINDOWS="$(text_windows cursor "$text")" || return 1
+      ;;
+    grok)
+      capture_tui grok "${JAMSESSION_GROK_BIN:-grok}" || return 1
+      text="$(cat "$CAPTURE_FILE")"
+      PROVIDER_WINDOWS="$(text_windows grok "$text")" || return 1
+      ;;
+    copilot)
+      capture_tui copilot "${JAMSESSION_COPILOT_BIN:-copilot}" --screen-reader --mode plan || return 1
+      text="$(cat "$CAPTURE_FILE")"
+      PROVIDER_WINDOWS="$(text_windows copilot "$text")" || return 1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+collect_provider() {
+  local provider="$1" windows
+  if provider_usage "$provider"; then
+    windows="$PROVIDER_WINDOWS"
+    printf '%s' "$windows" >"$TEMP_DIR/$provider.windows"
+    printf '{"agent":"%s","status":"ok","windows":[%s],"error":null}' \
+      "$provider" "$windows" >"$TEMP_DIR/$provider.json"
+    printf 'ok' >"$TEMP_DIR/$provider.result"
+  else
+    printf '{"agent":"%s","status":"unavailable","windows":[],"error":{"code":"usage_unavailable","message":"usage could not be read"}}' \
+      "$provider" >"$TEMP_DIR/$provider.json"
+    printf 'unavailable' >"$TEMP_DIR/$provider.result"
+  fi
+}
+
+main() {
+  local json=0 requested="" provider windows row first=1 successes=0 failures=0 rows="" human_file
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --json) json=1 ;;
+      copilot|codex|claude|cursor|grok) [ -z "$requested" ] || fail "choose at most one provider"; requested="$1" ;;
+      *) fail "unknown argument '$1'" ;;
+    esac
+    shift
+  done
+  make_temp
+  human_file="$TEMP_DIR/human"
+  : >"$human_file"
+  [ -n "$requested" ] && providers="$requested" || providers="$PROVIDERS"
+  for provider in $providers; do
+    collect_provider "$provider" 2>"$TEMP_DIR/$provider.collect.err" &
+  done
+  wait
+  for provider in $providers; do
+    row="$(cat "$TEMP_DIR/$provider.json")"
+    if [ "$(cat "$TEMP_DIR/$provider.result")" = ok ]; then
+      windows="$(cat "$TEMP_DIR/$provider.windows")"
+      successes=$((successes + 1))
+      printf '%s\n' "$windows" | sed 's/},{/}\n{/g' | while IFS= read -r window; do
+        label="$(field_string "$window" label || true)"
+        remaining="$(field_number "$window" remaining_percent || true)"
+        reset="$(field_string "$window" reset_display || true)"
+        printf '%-9s %-30s %-12s %s\n' "$provider" "$label" "${remaining}%" "$reset" >>"$human_file"
+        provider=""
+      done
+    else
+      failures=$((failures + 1))
+      printf '%-9s %s\n' "$provider" unavailable >>"$human_file"
+    fi
+    [ "$first" -eq 1 ] || rows="$rows,"
+    rows="$rows$row"; first=0
+  done
+  [ "$failures" -eq 0 ] && status=complete || { [ "$successes" -eq 0 ] && status=failed || status=partial; }
+  report="{\"schema_version\":1,\"status\":\"$status\",\"providers\":[$rows]}"
+  if [ "$json" -eq 1 ]; then
+    printf '%s\n' "$report"
+  else
+    printf 'Jam Session usage (%s)\n\n' "$status"
+    printf '%-9s %-30s %-12s %s\n' Provider Window Remaining Reset
+    cat "$human_file"
+  fi
+  cleanup
+  [ "$failures" -eq 0 ] && return 0
+  [ "$successes" -eq 0 ] && return 1
+  return 2
+}
+
+main "$@"

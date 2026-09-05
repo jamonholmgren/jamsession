@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run Remote Agents"
+  short_description: "Coordinate Jam Session agents on remote hosts"
+  default_prompt: "Use $jamsession-run-remote-agents to coordinate this remote agent work."

@@ -26,12 +26,13 @@ Run:
 
 ```sh
 jamsession init
-jamsession doctor
+jamsession status
 ```
 
 `init` records provider CLIs already available on `PATH` without replacing
 existing configuration. If a provider is missing, install and authenticate its
-native CLI first, then run `jamsession init` again. Run `jamsession help
+native CLI first, then run `jamsession init` again. `status` shows readiness and
+available subscription usage; use `doctor` for focused diagnostics. Run `jamsession help
 configure` for manual path overrides.
 
 ## Run an agent

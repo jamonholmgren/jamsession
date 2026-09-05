@@ -6,7 +6,7 @@ description: Launch or resume Jam Session coding-agent sessions on an explicitly
 # Run Remote Agents With Jam Session
 
 1. Require the authorized SSH alias, remote checkout path, provider, model,
-   effort, access, and worker brief. Verify the remote `jamsession doctor
+   effort, access, and worker brief. Verify the remote `jamsession status
    <provider>` result before relying on the worker.
 2. Keep inference, repository access, edits, and validation on the remote host.
    Use its existing provider authentication; never forward local credentials.

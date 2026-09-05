@@ -1,0 +1,4 @@
+interface:
+  display_name: "Model Recommendations"
+  short_description: "Choose a Jam Session provider, model, and effort"
+  default_prompt: "Use $jamsession-model-recommendations to choose the best route for this work."

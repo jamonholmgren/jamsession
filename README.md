@@ -76,13 +76,13 @@ Every part is required. Pass a session ID instead of `new` to resume, and `-` as
 
 ```sh
 jamsession providers
-jamsession doctor 
+jamsession status
 jamsession models cursor # lists models available on cursor agent
 jamsession list grok 5 # lists the last 5 grok sessions in this code base (if available)
 jamsession init # installs jam session in the current project
 ```
 
-Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`.
+Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused authentication diagnostics.
 
 ### Skills
 

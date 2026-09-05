@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ask Agent Panel"
+  short_description: "Collect independent answers from an agent panel"
+  default_prompt: "Use $jamsession-ask-agent-panel to gather independent answers."

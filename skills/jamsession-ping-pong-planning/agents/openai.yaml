@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ping-Pong Planning"
+  short_description: "Build a plan through two independent agent views"
+  default_prompt: "Use $jamsession-ping-pong-planning to produce a challenged implementation plan."

@@ -13,6 +13,9 @@ unset JAMSESSION_HOME JAMSESSION_ADAPTER_DIR JAMSESSION_CONFIG JAMSESSION_SKILL_
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/jamsession-test.XXXXXX")"
 trap 'rm -rf "$TEMP_ROOT"' EXIT HUP INT TERM
+JAMSESSION_CONFIG="$TEMP_ROOT/jamsession.conf"
+export JAMSESSION_CONFIG
+: >"$JAMSESSION_CONFIG"
 
 passed=0
 failed=0
@@ -40,6 +43,7 @@ equals() { [ "$(cat "$1")" = "$2" ]; }
 # would otherwise be hidden by the test run that fixes it.
 check "the CLI ships executable" test -x "$ROOT/jamsession"
 check "the installer ships executable" test -x "$ROOT/install.sh"
+check "the usage helper ships executable" test -x "$ROOT/usage/jamsession_usage"
 non_executable_adapter=""
 for adapter in "$ROOT"/adapters/jamsession_*; do
   [ -x "$adapter" ] || non_executable_adapter="$adapter"
@@ -168,6 +172,64 @@ chmod 755 "$FAKE_BIN"/*
 
 LOG="$TEMP_ROOT/args"
 
+USAGE_FIXTURES="$TEMP_ROOT/usage-fixtures"
+mkdir -p "$USAGE_FIXTURES"
+cat >"$USAGE_FIXTURES/codex.json" <<'EOF'
+{"id":2,"result":{"rateLimitsByLimitId":{"codex":{"limitId":"codex","limitName":"Codex","primary":{"usedPercent":25,"windowDurationMins":10080,"resetsAt":1788973081},"secondary":null},"spark":{"limitId":"spark","limitName":"Spark","primary":{"usedPercent":10,"windowDurationMins":300,"resetsAt":1788654830},"secondary":{"usedPercent":20,"windowDurationMins":10080,"resetsAt":1788919635}}}}}
+EOF
+cat >"$USAGE_FIXTURES/claude.txt" <<'EOF'
+Current session
+6% used
+Resets 4:30pm
+Current week (all models)
+15% used
+Resets Sep 7 at 7am
+Current week (Fable)
+24% used
+Resets Sep 7 at 7am
+EOF
+printf '%s\n' 'plan 68% left' >"$USAGE_FIXTURES/cursor.txt"
+printf '%s\n' 'Weekly limit (Pro) 35% used Resets: Sep 8, 09:00' >"$USAGE_FIXTURES/grok.txt"
+printf '%s\n' 'Monthly AI credits 40% used' >"$USAGE_FIXTURES/copilot.txt"
+
+run_command env JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/jamsession" usage --json
+check "aggregate usage is valid JSON-shaped output" contains "$stdout_file" '"status":"complete"'
+check "Codex usage includes multiple rate-limit buckets" contains "$stdout_file" '"bucket_id":"spark:secondary"'
+check "Cursor usage reports remaining plan percentage" contains "$stdout_file" '"remaining_percent":68'
+check "aggregate usage succeeds when every fixture parses" test "$status" -eq 0
+
+ANSI_FIXTURES="$TEMP_ROOT/ansi-usage-fixtures"
+cp -R "$USAGE_FIXTURES" "$ANSI_FIXTURES"
+printf '\033[1mCurrent session\033[0m\n\033[1m6%%\033[0m used\nResets \033[1m4:30pm \\ local\033[0m\n' >"$ANSI_FIXTURES/claude.txt"
+run_command env JAMSESSION_USAGE_FIXTURE_DIR="$ANSI_FIXTURES" "$ROOT/jamsession" usage claude --json
+check "usage strips terminal escapes" sh -c "! grep -q $'\033' '$stdout_file'"
+check "usage JSON escapes provider backslashes" contains "$stdout_file" '4:30pm \\ local'
+check "usage parses percentages wrapped in terminal styling" contains "$stdout_file" '"bucket_id":"current_session"'
+
+CONFIG_CODEX="$TEMP_ROOT/configured-codex"
+cat >"$CONFIG_CODEX" <<EOF
+#!/bin/sh
+printf '%s\n' '$(cat "$USAGE_FIXTURES/codex.json")'
+EOF
+chmod 755 "$CONFIG_CODEX"
+CONFIG_ONLY="$TEMP_ROOT/usage-path.conf"
+printf 'JAMSESSION_CODEX_BIN=%q\n' "$CONFIG_CODEX" >"$CONFIG_ONLY"
+run_command env PATH="/usr/bin:/bin" JAMSESSION_CONFIG="$CONFIG_ONLY" "$ROOT/jamsession" usage codex --json
+check "usage honors the provider path recorded by init" contains "$stdout_file" '"agent":"codex","status":"ok"'
+
+run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/jamsession" status codex
+check "status combines readiness and usage" contains "$stdout_file" "Jam Session usage (complete)"
+check "status keeps the provider diagnostic" contains "$stdout_file" CODEX_AUTH_OK
+check "status renders the provider's usage windows" contains "$stdout_file" "Spark secondary"
+check "status does not mislabel available usage" sh -c "! grep -Fq unavailable '$stdout_file'"
+
+mkdir -p "$TEMP_ROOT/partial-usage"
+run_command env FAKE_LOG="$LOG" JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
+  JAMSESSION_USAGE_FIXTURE_DIR="$TEMP_ROOT/partial-usage" "$ROOT/jamsession" status grok
+check "status succeeds when readiness passes but usage is unavailable" test "$status" -eq 0
+check "status reports unavailable usage without hiding readiness" contains "$stdout_file" unavailable
+
 run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
   "$ROOT/adapters/jamsession_codex" run new default high read prompt
 check "Codex final response is normalized" equals "$stdout_file" CODEX_RESULT
@@ -287,12 +349,12 @@ check "provider exit status is preserved" test "$status" -eq 17
 check "resumed session ID is preserved" contains "$stderr_file" "session: saved-session"
 
 INIT_HOME="$TEMP_ROOT/init-home"
-run_command env HOME="$TEMP_ROOT/user" JAMSESSION_HOME="$INIT_HOME" \
+run_command env HOME="$TEMP_ROOT/user" JAMSESSION_HOME="$INIT_HOME" JAMSESSION_CONFIG="$INIT_HOME/jamsession.conf" \
   PATH="$FAKE_BIN:/usr/bin:/bin" "$ROOT/jamsession" init
 check "init creates shell configuration" test -f "$INIT_HOME/jamsession.conf"
 check "init records discovered Codex path" contains "$INIT_HOME/jamsession.conf" JAMSESSION_CODEX_BIN
 before="$(cat "$INIT_HOME/jamsession.conf")"
-run_command env HOME="$TEMP_ROOT/user" JAMSESSION_HOME="$INIT_HOME" \
+run_command env HOME="$TEMP_ROOT/user" JAMSESSION_HOME="$INIT_HOME" JAMSESSION_CONFIG="$INIT_HOME/jamsession.conf" \
   PATH="$FAKE_BIN:/usr/bin:/bin" "$ROOT/jamsession" init
 check "init is idempotent" test "$(cat "$INIT_HOME/jamsession.conf")" = "$before"
 
@@ -303,13 +365,18 @@ chmod 755 "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_custom"
 run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$ROOT/install.sh"
 check "installer installs the command" test -x "$INSTALL_HOME/.agents/jamsession/bin/jamsession"
 check "installer links the command" test -L "$INSTALL_HOME/.local/bin/jamsession"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" \
+  "$INSTALL_HOME/.local/bin/jamsession" usage codex --json
+check "the installed symlink finds its usage helper" contains "$stdout_file" '"agent":"codex"'
 check "installer preserves unknown adapters" equals "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_custom" custom
 check "installer installs the summon-agent skill" test -f "$INSTALL_HOME/.agents/skills/jamsession-summon-agent/SKILL.md"
+check "installer installs summon-agent metadata" test -f "$INSTALL_HOME/.agents/skills/jamsession-summon-agent/agents/openai.yaml"
 
 run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
   "$ROOT/jamsession" skills install jamsession-work-over-ssh
 check "optional skill installs on request" test -f "$INSTALL_HOME/.agents/skills/jamsession-work-over-ssh/SKILL.md"
+check "optional skill installs its metadata" test -f "$INSTALL_HOME/.agents/skills/jamsession-work-over-ssh/agents/openai.yaml"
 
 run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" "$ROOT/jamsession" skills
@@ -328,6 +395,7 @@ printf '%s\n' stale >"$INSTALLED/bin/jamsession"
 printf '%s\n' stale >"$INSTALLED/adapters/jamsession_codex"
 printf '%s\n' stale >"$INSTALLED/adapters/_jamsession_adapter_common"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-summon-agent/SKILL.md"
+printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-summon-agent/agents/openai.yaml"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md"
 printf '%s\n' 'JAMSESSION_CUSTOM_SETTING=kept' >>"$INSTALLED/jamsession.conf"
 
@@ -337,12 +405,14 @@ check "second install refreshes the command" contains "$INSTALLED/bin/jamsession
 check "second install refreshes a bundled adapter" contains "$INSTALLED/adapters/jamsession_codex" jamsession_validate_run
 check "second install refreshes the adapter helper" contains "$INSTALLED/adapters/_jamsession_adapter_common" jamsession_adapter_setup
 check "second install refreshes the default skill" contains "$INSTALLED_SKILLS/jamsession-summon-agent/SKILL.md" "name: jamsession-summon-agent"
+check "second install refreshes default skill metadata" contains "$INSTALLED_SKILLS/jamsession-summon-agent/agents/openai.yaml" "interface:"
 check "second install refreshes an installed optional skill" contains "$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md" "name: jamsession-work-over-ssh"
 check "second install preserves configuration" contains "$INSTALLED/jamsession.conf" JAMSESSION_CUSTOM_SETTING=kept
 check "second install preserves a custom adapter" equals "$INSTALLED/adapters/jamsession_custom" custom
 check "second install leaves uninstalled optional skills absent" test ! -e "$INSTALLED_SKILLS/jamsession-ask-agent-panel/SKILL.md"
 check "second install leaves no staging files behind" sh -c "! ls '$INSTALLED/bin/'*.jamsession-new '$INSTALLED/adapters/'*.jamsession-new >/dev/null 2>&1"
 check "installed command stays executable" test -x "$INSTALLED/bin/jamsession"
+check "installed usage helper stays executable" test -x "$INSTALLED/bin/jamsession_usage"
 check "installed adapters stay executable" test -x "$INSTALLED/adapters/jamsession_codex"
 check "installed adapter helper stays non-executable" test ! -x "$INSTALLED/adapters/_jamsession_adapter_common"
 
@@ -364,12 +434,15 @@ run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$R
 check "a later complete install recovers" contains "$INSTALLED/bin/jamsession" JAMSESSION_VERSION
 
 missing_skill=""
+missing_metadata=""
 while IFS= read -r listed_skill; do
   listed_skill="${listed_skill%% *}"
   [ -n "$listed_skill" ] || continue
   [ -f "$ROOT/skills/$listed_skill/SKILL.md" ] || missing_skill="$listed_skill"
+  [ -f "$ROOT/skills/$listed_skill/agents/openai.yaml" ] || missing_metadata="$listed_skill"
 done < <(env JAMSESSION_SKILL_DIR="$TEMP_ROOT/none" "$ROOT/jamsession" skills)
 check "every listed skill exists in the repository" test -z "$missing_skill"
+check "every listed skill has agent metadata" test -z "$missing_metadata"
 
 missing_install=""
 while IFS= read -r listed_skill; do
@@ -626,6 +699,10 @@ check "main help lists uninstall" contains "$stdout_file" "jamsession uninstall"
 
 check "the site workflow ships the install guide linked from the home page" \
   sh -c "grep -Fq 'install.md' '$ROOT/.github/workflows/pages.yml'"
+check "the home page teaches the combined status command" \
+  sh -c "grep -Fq 'jamsession status' '$ROOT/index.html'"
+check "the home page documents machine-readable usage" \
+  sh -c "grep -Fq 'jamsession usage --json' '$ROOT/index.html'"
 check "the test workflow runs the current test path" \
   sh -c "grep -Fq 'tests/test_jamsession.sh' '$ROOT/.github/workflows/test.yml'"
 check "no workflow still refers to the old name" \

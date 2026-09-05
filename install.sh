@@ -55,6 +55,7 @@ require_line() {
 # Stage the complete recognized bundle before replacing anything. A download
 # that fails partway must not leave a mix of old and new versions installed.
 fetch jamsession jamsession
+fetch usage/jamsession_usage usage/jamsession_usage
 fetch adapters/_jamsession_adapter_common adapters/_jamsession_adapter_common
 for provider in $PROVIDERS; do
   fetch "adapters/jamsession_$provider" "adapters/jamsession_$provider"
@@ -70,14 +71,17 @@ for skill in $OPTIONAL_SKILLS; do
 done
 for skill in $skills; do
   fetch "skills/$skill/SKILL.md" "skills/$skill/SKILL.md"
+  fetch "skills/$skill/agents/openai.yaml" "skills/$skill/agents/openai.yaml"
 done
 
 require_script jamsession
+require_script usage/jamsession_usage
 for provider in $PROVIDERS; do
   require_script "adapters/jamsession_$provider"
 done
 for skill in $skills; do
   require_line "skills/$skill/SKILL.md" "^name: $skill\$" "its skill name"
+  require_line "skills/$skill/agents/openai.yaml" '^interface:' "its agent metadata"
 done
 
 mkdir -p "$BIN_DIR" "$ADAPTER_DIR" "$SKILL_ROOT" "$LINK_DIR"
@@ -91,13 +95,15 @@ install_file() {
 }
 
 install_file jamsession "$BIN_DIR/jamsession" 755
+install_file usage/jamsession_usage "$BIN_DIR/jamsession_usage" 755
 install_file adapters/_jamsession_adapter_common "$ADAPTER_DIR/_jamsession_adapter_common" 644
 for provider in $PROVIDERS; do
   install_file "adapters/jamsession_$provider" "$ADAPTER_DIR/jamsession_$provider" 755
 done
 for skill in $skills; do
-  mkdir -p "$SKILL_ROOT/$skill"
+  mkdir -p "$SKILL_ROOT/$skill/agents"
   install_file "skills/$skill/SKILL.md" "$SKILL_ROOT/$skill/SKILL.md" 644
+  install_file "skills/$skill/agents/openai.yaml" "$SKILL_ROOT/$skill/agents/openai.yaml" 644
 done
 
 link="$LINK_DIR/jamsession"
@@ -121,4 +127,4 @@ esac
 
 echo >&2
 echo "Installed Jam Session in $INSTALL_ROOT" >&2
-echo "Run: jamsession doctor" >&2
+echo "Run: jamsession status" >&2

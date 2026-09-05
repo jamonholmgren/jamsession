@@ -1,0 +1,6 @@
+interface:
+  display_name: "Orchestrate Agent Work"
+  short_description: "Coordinate bounded work across Jam Session agents"
+  default_prompt: "Use $jamsession-orchestrate-agent-work to divide and coordinate this work."
+policy:
+  allow_implicit_invocation: false

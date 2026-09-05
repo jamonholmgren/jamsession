@@ -7,7 +7,7 @@ description: Produce a plan through independent drafts and explicit cross-model 
 
 1. Establish the planning question, verified context, requested round count,
    and final decision owner. Default an omitted count to one.
-2. Run `jamsession doctor` and choose two available agents from different model
+2. Run `jamsession status` and choose two available agents from different model
    families. Choose provider, model, effort, and read access explicitly.
 3. Start both agents in fresh sessions with the same evidence. Ask each for an
    independent plan before showing either agent the other's reasoning.

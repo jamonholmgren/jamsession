@@ -1,0 +1,4 @@
+interface:
+  display_name: "Contrarian Review"
+  short_description: "Challenge a proposal with an independent agent"
+  default_prompt: "Use $jamsession-contrarian-review to challenge this proposal."

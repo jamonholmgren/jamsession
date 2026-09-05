@@ -20,7 +20,7 @@ question or required external change. Use low or light effort when the model is
 capable enough; raise it for lower-intelligence models or difficult queue
 decisions.
 
-Before staffing managers or workers, run `jamsession doctor` and choose from the
+Before staffing managers or workers, run `jamsession status` and choose from the
 available providers. Choose every provider, model, effort, and access level
 explicitly.
 

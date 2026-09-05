@@ -45,6 +45,12 @@
       <code id="install-cmd">curl -fsSL https://jamsession.jamon.dev/install.sh | sh</code>
       <button type="button" class="copy" data-copy="install-cmd" aria-label="Copy install command">Copy</button>
     </div>
+    <p class="or">Then check every provider and its available usage:</p>
+    <div class="install">
+      <code id="status-cmd">jamsession status</code>
+      <button type="button" class="copy" data-copy="status-cmd" aria-label="Copy status command">Copy</button>
+    </div>
+    <p class="aside"><code>status</code> combines readiness and subscription usage. For automation, use <code>jamsession usage --json</code>; for focused authentication diagnostics, use <code>jamsession doctor</code>.</p>
   </section>
 
   <div class="divider" aria-hidden="true"><span class="mark"><i></i><i></i><i></i></span></div>
@@ -113,7 +119,7 @@
     <div class="how-grid">
       <div>
         <h3>No runtime stack</h3>
-        <p>Jam Session is just a few bash scripts and markdown skill files. No database, super lightweight, built to work with your agent first.</p>
+        <p>Jam Session is just a few Bash scripts and Markdown skill files. Even provider usage reporting needs no Python, database, or added packages.</p>
       </div>
       <div>
         <h3>Use your favorite agent</h3>

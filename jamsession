@@ -25,6 +25,8 @@ if [ -f "$JAMSESSION_CONFIG" ]; then
   # shellcheck source=/dev/null
   source "$JAMSESSION_CONFIG"
 fi
+export JAMSESSION_CODEX_BIN JAMSESSION_CLAUDE_BIN JAMSESSION_CURSOR_BIN \
+  JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN
 
 usage() {
   cat <<'EOF'
@@ -34,8 +36,8 @@ Usage:
   jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
   jamsession list <provider> [count]
   jamsession models <provider>
-  jamsession usage <provider>
-  jamsession status <provider>
+  jamsession usage [provider] [--json]
+  jamsession status [provider]
   jamsession doctor [provider]
   jamsession providers
   jamsession init
@@ -101,19 +103,24 @@ list_skills() {
 }
 
 install_one_skill() {
-  local skill="$1" target temp source_root
+  local skill="$1" target temp metadata source_root
   known_skill "$skill" || die "unknown bundled skill '$skill'"
   command -v curl >/dev/null 2>&1 || die "installing skills requires curl"
   target="$JAMSESSION_SKILL_DIR/$skill"
   source_root="${JAMSESSION_SOURCE_URL:-https://raw.githubusercontent.com/jamonholmgren/jamsession/main}"
   make_temp_dir
   temp="$JAMSESSION_TEMP_DIR/SKILL.md"
+  metadata="$JAMSESSION_TEMP_DIR/openai.yaml"
   curl -fsSL "$source_root/skills/$skill/SKILL.md" -o "$temp" || \
     die "could not download skill '$skill'"
+  curl -fsSL "$source_root/skills/$skill/agents/openai.yaml" -o "$metadata" || \
+    die "could not download metadata for skill '$skill'"
   [ -s "$temp" ] || die "downloaded skill '$skill' is empty"
-  chmod 644 "$temp"
-  mkdir -p "$target"
+  [ -s "$metadata" ] || die "downloaded metadata for skill '$skill' is empty"
+  chmod 644 "$temp" "$metadata"
+  mkdir -p "$target/agents"
   mv "$temp" "$target/SKILL.md"
+  mv "$metadata" "$target/agents/openai.yaml"
   clean_temp_dir
   printf 'Installed %s\n' "$target/SKILL.md"
 }
@@ -361,8 +368,9 @@ uninstall_command() {
 compact_usage() {
   cat >&2 <<'EOF'
 Usage: jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
-       jamsession <list|models|usage|status> <provider> [arguments]
-       jamsession <doctor|providers|init|make-adapter|skills|update|help>
+       jamsession <list|models> <provider> [arguments]
+       jamsession <usage|status|doctor> [provider]
+       jamsession <providers|init|make-adapter|skills|update|help>
        jamsession skills <list|install|uninstall> <name|all>
        jamsession uninstall
 EOF
@@ -451,7 +459,7 @@ EOF
 Agent guidance:
 jamsession normalizes non-interactive coding-agent CLIs so an agent can start or
 resume explicit provider-native sessions. Run `jamsession help` for the command
-contract, `jamsession doctor` for installed providers, and `jamsession help configure`
+contract, `jamsession status` for provider readiness and usage, and `jamsession help configure`
 before changing configuration.
 EOF
 }
@@ -516,7 +524,17 @@ esac
 EOF
   chmod 755 "$target"
   printf 'Created %s\n' "$target"
-  printf 'Edit it, then run: jamsession doctor %s\n' "$provider"
+  printf 'Edit it, then run: jamsession status %s\n' "$provider"
+}
+
+usage_helper() {
+  if [ -x "$JAMSESSION_HOME/bin/jamsession_usage" ]; then
+    printf '%s\n' "$JAMSESSION_HOME/bin/jamsession_usage"
+  elif [ -x "$SCRIPT_DIR/jamsession_usage" ]; then
+    printf '%s\n' "$SCRIPT_DIR/jamsession_usage"
+  else
+    printf '%s\n' "$SCRIPT_DIR/usage/jamsession_usage"
+  fi
 }
 
 help_topic() {
@@ -555,7 +573,7 @@ Lists the provider adapters installed in the adapter directory, one per line.
 
 An adapter appears here when it is a file named jamsession_<provider> and is
 executable. Listing a provider does not mean its CLI is installed or
-authenticated; run `jamsession doctor` for that.
+authenticated; run `jamsession status` for readiness and usage.
 EOF
       ;;
     skills)
@@ -616,6 +634,39 @@ must be enforced by the adapter; `edit` permits unattended workspace changes.
 Pass `-` as the prompt to read stdin.
 EOF
       ;;
+    usage)
+      cat <<'EOF'
+Usage: jamsession usage [provider] [--json]
+
+Shows subscription usage for every configured provider, or one provider. The
+collector is Bash and system-tool based; it adds no language-runtime dependency.
+Exit 0 means complete, 2 means partial, and 1 means no requested usage was read.
+EOF
+      ;;
+    status)
+      cat <<'EOF'
+Usage: jamsession status [provider]
+
+Shows provider authentication/readiness followed by available subscription
+usage. Use this for the normal overview; use `doctor` when diagnosing a failed
+provider and `usage --json` for scripts.
+EOF
+      ;;
+    doctor)
+      cat <<'EOF'
+Usage: jamsession doctor [provider]
+
+Runs provider authentication and installation diagnostics without collecting
+subscription usage.
+EOF
+      ;;
+    list|models)
+      cat <<EOF
+Usage: jamsession $1 <provider>
+
+Runs the provider's native $1 operation.
+EOF
+      ;;
     *)
       local path
       path="$(require_adapter "$1")"
@@ -641,10 +692,32 @@ case "$command_name" in
     provider="$1"; shift
     exec "$(require_adapter "$provider")" list "$@"
     ;;
-  models|usage|status)
+  models)
     [ $# -eq 1 ] || die "$command_name needs <provider>"
     provider="$1"
     exec "$(require_adapter "$provider")" "$command_name"
+    ;;
+  usage)
+    [ $# -le 2 ] || die "usage takes [provider] [--json]"
+    exec "$(usage_helper)" "$@"
+    ;;
+  status)
+    [ $# -le 1 ] || die "status takes at most one provider"
+    status_provider="${1:-}"
+    doctor_status=0
+    if [ -n "$status_provider" ]; then
+      "$(require_adapter "$status_provider")" doctor || doctor_status=$?
+      printf '\nUsage:\n'
+      "$(usage_helper)" "$status_provider" || true
+    else
+      "$0" doctor || doctor_status=$?
+      printf '\nUsage:\n'
+      "$(usage_helper)" || true
+    fi
+    # Status is the normal readiness check. Usage is useful context, but some
+    # provider CLIs do not expose it to a non-interactive terminal. Do not turn
+    # an otherwise ready provider into a failed preflight for that limitation.
+    exit "$doctor_status"
     ;;
   doctor)
     [ $# -le 1 ] || die "doctor takes at most one provider"

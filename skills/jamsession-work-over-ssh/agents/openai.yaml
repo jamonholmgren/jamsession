@@ -1,0 +1,4 @@
+interface:
+  display_name: "Work Over SSH"
+  short_description: "Run an agent against a remote workspace over SSH"
+  default_prompt: "Use $jamsession-work-over-ssh to perform this work on the remote host."

@@ -5,7 +5,7 @@ description: Start or resume one coding agent session through the `jamsession` C
 
 # Summon an Agent
 
-1. Run `jamsession help` for the current command contract and `jamsession doctor` to
+1. Run `jamsession help` for the current command contract and `jamsession status` to
    see which installed adapters are usable.
 2. Choose the provider, model, effort, and `read` or `edit` access explicitly.
    Never request `edit` unless the task authorizes changes.

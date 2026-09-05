@@ -1,0 +1,4 @@
+interface:
+  display_name: "Summon Agent"
+  short_description: "Start or resume one agent with Jam Session"
+  default_prompt: "Use $jamsession-summon-agent to run this subagent task."
