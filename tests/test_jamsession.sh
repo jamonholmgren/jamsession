@@ -722,8 +722,8 @@ check "the site workflow ships the install guide linked from the home page" \
   sh -c "grep -Fq 'install.md' '$ROOT/.github/workflows/pages.yml'"
 check "the site workflow ships image assets" \
   sh -c "grep -Fq 'cp -R assets _site/' '$ROOT/.github/workflows/pages.yml'"
-check "the home page teaches the combined status command" \
-  sh -c "grep -Fq 'jamsession status' '$ROOT/index.html'"
+check "the home page demotes manual installation" \
+  sh -c "grep -Fq '<details class=\"manual-install\">' '$ROOT/index.html'"
 check "the home page uses the orchestration screenshot" \
   sh -c "grep -Fq 'assets/jamsession-orchestration-example.png' '$ROOT/index.html'"
 check "the orchestration screenshot ships with the site" \
@@ -742,14 +742,8 @@ check "the remote-agent skill depends on no separately optional skill" \
   sh -c "! grep -Eq 'jamsession-(individual-worker-workflow|work-over-ssh|orchestrate-agent-work)' '$ROOT/skills/jamsession-use-remote-agent-over-ssh/SKILL.md'"
 check "retired skill identifiers are absent from active source" \
   sh -c "! grep -R -E 'jamsession-(agent-worker-task|run-remote-agents)' '$ROOT/skills' '$ROOT/jamsession' '$ROOT/README.md' '$ROOT/index.html'"
-check "the website indents the four orchestrator support skills" \
-  test "$(grep -c '<li class=\"skill-child\"' "$ROOT/index.html")" -eq 4
-check "the website includes the agent worksheet skill" \
-  grep -Fq 'jamsession-use-agent-worksheet' "$ROOT/index.html"
-check "the website uses the renamed worker identifier" \
-  grep -Fq 'jamsession-individual-worker-workflow' "$ROOT/index.html"
-check "the website uses the renamed remote-agent identifier" \
-  grep -Fq 'jamsession-use-remote-agent-over-ssh' "$ROOT/index.html"
+check "the website summarizes orchestrator support skills" \
+  grep -Fq 'supporting skills for worksheets, worker discipline, and SSH' "$ROOT/index.html"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

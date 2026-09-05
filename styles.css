@@ -227,6 +227,17 @@ main > section > p { max-width: 62ch; color: var(--ink-soft); }
 .start .aside { font-size: 0.9rem; color: var(--ink-faint); }
 .start .or { margin: 1.75rem 0 0.75rem; }
 
+.manual-install {
+  max-width: 44rem;
+  margin-top: 1.75rem;
+}
+.manual-install summary {
+  width: fit-content;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.manual-install[open] summary { margin-bottom: 0.75rem; }
+
 /* the do-it-yourself line lives in a dark terminal in both color schemes */
 .install {
   --term: #1E1C17;
@@ -334,9 +345,6 @@ main > section > p { max-width: 62ch; color: var(--ink-soft); }
   padding-block: 0.95rem;
   border-top: 1px solid var(--line);
 }
-.skill-list li.skill-child {
-  margin-left: 2rem;
-}
 .skill-list .dot {
   grid-area: dot;
   width: 10px;
@@ -357,6 +365,11 @@ main > section > p { max-width: 62ch; color: var(--ink-soft); }
   border-radius: 6px;
   padding: 0.25rem 0.55rem;
   white-space: nowrap;
+}
+.skill-support {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: var(--ink-faint);
 }
 
 /* ---------- footer ---------- */
@@ -415,7 +428,6 @@ footer p { margin: 0; }
       ".   slug";
     row-gap: 0.2rem;
   }
-  .skill-list li.skill-child { margin-left: 1rem; }
   .skill-list code { justify-self: start; margin-top: 0.25rem; }
 
   footer { flex-direction: column; align-items: flex-start; gap: 0.75rem; }

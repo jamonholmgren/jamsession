@@ -28,7 +28,7 @@
 
   <section class="hero">
     <h1>Summon <em>other</em> agents.</h1>
-    <p class="lede">A tiny CLI your coding agent uses to call Codex, Claude, Cursor, Grok, and Copilot &mdash; plus skills for multi&#8209;agent planning, review, panels, and delegation.</p>
+    <p class="lede">You have a favorite coding agent already. Jam Session lets it call Codex, Claude, Cursor, Grok, and Copilot, and have them plan, argue, review, and build together.</p>
     <p class="trust">macOS &middot; Linux &middot; WSL &mdash; totally free, MIT licensed.</p>
   </section>
 
@@ -40,16 +40,13 @@
       <button type="button" class="copy" data-copy="agent-prompt" aria-label="Copy agent prompt">Copy prompt</button>
     </div>
     <p class="aside">Your agent installs it, reads the docs, and teaches you the ropes. That&rsquo;s the whole onboarding.</p>
-    <p class="or">Or do it yourself:</p>
-    <div class="install">
-      <code id="install-cmd">curl -fsSL https://jamsession.jamon.dev/install.sh | sh</code>
-      <button type="button" class="copy" data-copy="install-cmd" aria-label="Copy install command">Copy</button>
-    </div>
-    <p class="or">Then check every provider and its available usage:</p>
-    <div class="install">
-      <code id="status-cmd">jamsession status</code>
-      <button type="button" class="copy" data-copy="status-cmd" aria-label="Copy status command">Copy</button>
-    </div>
+    <details class="manual-install">
+      <summary>Prefer to install it yourself?</summary>
+      <div class="install">
+        <code id="install-cmd">curl -fsSL https://jamsession.jamon.dev/install.sh | sh</code>
+        <button type="button" class="copy" data-copy="install-cmd" aria-label="Copy install command">Copy</button>
+      </div>
+    </details>
   </section>
 
   <div class="divider" aria-hidden="true"><span class="mark"><i></i><i></i><i></i></span></div>
@@ -89,7 +86,7 @@
 
   <section class="skills" id="skills" aria-labelledby="skills-h">
     <h2 id="skills-h">Skills in the box</h2>
-    <p>Each skill teaches your agent how to jam with the others. It&rsquo;s how Jamon likes to do work.</p>
+    <p>These are the workflows you&rsquo;ll ask for. Jam Session handles the supporting machinery.</p>
     <ul class="skill-list">
       <li style="--tc:var(--t-violet)">
         <span class="dot" aria-hidden="true"></span>
@@ -121,30 +118,6 @@
         <span class="skill-desc">Runs managers and workers for autonomous, parallel work.</span>
         <code>jamsession-orchestrate-agent-work</code>
       </li>
-      <li class="skill-child" style="--tc:var(--t-teal)">
-        <span class="dot" aria-hidden="true"></span>
-        <span class="skill-name">Agent Worksheet</span>
-        <span class="skill-desc">Keeps durable task state so another agent can pick up the work.</span>
-        <code>jamsession-use-agent-worksheet</code>
-      </li>
-      <li class="skill-child" style="--tc:var(--t-coral)">
-        <span class="dot" aria-hidden="true"></span>
-        <span class="skill-name">Individual Worker Workflow</span>
-        <span class="skill-desc">Keeps one assigned worker bounded and verifiable.</span>
-        <code>jamsession-individual-worker-workflow</code>
-      </li>
-      <li class="skill-child" style="--tc:var(--t-violet)">
-        <span class="dot" aria-hidden="true"></span>
-        <span class="skill-name">Work Over SSH</span>
-        <span class="skill-desc">Performs a scoped task directly in a remote checkout.</span>
-        <code>jamsession-work-over-ssh</code>
-      </li>
-      <li class="skill-child" style="--tc:var(--t-amber)">
-        <span class="dot" aria-hidden="true"></span>
-        <span class="skill-name">Use Remote Agent Over SSH</span>
-        <span class="skill-desc">Runs a Jam Session agent inside a remote checkout.</span>
-        <code>jamsession-use-remote-agent-over-ssh</code>
-      </li>
       <li style="--tc:var(--t-leaf)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Agent usage</span>
@@ -158,6 +131,7 @@
         <code>jamsession-model-recommendations</code>
       </li>
     </ul>
+    <p class="skill-support">The orchestrator also has supporting skills for worksheets, worker discipline, and SSH. Your agent uses them when the work calls for them.</p>
   </section>
 
   <div class="divider" aria-hidden="true"><span class="mark"><i></i><i></i><i></i></span></div>
