@@ -8,6 +8,8 @@ Spin up any of the agents below and resume their sessions, view usage data, and 
 
 All in a few small bash scripts.
 
+<img width="600" alt="Example of using Jam Session" src="https://github.com/user-attachments/assets/114ee4f0-ca1c-4b53-ac20-665ad31034e5" />
+
 ### Supported Agent Providers
 
 * Codex
@@ -18,8 +20,6 @@ All in a few small bash scripts.
 * _any other agent CLI -- just have your agent build an adapter for it!_
 
 **Star this repo if you find it interesting!** I appreciate the support.
-
-<img width="615" height="192" alt="Codex with Jam Session" src="https://github.com/user-attachments/assets/892d5225-6c1b-42c2-a0ab-c002b2d6569d" />
 
 **No dependencies.**
 
