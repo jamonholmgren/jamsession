@@ -26,6 +26,7 @@ jobs:
         run: |
           mkdir _site
           cp index.html styles.css install.sh install.md _site/
+          cp -R assets _site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v4
       - name: Deploy to GitHub Pages

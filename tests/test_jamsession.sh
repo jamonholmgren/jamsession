@@ -720,6 +720,8 @@ check "main help lists uninstall" contains "$stdout_file" "jamsession uninstall"
 
 check "the site workflow ships the install guide linked from the home page" \
   sh -c "grep -Fq 'install.md' '$ROOT/.github/workflows/pages.yml'"
+check "the site workflow ships image assets" \
+  sh -c "grep -Fq 'cp -R assets _site/' '$ROOT/.github/workflows/pages.yml'"
 check "the home page teaches the combined status command" \
   sh -c "grep -Fq 'jamsession status' '$ROOT/index.html'"
 check "the home page documents machine-readable usage" \
