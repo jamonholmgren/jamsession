@@ -224,6 +224,25 @@ main > section > p { max-width: 62ch; color: var(--ink-soft); }
 }
 .prompt-card .copy { border-radius: 8px; }
 
+.agent-message {
+  margin-left: auto;
+  color: #F5F5F5;
+  background: #1F1F1F;
+  border-color: #333333;
+  border-radius: 20px 20px 6px 20px;
+  box-shadow: 4px 4px 0 color-mix(in srgb, #000 22%, transparent);
+}
+.agent-message a { color: #70AFFF; }
+.agent-message .copy {
+  color: #70AFFF;
+  border-color: #70AFFF;
+}
+.agent-message .copy:hover,
+.agent-message .copy.copied {
+  color: #101010;
+  background: #70AFFF;
+}
+
 .start .aside { font-size: 0.9rem; color: var(--ink-faint); }
 .start .or { margin: 1.75rem 0 0.75rem; }
 

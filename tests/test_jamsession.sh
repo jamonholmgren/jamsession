@@ -724,6 +724,8 @@ check "the site workflow ships image assets" \
   sh -c "grep -Fq 'cp -R assets _site/' '$ROOT/.github/workflows/pages.yml'"
 check "the home page demotes manual installation" \
   sh -c "grep -Fq '<details class=\"manual-install\">' '$ROOT/index.html'"
+check "the install prompt is presented as an agent message" \
+  sh -c "grep -Fq '<div class=\"prompt-card agent-message\">' '$ROOT/index.html'"
 check "the home page uses the orchestration screenshot" \
   sh -c "grep -Fq 'assets/jamsession-orchestration-example.png' '$ROOT/index.html'"
 check "the orchestration screenshot ships with the site" \
