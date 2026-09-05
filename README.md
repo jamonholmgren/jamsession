@@ -8,7 +8,7 @@ Spin up any of the agents below and resume their sessions, view usage data, and 
 
 All in a few small bash scripts.
 
-<img width="600" alt="Example of using Jam Session" src="https://github.com/user-attachments/assets/114ee4f0-ca1c-4b53-ac20-665ad31034e5" />
+<img width="800" alt="Example of using Jam Session" src="https://github.com/user-attachments/assets/7cff32a2-f2f4-469c-9b25-b9e5ea8e5900" />
 
 ### Supported Agent Providers
 
