@@ -24,6 +24,10 @@ Before staffing managers or workers, run `jamsession status` and choose from the
 available providers. Choose every provider, model, effort, and access level
 explicitly.
 
+If `jamsession-use-agent-worksheet` is available, use it for each managed ticket.
+The manager owns that ticket's worksheet; workers report evidence to the manager
+rather than editing the shared record concurrently.
+
 ## Manager: own one ticket end to end
 
 A manager executes one current ticket from interpretation through validated
@@ -60,6 +64,23 @@ Workers report evidence to managers. Managers inspect and integrate that
 evidence, then return completed tickets or precise blockers to the supervisor.
 The supervisor communicates decisions and questions with the user and feeds the
 next ready ticket to an available manager.
+
+Keep queue work lean by default:
+
+- Reuse current repository discovery while its inputs remain unchanged.
+- Give each ticket a small evidence budget: changed contracts, decisive focused
+  checks, and any broader gates required by risk or repository policy.
+- Validate from narrow checks toward broader required gates. Do not rerun green
+  evidence unless its code, tests, fixtures, configuration, toolchain, or
+  integration prerequisites changed.
+- Preserve the first useful failure and retry only affected or inconclusive work.
+- Use idle capacity for read-only preparation of the next independent ticket.
+- Parallelize only independent work with isolated write ownership. Keep writers
+  and stateful tests sequential within a shared checkout.
+- Integrate completed tickets atomically rather than combining unrelated work.
+
+Repository instructions, acceptance criteria, required proof, and approvals
+always take precedence over throughput.
 
 Do not create extra agents merely to apply a fixed process. Stop delegating
 when coordination costs more than completing the remaining work directly.

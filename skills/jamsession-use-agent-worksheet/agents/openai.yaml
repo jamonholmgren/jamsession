@@ -1,0 +1,4 @@
+interface:
+  display_name: "Use Agent Worksheet"
+  short_description: "Keep durable task state in a checked-in worksheet"
+  default_prompt: "Use $jamsession-use-agent-worksheet to track this task in a durable worksheet."

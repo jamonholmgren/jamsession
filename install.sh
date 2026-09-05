@@ -13,7 +13,8 @@ PROVIDERS="codex claude cursor grok copilot"
 DEFAULT_SKILLS="jamsession-summon-agent jamsession-get-agent-usage"
 OPTIONAL_SKILLS="jamsession-model-recommendations jamsession-ping-pong-planning
 jamsession-contrarian-review jamsession-ask-agent-panel
-jamsession-orchestrate-agent-work jamsession-individual-worker-workflow
+jamsession-orchestrate-agent-work jamsession-use-agent-worksheet
+jamsession-individual-worker-workflow
 jamsession-work-over-ssh jamsession-use-remote-agent-over-ssh"
 RENAMED_SKILLS="jamsession-agent-worker-task:jamsession-individual-worker-workflow
 jamsession-run-remote-agents:jamsession-use-remote-agent-over-ssh"

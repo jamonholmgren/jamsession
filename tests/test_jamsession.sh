@@ -390,6 +390,12 @@ run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jams
 check "model-recommendations skill installs on request" test -f "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md"
 check "model recommendations carry a freshness date" contains "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md" "fresh as of September 5, 2026"
 
+run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
+  JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
+  "$ROOT/jamsession" skills install jamsession-use-agent-worksheet
+check "agent-worksheet skill installs on request" test -f "$INSTALL_HOME/.agents/skills/jamsession-use-agent-worksheet/SKILL.md"
+check "agent-worksheet skill installs its metadata" test -f "$INSTALL_HOME/.agents/skills/jamsession-use-agent-worksheet/agents/openai.yaml"
+
 # --- Second run: recognized files refresh, everything else survives ---
 INSTALLED="$INSTALL_HOME/.agents/jamsession"
 INSTALLED_SKILLS="$INSTALL_HOME/.agents/skills"
@@ -403,6 +409,8 @@ printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-summon-agent/SKILL.md"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-summon-agent/agents/openai.yaml"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-get-agent-usage/SKILL.md"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md"
+printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-use-agent-worksheet/SKILL.md"
+printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-use-agent-worksheet/agents/openai.yaml"
 printf '%s\n' 'JAMSESSION_CUSTOM_SETTING=kept' >>"$INSTALLED/jamsession.conf"
 
 run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$ROOT/install.sh"
@@ -418,6 +426,8 @@ check "second install removes the retired worker identifier" test ! -e "$INSTALL
 check "second install migrates the remote-agent skill name" test -f "$INSTALLED_SKILLS/jamsession-use-remote-agent-over-ssh/SKILL.md"
 check "second install removes the retired remote-agent identifier" test ! -e "$INSTALLED_SKILLS/jamsession-run-remote-agents"
 check "second install refreshes an installed optional skill" contains "$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md" "name: jamsession-work-over-ssh"
+check "second install refreshes the worksheet skill" contains "$INSTALLED_SKILLS/jamsession-use-agent-worksheet/SKILL.md" "name: jamsession-use-agent-worksheet"
+check "second install refreshes worksheet metadata" contains "$INSTALLED_SKILLS/jamsession-use-agent-worksheet/agents/openai.yaml" "interface:"
 check "second install preserves configuration" contains "$INSTALLED/jamsession.conf" JAMSESSION_CUSTOM_SETTING=kept
 check "second install preserves a custom adapter" equals "$INSTALLED/adapters/jamsession_custom" custom
 check "second install leaves uninstalled optional skills absent" test ! -e "$INSTALLED_SKILLS/jamsession-ask-agent-panel/SKILL.md"
@@ -728,8 +738,10 @@ check "the remote-agent skill depends on no separately optional skill" \
   sh -c "! grep -Eq 'jamsession-(individual-worker-workflow|work-over-ssh|orchestrate-agent-work)' '$ROOT/skills/jamsession-use-remote-agent-over-ssh/SKILL.md'"
 check "retired skill identifiers are absent from active source" \
   sh -c "! grep -R -E 'jamsession-(agent-worker-task|run-remote-agents)' '$ROOT/skills' '$ROOT/jamsession' '$ROOT/README.md' '$ROOT/index.html'"
-check "the website indents the three orchestrator support skills" \
-  test "$(grep -c '<li class=\"skill-child\"' "$ROOT/index.html")" -eq 3
+check "the website indents the four orchestrator support skills" \
+  test "$(grep -c '<li class=\"skill-child\"' "$ROOT/index.html")" -eq 4
+check "the website includes the agent worksheet skill" \
+  grep -Fq 'jamsession-use-agent-worksheet' "$ROOT/index.html"
 check "the website uses the renamed worker identifier" \
   grep -Fq 'jamsession-individual-worker-workflow' "$ROOT/index.html"
 check "the website uses the renamed remote-agent identifier" \
