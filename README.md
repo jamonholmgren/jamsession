@@ -2,7 +2,7 @@
 
 _An open-source project by [Jamon Holmgren](https://jamon.dev)._
 
-A tiny CLI your coding agent uses to summon other coding agents, and some useful skills and workflows that this enables.
+A tiny CLI your favorite coding agent uses to summon other coding agents, and some useful skills and workflows that this enables.
 
 Spin up any of the agents below and resume their sessions, view usage data, and more.
 
