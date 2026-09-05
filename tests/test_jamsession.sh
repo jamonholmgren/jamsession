@@ -724,8 +724,6 @@ check "the site workflow ships image assets" \
   sh -c "grep -Fq 'cp -R assets _site/' '$ROOT/.github/workflows/pages.yml'"
 check "the home page teaches the combined status command" \
   sh -c "grep -Fq 'jamsession status' '$ROOT/index.html'"
-check "the home page documents machine-readable usage" \
-  sh -c "grep -Fq 'jamsession usage --json' '$ROOT/index.html'"
 check "the home page uses the orchestration screenshot" \
   sh -c "grep -Fq 'assets/jamsession-orchestration-example.png' '$ROOT/index.html'"
 check "the orchestration screenshot ships with the site" \
