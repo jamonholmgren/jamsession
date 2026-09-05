@@ -1,0 +1,4 @@
+interface:
+  display_name: "Get Agent Usage"
+  short_description: "Show agent quotas and reset times in a table"
+  default_prompt: "Use $jamsession-get-agent-usage to show current usage for all my agent providers."

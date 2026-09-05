@@ -98,7 +98,7 @@ jamsession skills uninstall jamsession-orchestrate-agent-work
 jamsession skills uninstall all
 ```
 
-`jamsession-summon-agent` is installed by default. The rest are opt-in: model recommendations, ping-pong planning, contrarian review, agent panels, orchestration, worker tasks, and SSH.
+`jamsession-summon-agent` and `jamsession-get-agent-usage` are installed by default. Ask your agent for current usage and it will turn `jamsession usage --json` into a readable table. The rest are opt-in: model recommendations, ping-pong planning, contrarian review, agent panels, orchestration, worker tasks, and SSH.
 
 Uninstalling `all` removes every `jamsession-*` skill directory, including custom ones. It leaves unrelated skills and `~/.agents/skills/` alone.
 

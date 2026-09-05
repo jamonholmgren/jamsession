@@ -10,7 +10,7 @@ ADAPTER_DIR="$INSTALL_ROOT/adapters"
 LINK_DIR="$HOME/.local/bin"
 
 PROVIDERS="codex claude cursor grok copilot"
-DEFAULT_SKILL=jamsession-summon-agent
+DEFAULT_SKILLS="jamsession-summon-agent jamsession-get-agent-usage"
 OPTIONAL_SKILLS="jamsession-model-recommendations jamsession-ping-pong-planning
 jamsession-contrarian-review jamsession-ask-agent-panel
 jamsession-orchestrate-agent-work jamsession-agent-worker-task
@@ -61,9 +61,9 @@ for provider in $PROVIDERS; do
   fetch "adapters/jamsession_$provider" "adapters/jamsession_$provider"
 done
 
-# The default skill is always refreshed. Optional skills are refreshed only when
+# The default skills are always refreshed. Optional skills are refreshed only when
 # the user has already installed them.
-skills=$DEFAULT_SKILL
+skills=$DEFAULT_SKILLS
 for skill in $OPTIONAL_SKILLS; do
   if [ -f "$SKILL_ROOT/$skill/SKILL.md" ]; then
     skills="$skills $skill"

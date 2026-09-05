@@ -371,6 +371,8 @@ check "the installed symlink finds its usage helper" contains "$stdout_file" '"a
 check "installer preserves unknown adapters" equals "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_custom" custom
 check "installer installs the summon-agent skill" test -f "$INSTALL_HOME/.agents/skills/jamsession-summon-agent/SKILL.md"
 check "installer installs summon-agent metadata" test -f "$INSTALL_HOME/.agents/skills/jamsession-summon-agent/agents/openai.yaml"
+check "installer installs the agent-usage skill" test -f "$INSTALL_HOME/.agents/skills/jamsession-get-agent-usage/SKILL.md"
+check "installer installs agent-usage metadata" test -f "$INSTALL_HOME/.agents/skills/jamsession-get-agent-usage/agents/openai.yaml"
 
 run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
@@ -396,6 +398,7 @@ printf '%s\n' stale >"$INSTALLED/adapters/jamsession_codex"
 printf '%s\n' stale >"$INSTALLED/adapters/_jamsession_adapter_common"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-summon-agent/SKILL.md"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-summon-agent/agents/openai.yaml"
+printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-get-agent-usage/SKILL.md"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md"
 printf '%s\n' 'JAMSESSION_CUSTOM_SETTING=kept' >>"$INSTALLED/jamsession.conf"
 
@@ -406,6 +409,7 @@ check "second install refreshes a bundled adapter" contains "$INSTALLED/adapters
 check "second install refreshes the adapter helper" contains "$INSTALLED/adapters/_jamsession_adapter_common" jamsession_adapter_setup
 check "second install refreshes the default skill" contains "$INSTALLED_SKILLS/jamsession-summon-agent/SKILL.md" "name: jamsession-summon-agent"
 check "second install refreshes default skill metadata" contains "$INSTALLED_SKILLS/jamsession-summon-agent/agents/openai.yaml" "interface:"
+check "second install refreshes the default usage skill" contains "$INSTALLED_SKILLS/jamsession-get-agent-usage/SKILL.md" "name: jamsession-get-agent-usage"
 check "second install refreshes an installed optional skill" contains "$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md" "name: jamsession-work-over-ssh"
 check "second install preserves configuration" contains "$INSTALLED/jamsession.conf" JAMSESSION_CUSTOM_SETTING=kept
 check "second install preserves a custom adapter" equals "$INSTALLED/adapters/jamsession_custom" custom
@@ -709,6 +713,8 @@ check "no workflow still refers to the old name" \
   sh -c "! grep -rqi jamwrap '$ROOT/.github/workflows/'"
 check "the model recommendation skill is bundled" \
   sh -c "grep -q '^name: jamsession-model-recommendations$' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
+check "the agent-usage skill requests structured usage" \
+  sh -c "grep -Fq 'jamsession usage --json' '$ROOT/skills/jamsession-get-agent-usage/SKILL.md'"
 check "the remote-agent skill depends on no separately optional skill" \
   sh -c "! grep -Eq 'jamsession-(agent-worker-task|work-over-ssh|orchestrate-agent-work)' '$ROOT/skills/jamsession-run-remote-agents/SKILL.md'"
 

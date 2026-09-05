@@ -69,6 +69,10 @@ List the available skills:
 jamsession skills
 ```
 
+The installer includes `jamsession-summon-agent` and
+`jamsession-get-agent-usage` by default. Ask your coding agent for current
+provider usage to get a table of limits, remaining capacity, and reset times.
+
 Install one or all optional skills:
 
 ```sh
