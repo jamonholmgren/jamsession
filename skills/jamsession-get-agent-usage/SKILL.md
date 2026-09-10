@@ -29,9 +29,11 @@ description: Report current usage, remaining quota, rate-limit windows, and rese
    not expose a reset, use the next applicable 21st and calculate the day count.
 6. For a provider whose usage is unavailable, include one row with
    `Usage unavailable` in the Window column and em dashes elsewhere. Do not imply
-   that the provider itself is unavailable or unauthenticated. Grok collection
-   opens its supported interactive `/usage` modal through a local Python PTY; do
-   not substitute model-reported usage, session-token counts, or a private API.
+   that the provider itself is unavailable or unauthenticated. Grok and Copilot
+   collection opens their supported interactive `/usage` screens through a local
+   Python PTY. Copilot runs in a fresh temporary folder, accepts only the
+   session-local trust prompt, and uses plan mode; do not substitute
+   model-reported usage, session-token counts, or a private API.
 7. After the table, state how many providers returned usage out of the total.
    Mention unavailable providers in one concise sentence. If diagnostics show
    why collection failed, state that briefly; distinguish an unreadable usage

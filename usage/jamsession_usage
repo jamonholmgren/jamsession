@@ -172,7 +172,6 @@ capture_tui() {
       claude) grep -q 'Current week (Fable)' "$output" 2>/dev/null && break ;;
       cursor) grep -Eq 'plan [0-9.]+% left|Included.*% used' "$output" 2>/dev/null && break ;;
       grok) grep -q 'Weekly limit' "$output" 2>/dev/null && break ;;
-      copilot) grep -Eq 'AI credits|premium requests|% (left|used)' "$output" 2>/dev/null && break ;;
     esac
     sleep 1
   done
@@ -186,17 +185,17 @@ capture_tui() {
   CAPTURE_FILE="$output"
 }
 
-grok_usage() {
-  local text python_bin="${JAMSESSION_PYTHON_BIN:-python3}" helper="$SCRIPT_DIR/jamsession_grok_usage.py"
+tui_usage() {
+  local provider="$1" binary="$2" text python_bin="${JAMSESSION_PYTHON_BIN:-python3}" helper="$SCRIPT_DIR/jamsession_tui_usage.py"
   if [ -n "${JAMSESSION_USAGE_FIXTURE_DIR:-}" ]; then
-    CAPTURE_FILE="$JAMSESSION_USAGE_FIXTURE_DIR/grok.txt"
+    CAPTURE_FILE="$JAMSESSION_USAGE_FIXTURE_DIR/$provider.txt"
     [ -f "$CAPTURE_FILE" ] || return 1
     cat "$CAPTURE_FILE"
     return
   fi
   command -v "$python_bin" >/dev/null 2>&1 || return 1
   [ -f "$helper" ] || return 1
-  text="$("$python_bin" "$helper" "${JAMSESSION_GROK_BIN:-grok}" "$TIMEOUT")" || return 1
+  text="$("$python_bin" "$helper" "$provider" "$binary" "$TIMEOUT")" || return 1
   [ -n "$text" ] || return 1
   printf '%s' "$text"
 }
@@ -241,6 +240,7 @@ text_windows() {
       *"Weekly limit"*) heading="weekly|Weekly limit" ;;
       *"AI credits"*) heading="monthly_credits|Monthly AI credits" ;;
       *"premium requests"*) heading="monthly_premium|Monthly premium requests" ;;
+      Plan) heading="monthly_plan|Monthly plan" ;;
     esac
     if [[ "$line" =~ ([0-9]+([.][0-9]+)?)%[[:space:]]+used ]]; then
       used="${BASH_REMATCH[1]}"
@@ -296,12 +296,11 @@ provider_usage() {
       PROVIDER_WINDOWS="$(text_windows cursor "$text")" || return 1
       ;;
     grok)
-      text="$(grok_usage)" || return 1
+      text="$(tui_usage grok "${JAMSESSION_GROK_BIN:-grok}")" || return 1
       PROVIDER_WINDOWS="$(text_windows grok "$text")" || return 1
       ;;
     copilot)
-      capture_tui copilot "${JAMSESSION_COPILOT_BIN:-copilot}" --screen-reader --mode plan || return 1
-      text="$(cat "$CAPTURE_FILE")"
+      text="$(tui_usage copilot "${JAMSESSION_COPILOT_BIN:-copilot}")" || return 1
       PROVIDER_WINDOWS="$(text_windows copilot "$text")" || return 1
       ;;
     *) return 1 ;;

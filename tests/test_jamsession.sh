@@ -214,6 +214,20 @@ check "Grok usage renders its cursor-addressed modal" contains "$stdout_file" '"
 check "Grok usage reads the modal percentage" contains "$stdout_file" '"remaining_percent":86'
 check "Grok usage reads the modal reset" contains "$stdout_file" '"reset_display":"September 13, 22:12"'
 
+COPILOT_USAGE_TUI="$TEMP_ROOT/copilot-usage-tui"
+cat >"$COPILOT_USAGE_TUI" <<'EOF'
+#!/usr/bin/env python3
+import sys
+import time
+sys.stdout.write('\033[2J\033[12;3HPlan       1% used\033[13;15H15 / 1,500 AIC')
+sys.stdout.flush()
+time.sleep(30)
+EOF
+chmod 755 "$COPILOT_USAGE_TUI"
+run_command env JAMSESSION_COPILOT_BIN="$COPILOT_USAGE_TUI" "$ROOT/jamsession" usage copilot --json
+check "Copilot usage renders its cursor-addressed screen" contains "$stdout_file" '"agent":"copilot","status":"ok"'
+check "Copilot usage reads the plan percentage" contains "$stdout_file" '"remaining_percent":99'
+
 ANSI_FIXTURES="$TEMP_ROOT/ansi-usage-fixtures"
 cp -R "$USAGE_FIXTURES" "$ANSI_FIXTURES"
 printf '\033[1mCurrent session\033[0m\n\033[1m6%%\033[0m used\nResets \033[1m4:30pm \\ local\033[0m\n' >"$ANSI_FIXTURES/claude.txt"
@@ -450,7 +464,7 @@ check "second install leaves uninstalled optional skills absent" test ! -e "$INS
 check "second install leaves no staging files behind" sh -c "! ls '$INSTALLED/bin/'*.jamsession-new '$INSTALLED/adapters/'*.jamsession-new >/dev/null 2>&1"
 check "installed command stays executable" test -x "$INSTALLED/bin/jamsession"
 check "installed usage helper stays executable" test -x "$INSTALLED/bin/jamsession_usage"
-check "installed Grok usage reader stays executable" test -x "$INSTALLED/bin/jamsession_grok_usage.py"
+check "installed terminal usage reader stays executable" test -x "$INSTALLED/bin/jamsession_tui_usage.py"
 check "installed adapters stay executable" test -x "$INSTALLED/adapters/jamsession_codex"
 check "installed adapter helper stays non-executable" test ! -x "$INSTALLED/adapters/_jamsession_adapter_common"
 

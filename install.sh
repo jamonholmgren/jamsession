@@ -59,7 +59,7 @@ require_line() {
 # that fails partway must not leave a mix of old and new versions installed.
 fetch jamsession jamsession
 fetch usage/jamsession_usage usage/jamsession_usage
-fetch usage/jamsession_grok_usage.py usage/jamsession_grok_usage.py
+fetch usage/jamsession_tui_usage.py usage/jamsession_tui_usage.py
 fetch adapters/_jamsession_adapter_common adapters/_jamsession_adapter_common
 for provider in $PROVIDERS; do
   fetch "adapters/jamsession_$provider" "adapters/jamsession_$provider"
@@ -86,7 +86,7 @@ for skill in $skills; do
 done
 require_script jamsession
 require_script usage/jamsession_usage
-require_script usage/jamsession_grok_usage.py
+require_script usage/jamsession_tui_usage.py
 for provider in $PROVIDERS; do
   require_script "adapters/jamsession_$provider"
 done
@@ -107,7 +107,7 @@ install_file() {
 
 install_file jamsession "$BIN_DIR/jamsession" 755
 install_file usage/jamsession_usage "$BIN_DIR/jamsession_usage" 755
-install_file usage/jamsession_grok_usage.py "$BIN_DIR/jamsession_grok_usage.py" 755
+install_file usage/jamsession_tui_usage.py "$BIN_DIR/jamsession_tui_usage.py" 755
 install_file adapters/_jamsession_adapter_common "$ADAPTER_DIR/_jamsession_adapter_common" 644
 for provider in $PROVIDERS; do
   install_file "adapters/jamsession_$provider" "$ADAPTER_DIR/jamsession_$provider" 755
