@@ -21,11 +21,19 @@ effort with the default model or with a model that already carries overrides.
 EOF
 }
 
+model_effort_suffix() {
+  local model="${1%-fast}" suffix=""
+  suffix="${model##*-}"
+  case "$suffix" in
+    none|minimal|low|medium|high|xhigh|max|ultra) printf '%s\n' "$suffix" ;;
+  esac
+}
+
 run_agent() {
   jamsession_validate_run "$@"
   jamsession_require_binary
 
-  local session_id model status raw result
+  local session_id model model_effort status raw result
   local -a args model_args
 
   # Resolve the model before creating a chat so a rejected run leaves no
@@ -43,7 +51,11 @@ run_agent() {
         case "$model" in
           *'['*) jamsession_die "model '$model' already contains overrides; pass default effort or remove them" ;;
         esac
-        model="$model[effort=$JAMSESSION_EFFORT]"
+        model_effort="$(model_effort_suffix "$model")"
+        if [ -n "$model_effort" ] && [ "$model_effort" != "$JAMSESSION_EFFORT" ]; then
+          jamsession_die "model '$model' already encodes effort '$model_effort'; pass matching or default effort"
+        fi
+        [ -n "$model_effort" ] || model="$model[effort=$JAMSESSION_EFFORT]"
         ;;
     esac
     model_args=(--model "$model")

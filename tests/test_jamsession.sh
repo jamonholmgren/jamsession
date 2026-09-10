@@ -301,6 +301,19 @@ check "Cursor rejects effort on an overridden model" test "$status" -eq 2
 check "Cursor explains the override conflict" contains "$stderr_file" "already contains overrides"
 check "a rejected Cursor run creates no chat session" sh -c "! grep -Fq 'session:' '$stderr_file'"
 
+rm -f "$LOG"
+run_command env FAKE_LOG="$LOG" JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" \
+  "$ROOT/adapters/jamsession_cursor" run new cursor-grok-4.6-high high read prompt
+check "Cursor accepts a matching effort-qualified model" contains "$LOG" "--model cursor-grok-4.6-high"
+check "Cursor does not append a duplicate effort override" sh -c "! grep -Fq -- '[effort=' '$LOG'"
+
+rm -f "$LOG"
+run_command env FAKE_LOG="$LOG" JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" \
+  "$ROOT/adapters/jamsession_cursor" run new cursor-grok-4.6-high medium read prompt
+check "Cursor rejects a mismatched effort-qualified model" test "$status" -eq 2
+check "Cursor names the encoded effort mismatch" contains "$stderr_file" "already encodes effort 'high'"
+check "a mismatched effort-qualified model creates no chat" sh -c "! grep -Fq 'session:' '$stderr_file'"
+
 # Establish how many arguments a one-word prompt produces, so the stdin case can
 # prove it adds exactly one more rather than word-splitting into several.
 rm -f "$LOG" "$LOG.last" "$LOG.count"
