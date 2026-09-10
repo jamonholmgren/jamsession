@@ -176,18 +176,36 @@ def visible_usage(provider: str, screen: Screen) -> str | None:
     return None
 
 
+def visible_claude_models(screen: Screen) -> str | None:
+    text = screen.text()
+    if "Select model" not in text:
+        return None
+    choices = []
+    for line in text.splitlines():
+        match = re.match(r"\s*(?:❯\s*)?(\d+)\.\s+(.+?)\s*$", line)
+        if match:
+            parts = re.split(r"\s{2,}", match.group(2), maxsplit=1)
+            label = re.sub(r"\s*(?:\([^)]*\)|✔).*", "", parts[0]).strip().lower()
+            description = parts[1] if len(parts) == 2 else parts[0]
+            choices.append(f"{label} - {description}")
+    return "\n".join(choices) if len(choices) >= 2 and "Enter to set as default" in text else None
+
+
 def command(provider: str, binary: str, directory: str) -> tuple[list[str], dict[str, str]]:
     environment = os.environ.copy()
     if provider == "grok":
         environment["TERM"] = "xterm-256color"
         environment["COLORTERM"] = "truecolor"
         return [binary, "--fullscreen", "--no-alt-screen"], environment
+    if provider == "claude-models":
+        environment["TERM"] = "xterm-256color"
+        return [binary, "--permission-mode", "plan"], environment
     environment["TERM"] = "dumb"
     return [binary, "--screen-reader", "--mode", "plan", "-C", directory], environment
 
 
 def main() -> int:
-    if len(sys.argv) != 4 or sys.argv[1] not in {"grok", "copilot"}:
+    if len(sys.argv) != 4 or sys.argv[1] not in {"grok", "copilot", "claude-models"}:
         return 2
     provider, binary = sys.argv[1:3]
     try:
@@ -199,7 +217,15 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="jamsession-usage-") as directory:
         process_command, environment = command(provider, binary, directory)
         try:
-            process = subprocess.Popen(process_command, stdin=slave, stdout=slave, stderr=slave, close_fds=True, env=environment)
+            process = subprocess.Popen(
+                process_command,
+                stdin=slave,
+                stdout=slave,
+                stderr=slave,
+                close_fds=True,
+                cwd=directory if provider == "claude-models" else None,
+                env=environment,
+            )
         except OSError:
             os.close(master)
             os.close(slave)
@@ -209,7 +235,7 @@ def main() -> int:
         screen = Screen()
         deadline = time.monotonic() + timeout
         send_usage_at = time.monotonic() + min(3, timeout / 2)
-        accepted_trust = provider != "copilot"
+        accepted_trust = provider not in {"copilot", "claude-models"}
         sent_usage = False
         result = None
         try:
@@ -227,18 +253,31 @@ def main() -> int:
                     screen.feed(decoder.decode(data))
                     if b"\x1b[6n" in data:
                         os.write(master, f"\x1b[{screen.row + 1};{screen.column + 1}R".encode())
-                    if not accepted_trust and "Do you trust the files in this folder?" in screen.text():
-                        os.write(master, b"\r")
+                    trust_text = screen.text()
+                    trust_prompt = (
+                        "Yes, I trust this folder" in trust_text
+                        if provider == "claude-models"
+                        else "Do you trust the files in this folder?" in trust_text
+                    )
+                    if not accepted_trust and trust_prompt:
+                        # Ink-based TUIs can paint the prompt just before their
+                        # input handler is ready. A short settle avoids choosing
+                        # Claude's default "No, exit" option by racing startup.
+                        time.sleep(0.5)
+                        os.write(master, b"\x1b[B\r" if provider == "claude-models" else b"\r")
                         accepted_trust = True
-                    result = visible_usage(provider, screen)
+                        send_usage_at = time.monotonic() + 3
+                    result = visible_claude_models(screen) if provider == "claude-models" else visible_usage(provider, screen)
                     if sent_usage and result:
                         break
-                if not sent_usage and time.monotonic() >= send_usage_at:
-                    os.write(master, b"/usage\r")
+                if accepted_trust and not sent_usage and time.monotonic() >= send_usage_at:
+                    os.write(master, b"/model\r" if provider == "claude-models" else b"/usage\r")
                     sent_usage = True
             if result:
                 print(result)
                 return 0
+            if os.environ.get("JAMSESSION_TUI_DEBUG"):
+                print(screen.text(), file=sys.stderr)
             return 1
         finally:
             if process.poll() is None:

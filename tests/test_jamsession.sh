@@ -131,8 +131,20 @@ cat >"$FAKE_BIN/claude" <<'EOF'
 if [ "${1:-}" = --version ]; then printf '%s\n' CLAUDE_VERSION; exit 0; fi
 if [ "${1:-}" = auth ]; then printf '%s\n' CLAUDE_AUTH_OK; exit 0; fi
 printf '%s\n' "$*" >"$FAKE_LOG"
+case " $* " in
+  *" --model invalid-model "*)
+    printf '%s\n' 'There is an issue with the selected model. It may not exist.'
+    printf '%s\n' '[claude-code:unrecognized_model]' >&2
+    exit 1
+    ;;
+esac
 printf '%s\n' CLAUDE_RESULT
 exit "${FAKE_EXIT:-0}"
+EOF
+
+cat >"$FAKE_BIN/claude-model-reader" <<'EOF'
+#!/bin/sh
+printf '%s\n' '1. Default (recommended)  Opus 5' '2. Opus  Opus 5' '3. Fable  Fable 5.1' '4. Sonnet  Sonnet 5' '5. Haiku  Haiku 4.5'
 EOF
 
 cat >"$FAKE_BIN/cursor-agent" <<'EOF'
@@ -271,6 +283,17 @@ run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
 check "Claude response passes through" contains "$stdout_file" CLAUDE_RESULT
 check "Claude read mode uses plan permissions" contains "$LOG" "--permission-mode plan"
 check "Claude session ID is a UUID" grep -Eq 'session: [0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}' "$stderr_file"
+
+run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+  JAMSESSION_PYTHON_BIN="$FAKE_BIN/claude-model-reader" \
+  "$ROOT/adapters/jamsession_claude" models
+check "Claude models reads the interactive picker" contains "$stdout_file" "Fable 5.1"
+
+run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+  JAMSESSION_PYTHON_BIN="$FAKE_BIN/claude-model-reader" \
+  "$ROOT/adapters/jamsession_claude" run new invalid-model medium read prompt
+check "Claude preserves an invalid-model failure" test "$status" -eq 1
+check "Claude invalid-model failures print picker choices" contains "$stderr_file" "Fable 5.1"
 
 rm -f "$LOG"
 run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \

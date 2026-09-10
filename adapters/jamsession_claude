@@ -17,16 +17,30 @@ Other:  jamsession_claude <list|models|usage|status|doctor|help>
 Claude read mode uses plan permission mode. Edit mode uses bypassPermissions
 because headless sessions cannot answer permission prompts; use it only in a
 trusted workspace. Claude has no none effort, so that request is an error
-rather than a silent default. Claude exposes no non-interactive native session,
-model, or usage listing through this adapter.
+rather than a silent default. Model listing reads Claude's interactive model
+picker; older models that the picker omits can still be passed by full name.
+Claude exposes no non-interactive native session or usage listing.
 EOF
+}
+
+list_models() {
+  local python_bin="${JAMSESSION_PYTHON_BIN:-python3}" helper
+  command -v "$python_bin" >/dev/null 2>&1 || jamsession_die "Claude model listing needs python3 to read the interactive picker"
+  if [ -x "${JAMSESSION_HOME:-}/bin/jamsession_tui_usage.py" ]; then
+    helper="$JAMSESSION_HOME/bin/jamsession_tui_usage.py"
+  else
+    helper="$ADAPTER_DIR/../usage/jamsession_tui_usage.py"
+  fi
+  [ -f "$helper" ] || jamsession_die "Claude model picker reader is not installed; run jamsession update"
+  "$python_bin" "$helper" claude-models "$JAMSESSION_PROVIDER_BIN" "${JAMSESSION_MODELS_TIMEOUT:-20}" || \
+    jamsession_die "could not read Claude's interactive model picker"
 }
 
 run_agent() {
   jamsession_validate_run "$@"
   jamsession_require_binary
 
-  local session_id status
+  local session_id status provider_output provider_error
   local -a args
   args=(-p --output-format text)
   [ "$JAMSESSION_MODEL" = default ] || args+=(--model "$JAMSESSION_MODEL")
@@ -54,14 +68,26 @@ run_agent() {
   args+=("$JAMSESSION_PROMPT")
 
   jamsession_session "$session_id"
+  jamsession_make_temp_dir
+  provider_output="$JAMSESSION_TEMP_DIR/claude.stdout"
+  provider_error="$JAMSESSION_TEMP_DIR/claude.stderr"
   status=0
-  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null) || status=$?
+  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null >"$provider_output" 2>"$provider_error") || status=$?
+  cat "$provider_output"
+  cat "$provider_error" >&2
+  if [ "$status" -ne 0 ] && [ "$JAMSESSION_MODEL" != default ] && \
+    grep -Eqi 'unrecognized_model|issue with the selected model|issue with selected model|model.*(may not exist|not found|unknown|invalid)' \
+      "$provider_output" "$provider_error"; then
+    printf '\nAvailable Claude model-picker choices:\n' >&2
+    (list_models) >&2 || printf 'Run `jamsession models claude` after checking Claude authentication.\n' >&2
+  fi
   exit "$status"
 }
 
 case "${1:-help}" in
   run) shift; run_agent "$@" ;;
-  list|models|usage|status) jamsession_unsupported "$1" ;;
+  models) jamsession_require_binary; list_models ;;
+  list|usage|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" --version
