@@ -198,6 +198,22 @@ check "Codex usage includes multiple rate-limit buckets" contains "$stdout_file"
 check "Cursor usage reports remaining plan percentage" contains "$stdout_file" '"remaining_percent":68'
 check "aggregate usage succeeds when every fixture parses" test "$status" -eq 0
 
+GROK_USAGE_TUI="$TEMP_ROOT/grok-usage-tui"
+cat >"$GROK_USAGE_TUI" <<'EOF'
+#!/usr/bin/env python3
+import sys
+import time
+sys.stdin.read(7)
+sys.stdout.write('\033[2J\033[9;24HWeekly \033[9;33Himit (SuperGrok Heavy)\033[11;24H████░░░░░░ 14%\033[12;24HResets: September 13, 22:12')
+sys.stdout.flush()
+time.sleep(30)
+EOF
+chmod 755 "$GROK_USAGE_TUI"
+run_command env JAMSESSION_GROK_BIN="$GROK_USAGE_TUI" "$ROOT/jamsession" usage grok --json
+check "Grok usage renders its cursor-addressed modal" contains "$stdout_file" '"agent":"grok","status":"ok"'
+check "Grok usage reads the modal percentage" contains "$stdout_file" '"remaining_percent":86'
+check "Grok usage reads the modal reset" contains "$stdout_file" '"reset_display":"September 13, 22:12"'
+
 ANSI_FIXTURES="$TEMP_ROOT/ansi-usage-fixtures"
 cp -R "$USAGE_FIXTURES" "$ANSI_FIXTURES"
 printf '\033[1mCurrent session\033[0m\n\033[1m6%%\033[0m used\nResets \033[1m4:30pm \\ local\033[0m\n' >"$ANSI_FIXTURES/claude.txt"
@@ -434,6 +450,7 @@ check "second install leaves uninstalled optional skills absent" test ! -e "$INS
 check "second install leaves no staging files behind" sh -c "! ls '$INSTALLED/bin/'*.jamsession-new '$INSTALLED/adapters/'*.jamsession-new >/dev/null 2>&1"
 check "installed command stays executable" test -x "$INSTALLED/bin/jamsession"
 check "installed usage helper stays executable" test -x "$INSTALLED/bin/jamsession_usage"
+check "installed Grok usage reader stays executable" test -x "$INSTALLED/bin/jamsession_grok_usage.py"
 check "installed adapters stay executable" test -x "$INSTALLED/adapters/jamsession_codex"
 check "installed adapter helper stays non-executable" test ! -x "$INSTALLED/adapters/_jamsession_adapter_common"
 

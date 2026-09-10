@@ -8,7 +8,11 @@ description: Start or resume one coding agent session through the `jamsession` C
 1. Run `jamsession help` for the current command contract and `jamsession status` to
    see which installed adapters are usable.
 2. Choose the provider, model, effort, and `read` or `edit` access explicitly.
-   Never request `edit` unless the task authorizes changes.
+   Never request `edit` unless the task authorizes changes. Grok is the only
+   exception: its CLI cannot enforce read-only access. When the user explicitly
+   authorizes Grok for a read-only task, use `edit` transport and begin the prompt
+   with: `Do not modify, create, delete, rename, format, stage, or commit files;
+   do not run state-changing commands.`
 3. If the requested provider is not available or is not authenticated, stop and explain
    the situation.
 4. If resuming work and the session ID is unknown, use `jamsession list <provider>`

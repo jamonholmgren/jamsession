@@ -4,6 +4,7 @@ set -u
 
 PROVIDERS="copilot codex claude cursor grok"
 TIMEOUT="${JAMSESSION_USAGE_TIMEOUT:-20}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_DIR=""
 CAPTURE_FILE=""
 PROVIDER_WINDOWS=""
@@ -185,6 +186,21 @@ capture_tui() {
   CAPTURE_FILE="$output"
 }
 
+grok_usage() {
+  local text python_bin="${JAMSESSION_PYTHON_BIN:-python3}" helper="$SCRIPT_DIR/jamsession_grok_usage.py"
+  if [ -n "${JAMSESSION_USAGE_FIXTURE_DIR:-}" ]; then
+    CAPTURE_FILE="$JAMSESSION_USAGE_FIXTURE_DIR/grok.txt"
+    [ -f "$CAPTURE_FILE" ] || return 1
+    cat "$CAPTURE_FILE"
+    return
+  fi
+  command -v "$python_bin" >/dev/null 2>&1 || return 1
+  [ -f "$helper" ] || return 1
+  text="$("$python_bin" "$helper" "${JAMSESSION_GROK_BIN:-grok}" "$TIMEOUT")" || return 1
+  [ -n "$text" ] || return 1
+  printf '%s' "$text"
+}
+
 feed_tui() {
   local provider="$1"
   sleep 3
@@ -193,7 +209,7 @@ feed_tui() {
   sleep 5
   printf '\033'
   sleep 1
-  if [ "$provider" = grok ]; then printf '/quit\r'; else printf '/exit\r'; fi
+  printf '/exit\r'
   sleep 1
   printf '\004'
 }
@@ -280,8 +296,7 @@ provider_usage() {
       PROVIDER_WINDOWS="$(text_windows cursor "$text")" || return 1
       ;;
     grok)
-      capture_tui grok "${JAMSESSION_GROK_BIN:-grok}" || return 1
-      text="$(cat "$CAPTURE_FILE")"
+      text="$(grok_usage)" || return 1
       PROVIDER_WINDOWS="$(text_windows grok "$text")" || return 1
       ;;
     copilot)
