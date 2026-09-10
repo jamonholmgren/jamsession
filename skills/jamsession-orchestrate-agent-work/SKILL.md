@@ -20,6 +20,12 @@ question or required external change. Use low or light effort when the model is
 capable enough; raise it for lower-intelligence models or difficult queue
 decisions.
 
+Keep short investigations and direct answers with the supervisor when delegation
+would cost more context than it saves. For long-running work, delegate a bounded
+implementation batch, agree on its checkpoint artifacts and stopping conditions,
+then leave the worker running. Inspect at those checkpoints or when the worker
+reports a blocker; do not repeatedly poll or mirror its implementation context.
+
 Before staffing managers or workers, run `jamsession status` and choose from the
 available providers. Choose every provider, model, effort, and access level
 explicitly.
@@ -36,6 +42,13 @@ when useful, assigns implementation slices, checks worker evidence and diffs,
 integrates the result, runs the required validation, and commits or opens a pull
 request when that is authorized and is the repository's convention. Managers
 normally need medium or higher effort.
+
+Prefer one sustained implementation worker for a coherent batch over repeatedly
+restarting workers. That worker may obtain an independent read-only review at a
+declared checkpoint, but the reviewer must diagnose concrete defects and propose
+the simplest sufficient correction. A reviewer does not expand scope, add
+speculative abstractions, or become a second manager. The manager accepts or
+rejects review findings against the ticket's contracts before integration.
 
 One manager handles only one ticket at a time. Spawn multiple managers only for
 independent parallel tickets, with separate write ownership or workspaces. Once
