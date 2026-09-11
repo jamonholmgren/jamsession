@@ -204,6 +204,9 @@ feed_tui() {
   local provider="$1"
   sleep 3
   printf '/usage\r'
+  # Claude can render Fable after the other windows. Keep its input stream open
+  # until capture_tui sees that final window or reaches its timeout.
+  if [ "$provider" = claude ]; then sleep "$TIMEOUT"; return; fi
   if [ "$provider" = cursor ]; then sleep 2; printf '\r'; fi
   sleep 5
   printf '\033'

@@ -142,6 +142,19 @@ printf '%s\n' CLAUDE_RESULT
 exit "${FAKE_EXIT:-0}"
 EOF
 
+cat >"$FAKE_BIN/claude-slow-usage" <<'EOF'
+#!/usr/bin/env bash
+IFS= read -r command || exit 1
+[ "$command" = /usage ] || exit 1
+for _ in {1..7}; do
+  if IFS= read -rsn1 -t 1 key && [ "$key" = $'\033' ]; then exit 0; fi
+done
+printf '%s\n' \
+  'Current session' '6% used' 'Resets 4:30pm' \
+  'Current week (all models)' '15% used' 'Resets Sep 7 at 7am' \
+  'Current week (Fable)' '24% used' 'Resets Sep 7 at 7am'
+EOF
+
 cat >"$FAKE_BIN/claude-model-reader" <<'EOF'
 #!/bin/sh
 printf '%s\n' '1. Default (recommended)  Opus 5' '2. Opus  Opus 5' '3. Fable  Fable 5.1' '4. Sonnet  Sonnet 5' '5. Haiku  Haiku 4.5'
@@ -239,6 +252,11 @@ chmod 755 "$COPILOT_USAGE_TUI"
 run_command env JAMSESSION_COPILOT_BIN="$COPILOT_USAGE_TUI" "$ROOT/jamsession" usage copilot --json
 check "Copilot usage renders its cursor-addressed screen" contains "$stdout_file" '"agent":"copilot","status":"ok"'
 check "Copilot usage reads the plan percentage" contains "$stdout_file" '"remaining_percent":99'
+
+chmod 755 "$FAKE_BIN/claude-slow-usage"
+run_command env JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude-slow-usage" JAMSESSION_USAGE_TIMEOUT=12 \
+  "$ROOT/jamsession" usage claude --json
+check "Claude usage waits for the delayed Fable window" contains "$stdout_file" '"bucket_id":"weekly_fable"'
 
 ANSI_FIXTURES="$TEMP_ROOT/ansi-usage-fixtures"
 cp -R "$USAGE_FIXTURES" "$ANSI_FIXTURES"
