@@ -163,7 +163,15 @@ EOF
 cat >"$FAKE_BIN/cursor-agent" <<'EOF'
 #!/bin/sh
 if [ "${1:-}" = create-chat ]; then printf '%s\n' cursor-session; exit 0; fi
-if [ "${1:-}" = --list-models ]; then printf '%s\n' CURSOR_MODELS; exit 0; fi
+if [ "${1:-}" = --list-models ]; then
+  printf '%s\n' 'Available models' \
+    'cursor-model - Cursor Model' \
+    'cursor-grok-4.6-low - Cursor Grok 4.6 Low' \
+    'cursor-grok-4.6-high - Cursor Grok 4.6' \
+    'cursor-grok-4.6-high-fast - Cursor Grok 4.6 Fast' \
+    'gpt-5.5-extra-high - GPT-5.5 Extra High'
+  exit 0
+fi
 if [ "${1:-}" = status ]; then printf '%s\n' CURSOR_AUTH_OK; exit 0; fi
 printf '%s\n' "$*" >"$FAKE_LOG"
 printf '%s\n' "$#" >"$FAKE_LOG.count"
@@ -347,6 +355,24 @@ run_command env FAKE_LOG="$LOG" JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" \
   "$ROOT/adapters/jamsession_cursor" run new cursor-grok-4.6-high high read prompt
 check "Cursor accepts a matching effort-qualified model" contains "$LOG" "--model cursor-grok-4.6-high"
 check "Cursor does not append a duplicate effort override" sh -c "! grep -Fq -- '[effort=' '$LOG'"
+
+rm -f "$LOG"
+run_command env FAKE_LOG="$LOG" JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" \
+  "$ROOT/adapters/jamsession_cursor" run new grok-4.6 high read prompt
+check "Cursor resolves a shorthand model from its live catalog" contains "$LOG" "--model cursor-grok-4.6-high"
+check "Cursor shorthand resolution does not append an override" sh -c "! grep -Fq -- '[effort=' '$LOG'"
+
+rm -f "$LOG"
+run_command env FAKE_LOG="$LOG" JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" \
+  "$ROOT/adapters/jamsession_cursor" run new gpt-5.5 xhigh read prompt
+check "Cursor maps xhigh to Cursor's extra-high model suffix" contains "$LOG" "--model gpt-5.5-extra-high"
+
+rm -f "$LOG"
+run_command env FAKE_LOG="$LOG" JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" \
+  "$ROOT/adapters/jamsession_cursor" run new grok-4.6 medium read prompt
+check "Cursor rejects a shorthand effort absent from the catalog" test "$status" -eq 2
+check "Cursor shows available exact variants after a shorthand mismatch" contains "$stderr_file" "cursor-grok-4.6-high"
+check "an unavailable shorthand variant creates no chat" sh -c "! grep -Fq 'session:' '$stderr_file'"
 
 rm -f "$LOG"
 run_command env FAKE_LOG="$LOG" JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" \

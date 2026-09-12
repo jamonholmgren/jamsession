@@ -16,17 +16,82 @@ Other:  jamsession_cursor <list|models|usage|status|doctor|help>
 
 Cursor read mode uses ask mode. Edit mode uses --force and --trust so the
 non-interactive session cannot stall at an approval prompt. Explicit effort is
-encoded as a Cursor parameterized-model override, so it is an error to request
-effort with the default model or with a model that already carries overrides.
+matched against Cursor's live model catalog, so `grok-4.6 high` can resolve to
+an exact identifier such as `cursor-grok-4.6-high`. Exact identifiers still
+work. It is an error to request effort with the default model or with a model
+that already carries overrides.
 EOF
 }
 
 model_effort_suffix() {
   local model="${1%-fast}" suffix=""
+  case "$model" in
+    *-extra-high) printf '%s\n' xhigh; return ;;
+  esac
   suffix="${model##*-}"
   case "$suffix" in
     none|minimal|low|medium|high|xhigh|max|ultra) printf '%s\n' "$suffix" ;;
   esac
+}
+
+cursor_model_base() {
+  local model="${1%-fast}" effort
+  effort="$(model_effort_suffix "$model")"
+  [ -z "$effort" ] || {
+    case "$model" in
+      *-extra-high) model="${model%-extra-high}" ;;
+      *) model="${model%-$effort}" ;;
+    esac
+  }
+  printf '%s\n' "$model"
+}
+
+normalize_model_name() {
+  printf '%s' "$1" | tr '[:upper:]._' '[:lower:]--'
+}
+
+resolve_cursor_model() {
+  local requested="$1" effort="$2" output id base normalized_requested normalized_base
+  local candidate="" matches="" base_matches="" match_count=0
+  output="$($JAMSESSION_PROVIDER_BIN --list-models)" || \
+    jamsession_die "could not list Cursor models while resolving '$requested'"
+  normalized_requested="$(normalize_model_name "$requested")"
+
+  while IFS= read -r id; do
+    case "$id" in
+      ""|'Available models'|'Tip:'*) continue ;;
+      *' - '*) id="${id%% - *}" ;;
+      *) continue ;;
+    esac
+    [ "$id" != "$requested" ] || { printf '%s\n' "$id"; return; }
+    case "$id" in *-fast) continue ;; esac
+    base="$(cursor_model_base "$id")"
+    normalized_base="$(normalize_model_name "$base")"
+    case "$normalized_base" in
+      "$normalized_requested"|*"-$normalized_requested")
+        base_matches="${base_matches}${base_matches:+, }$id"
+        if [ "$effort" = default ] || [ "$(model_effort_suffix "$id")" = "$effort" ]; then
+          candidate="$id"
+          matches="${matches}${matches:+, }$id"
+          match_count=$((match_count + 1))
+        fi
+        ;;
+    esac
+  done <<EOF
+$output
+EOF
+
+  if [ "$match_count" -eq 1 ]; then
+    printf '%s\n' "$candidate"
+    return
+  fi
+  if [ "$match_count" -gt 1 ]; then
+    jamsession_die "model shorthand '$requested' is ambiguous; use one of: $matches"
+  fi
+  if [ -n "$base_matches" ]; then
+    jamsession_die "model shorthand '$requested' has no '$effort' variant; available: $base_matches"
+  fi
+  printf '%s\n' "$requested"
 }
 
 run_agent() {
@@ -43,7 +108,7 @@ run_agent() {
     [ "$JAMSESSION_EFFORT" = default ] || \
       jamsession_die "Cursor encodes effort in the model, so explicit effort needs an explicit model"
   else
-    model="$JAMSESSION_MODEL"
+    model="$(resolve_cursor_model "$JAMSESSION_MODEL" "$JAMSESSION_EFFORT")" || exit $?
     case "$JAMSESSION_EFFORT" in
       default) ;;
       none) jamsession_die "Cursor has no none effort; pass default or a supported effort" ;;
