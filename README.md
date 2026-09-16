@@ -17,6 +17,7 @@ All in a few small bash scripts.
 * Cursor Agent
 * Grok
 * Copilot
+* Devin
 * _any other agent CLI -- just have your agent build an adapter for it!_
 
 **Star this repo if you find it interesting!** I appreciate the support.
@@ -74,7 +75,7 @@ jamsession run codex 019abc gpt-5.6-sol high read "Check the revised diff."
 
 Every part is required. Pass a session ID instead of `new` to resume, and `-` as the prompt to read stdin. The reply goes to stdout; session IDs and diagnostics go to stderr.
 
-`read` means the agent is called with the best settings to avoid changing your workspace. `edit` uses the provider's unattended coding mode. Model and effort are passed through exactly.
+`read` means the agent is called with the best settings to avoid changing your workspace. `edit` uses the provider's unattended coding mode. Model and effort are passed through or mapped to provider-supported variants.
 
 ### Get Providers, Models, Sessions
 
@@ -86,7 +87,7 @@ jamsession list grok 5 # lists the last 5 grok sessions in this code base (if av
 jamsession init # installs jam session in the current project
 ```
 
-Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused authentication diagnostics.
+Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`, `devin`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused authentication diagnostics. Devin supports `edit` but not guaranteed `read` access.
 
 ### Skills
 

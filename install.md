@@ -2,7 +2,7 @@
 
 Jam Session is a small Bash CLI and a set of optional agent skills. It lets a
 coding agent start and resume sessions through Codex, Claude, Cursor Agent,
-Grok, and GitHub Copilot using one explicit positional interface.
+Grok, GitHub Copilot, and Devin using one explicit positional interface.
 
 ## Install
 
@@ -60,6 +60,7 @@ Use `read` for work that must not modify the workspace. An adapter hard-errors
 when its provider cannot mechanically enforce that restriction. Provider-native
 session metadata and Jam Session temporary output may still be written outside
 the workspace. Use `edit` only when the task authorizes unattended changes.
+Devin currently supports `edit` but not guaranteed `read` access.
 
 ## Install workflow skills
 

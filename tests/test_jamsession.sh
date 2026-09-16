@@ -8,7 +8,7 @@ set -u
 unset JAMSESSION_HOME JAMSESSION_ADAPTER_DIR JAMSESSION_CONFIG JAMSESSION_SKILL_DIR \
   JAMSESSION_PACK_DIR JAMSESSION_SOURCE_URL JAMSESSION_INSTALL_URL JAMSESSION_CWD \
   JAMSESSION_CODEX_BIN JAMSESSION_CLAUDE_BIN JAMSESSION_CURSOR_BIN \
-  JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN
+  JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/jamsession-test.XXXXXX")"
@@ -57,6 +57,7 @@ check "adapter helper is not exposed as a provider" sh -c "! grep -Fq _jamsessio
 
 run_command "$ROOT/jamsession" providers
 check "providers lists the bundled adapters" contains "$stdout_file" claude
+check "providers lists Devin" contains "$stdout_file" devin
 cp "$stdout_file" "$TEMP_ROOT/providers-output"
 run_command "$ROOT/jamsession" adapters
 check "adapters is an exact alias for providers" sh -c "diff -q '$TEMP_ROOT/providers-output' '$stdout_file' >/dev/null"
@@ -201,6 +202,30 @@ printf '%s\n' "$*" >"$FAKE_LOG"
 printf '%s\n' COPILOT_RESULT
 exit "${FAKE_EXIT:-0}"
 EOF
+
+cat >"$FAKE_BIN/devin" <<'EOF'
+#!/bin/sh
+case "${1:-}" in
+  --version) printf '%s\n' DEVIN_VERSION; exit 0 ;;
+  auth) printf '%s\n' 'Logged in'; exit 0 ;;
+  doctor) printf '%s\n' DEVIN_DOCTOR_OK; exit 0 ;;
+  models)
+    printf '%s\n' 'Available models' 'Grok 4.6 (grok-4.6)' \
+      '  grok-4-6-medium  Grok Medium' '  grok-4-6-high  Grok High'
+    exit 0 ;;
+  list)
+    printf '%s\n' 'id,short_id,working_directory,last_activity_at,last_activity_ago,title'
+    [ -f "$FAKE_DEVIN_STATE" ] && printf '%s\n' 'new-devin-session,new-devin-session,./,1,now,Prompt'
+    exit 0 ;;
+esac
+printf '%s\n' "$*" >"$FAKE_LOG"
+case " $* " in
+  *' --resume '*) ;;
+  *) : >"$FAKE_DEVIN_STATE" ;;
+esac
+printf '%s\n' DEVIN_RESULT
+exit "${FAKE_EXIT:-0}"
+EOF
 chmod 755 "$FAKE_BIN"/*
 
 LOG="$TEMP_ROOT/args"
@@ -226,10 +251,13 @@ printf '%s\n' 'Weekly limit (Pro) 35% used Resets: Sep 8, 09:00' >"$USAGE_FIXTUR
 printf '%s\n' 'Monthly AI credits 40% used' >"$USAGE_FIXTURES/copilot.txt"
 
 run_command env JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/jamsession" usage --json
-check "aggregate usage is valid JSON-shaped output" contains "$stdout_file" '"status":"complete"'
+check "aggregate usage stays complete for providers with readable quota" contains "$stdout_file" '"status":"complete"'
 check "Codex usage includes multiple rate-limit buckets" contains "$stdout_file" '"bucket_id":"spark:secondary"'
 check "Cursor usage reports remaining plan percentage" contains "$stdout_file" '"remaining_percent":68'
 check "aggregate usage succeeds when every fixture parses" test "$status" -eq 0
+
+run_command "$ROOT/jamsession" usage devin --json
+check "Devin usage reports unavailable instead of an invented quota" contains "$stdout_file" '"agent":"devin","status":"unavailable"'
 
 GROK_USAGE_TUI="$TEMP_ROOT/grok-usage-tui"
 cat >"$GROK_USAGE_TUI" <<'EOF'
@@ -440,6 +468,43 @@ run_command env FAKE_LOG="$LOG" JAMSESSION_COPILOT_BIN="$FAKE_BIN/copilot" \
   "$ROOT/adapters/jamsession_copilot" run new copilot-model high edit prompt
 check "Copilot passes explicit effort with a named model" contains "$LOG" "--effort high"
 
+DEVIN_STATE="$TEMP_ROOT/devin-session-state"
+rm -f "$LOG" "$DEVIN_STATE"
+run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" \
+  JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit prompt
+check "Devin returns its response" equals "$stdout_file" DEVIN_RESULT
+check "Devin reports the newly listed native session" contains "$stderr_file" "session: new-devin-session"
+check "Devin resolves model and effort to an available ID" contains "$LOG" "--model grok-4-6-high"
+check "Devin uses unattended edit permission" contains "$LOG" "--permission-mode dangerous"
+
+run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" \
+  JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" run saved-devin-session default default edit prompt
+check "Devin resumes the exact requested session" contains "$LOG" "--resume saved-devin-session"
+check "Devin reports the resumed session" contains "$stderr_file" "session: saved-devin-session"
+
+rm -f "$LOG"
+run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" \
+  JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" run new grok-4.6 high read prompt
+check "Devin rejects unenforceable read access" test "$status" -eq 2
+check "rejected Devin read creates no session" test ! -e "$LOG"
+
+run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" \
+  JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" run new grok-4.6 xhigh edit prompt
+check "Devin rejects an unavailable effort before launch" test "$status" -eq 2
+check "Devin points to its live model list" contains "$stderr_file" "jamsession models devin"
+
+run_command env FAKE_DEVIN_STATE="$DEVIN_STATE" JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" list 1
+check "Devin lists provider-native sessions" contains "$stdout_file" new-devin-session
+
+run_command env FAKE_DEVIN_STATE="$DEVIN_STATE" JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" doctor
+check "Devin doctor checks native authentication" contains "$stdout_file" "authentication: ready"
+
 run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
   "$ROOT/adapters/jamsession_codex" doctor
 check "Codex doctor checks native authentication" contains "$stdout_file" CODEX_AUTH_OK
@@ -474,6 +539,7 @@ printf '%s\n' custom >"$INSTALL_HOME/.agents/jamsession/adapters/jamsession_cust
 chmod 755 "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_custom"
 run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$ROOT/install.sh"
 check "installer installs the command" test -x "$INSTALL_HOME/.agents/jamsession/bin/jamsession"
+check "installer installs Devin's adapter" test -x "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_devin"
 check "installer links the command" test -L "$INSTALL_HOME/.local/bin/jamsession"
 run_command env HOME="$INSTALL_HOME" JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" \
   "$INSTALL_HOME/.local/bin/jamsession" usage codex --json
@@ -498,7 +564,7 @@ run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jams
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
   "$ROOT/jamsession" skills install jamsession-model-recommendations
 check "model-recommendations skill installs on request" test -f "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md"
-check "model recommendations carry a freshness date" contains "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md" "fresh as of September 5, 2026"
+check "model recommendations carry a freshness date" contains "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md" "fresh as of September 15, 2026"
 
 run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \

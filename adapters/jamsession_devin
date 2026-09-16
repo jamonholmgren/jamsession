@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+
+set -u
+
+ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_jamsession_adapter_common
+source "$ADAPTER_DIR/_jamsession_adapter_common"
+jamsession_adapter_setup devin devin JAMSESSION_DEVIN_BIN
+
+help_text() {
+  cat <<'EOF'
+jamsession_devin
+
+Run:    jamsession_devin run <new|session> <model> <effort> <read|edit> <prompt>
+Other:  jamsession_devin <list|models|usage|status|doctor|help>
+
+Devin uses --print for unattended work and resumes its native session IDs.
+Edit mode uses dangerous permission mode so tool approvals cannot stall the
+run. Read mode is unsupported: auto mode approves only read-only tools, but
+does not guarantee that the agent cannot write. Use an exact ID from
+`jamsession models devin` when specifying effort.
+EOF
+}
+
+model_ids() {
+  "$JAMSESSION_PROVIDER_BIN" models list | awk '/^[[:space:]]+[[:alnum:]][[:alnum:]_.-]*[[:space:]]{2,}/ { print $1 }'
+}
+
+resolve_model() {
+  local requested="$1" effort="$2" candidate ids
+  [ "$requested" != default ] || {
+    [ "$effort" = default ] || jamsession_die "explicit effort needs an explicit Devin model"
+    return
+  }
+  [ "$effort" != default ] || { printf '%s\n' "$requested"; return; }
+  ids="$(model_ids)" || jamsession_die "could not list Devin models"
+  [ -n "$ids" ] || jamsession_die "Devin returned no model IDs"
+  candidate="$(printf '%s' "$requested" | tr '._' '--')"
+  case "$candidate" in
+    *-"$effort") ;;
+    *) candidate="$candidate-$effort" ;;
+  esac
+  if printf '%s\n' "$ids" | grep -Fxq -- "$candidate"; then
+    printf '%s\n' "$candidate"
+  else
+    jamsession_die "model '$requested' has no '$effort' variant; run 'jamsession models devin' for exact IDs"
+  fi
+}
+
+session_ids() {
+  "$JAMSESSION_PROVIDER_BIN" list --format csv | awk -F, 'NR > 1 && $1 != "" { print $1 }'
+}
+
+run_agent() {
+  jamsession_validate_run "$@"
+  jamsession_require_binary
+  [ "$JAMSESSION_ACCESS" = edit ] || \
+    jamsession_die "read access is unsupported because Devin cannot guarantee no writes"
+
+  local model status before after new_ids session_id
+  local -a args
+  model="$(resolve_model "$JAMSESSION_MODEL" "$JAMSESSION_EFFORT")" || exit $?
+  args=(-p --permission-mode dangerous --respect-workspace-trust false)
+  [ -z "$model" ] || args+=(--model "$model")
+  if [ "$JAMSESSION_SESSION" = new ]; then
+    before="$(cd "$JAMSESSION_CWD" && session_ids)" || jamsession_die "could not list Devin sessions before launch"
+  else
+    session_id="$JAMSESSION_SESSION"
+    args+=(--resume "$session_id")
+    jamsession_session "$session_id"
+  fi
+  args+=(-- "$JAMSESSION_PROMPT")
+
+  jamsession_hint "Devin dangerous mode may run tools beyond the workspace; use a trusted environment."
+  status=0
+  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null) || status=$?
+  [ "$JAMSESSION_SESSION" = new ] || exit "$status"
+  [ "$status" -eq 0 ] || exit "$status"
+
+  after="$(cd "$JAMSESSION_CWD" && session_ids)" || jamsession_die "could not list Devin sessions after launch"
+  new_ids="$(printf '%s\n' "$after" | grep -Fxv -f <(printf '%s\n' "$before") || true)"
+  [ "$(printf '%s\n' "$new_ids" | grep -c . || true)" -eq 1 ] || \
+    jamsession_die "could not identify exactly one new Devin session; run 'jamsession list devin'"
+  jamsession_session "$new_ids"
+}
+
+case "${1:-help}" in
+  run) shift; run_agent "$@" ;;
+  list)
+    shift
+    [ $# -le 1 ] || jamsession_die "list takes an optional count"
+    count="${1:-5}"; jamsession_positive_count "$count"
+    jamsession_require_binary
+    "$JAMSESSION_PROVIDER_BIN" list --format csv | awk -v limit="$count" 'NR <= limit + 1'
+    ;;
+  models) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" models list ;;
+  usage|status) jamsession_unsupported "$1" ;;
+  doctor)
+    jamsession_require_binary
+    "$JAMSESSION_PROVIDER_BIN" --version
+    if "$JAMSESSION_PROVIDER_BIN" auth status >/dev/null 2>&1; then
+      printf 'authentication: ready\n'
+    else
+      printf 'authentication: unavailable\n' >&2
+      exit 1
+    fi
+    ;;
+  help|-h|--help) help_text ;;
+  *) jamsession_die "unknown command '$1'" ;;
+esac
