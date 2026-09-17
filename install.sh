@@ -9,7 +9,7 @@ BIN_DIR="$INSTALL_ROOT/bin"
 ADAPTER_DIR="$INSTALL_ROOT/adapters"
 LINK_DIR="$HOME/.local/bin"
 
-PROVIDERS="codex claude cursor grok copilot devin"
+PROVIDERS="codex claude cursor grok copilot devin muse"
 DEFAULT_SKILLS="jamsession-summon-agent jamsession-get-agent-usage"
 OPTIONAL_SKILLS="jamsession-model-recommendations jamsession-ping-pong-planning
 jamsession-contrarian-review jamsession-ask-agent-panel

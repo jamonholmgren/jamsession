@@ -330,7 +330,7 @@ main() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --json) json=1 ;;
-      copilot|codex|claude|cursor|grok|devin) [ -z "$requested" ] || fail "choose at most one provider"; requested="$1" ;;
+      copilot|codex|claude|cursor|grok|devin|muse) [ -z "$requested" ] || fail "choose at most one provider"; requested="$1" ;;
       *) fail "unknown argument '$1'" ;;
     esac
     shift

@@ -26,7 +26,7 @@ if [ -f "$JAMSESSION_CONFIG" ]; then
   source "$JAMSESSION_CONFIG"
 fi
 export JAMSESSION_CODEX_BIN JAMSESSION_CLAUDE_BIN JAMSESSION_CURSOR_BIN \
-  JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN
+  JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN JAMSESSION_MUSE_BIN
 
 usage() {
   cat <<'EOF'
@@ -441,7 +441,8 @@ EOF
     'cursor:cursor-agent:JAMSESSION_CURSOR_BIN' \
     'grok:grok:JAMSESSION_GROK_BIN' \
     'copilot:copilot:JAMSESSION_COPILOT_BIN' \
-    'devin:devin:JAMSESSION_DEVIN_BIN'; do
+    'devin:devin:JAMSESSION_DEVIN_BIN' \
+    'muse:muse:JAMSESSION_MUSE_BIN'; do
     provider="${pair%%:*}"
     command="${pair#*:}"; command="${command%%:*}"
     variable="${pair##*:}"
@@ -556,6 +557,7 @@ discover without replacing existing values. Supported overrides:
   JAMSESSION_GROK_BIN=/path/to/grok
   JAMSESSION_COPILOT_BIN=/path/to/copilot
   JAMSESSION_DEVIN_BIN=/path/to/devin
+  JAMSESSION_MUSE_BIN=/path/to/muse
 
 Custom adapters belong in: $JAMSESSION_ADAPTER_DIR
 EOF

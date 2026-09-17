@@ -18,6 +18,7 @@ All in a few small bash scripts.
 * Grok
 * Copilot
 * Devin
+* Muse
 * _any other agent CLI -- just have your agent build an adapter for it!_
 
 **Star this repo if you find it interesting!** I appreciate the support.
@@ -87,7 +88,7 @@ jamsession list grok 5 # lists the last 5 grok sessions in this code base (if av
 jamsession init # installs jam session in the current project
 ```
 
-Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`, `devin`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused authentication diagnostics. Devin supports `edit` but not guaranteed `read` access.
+Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`, `devin`, `muse`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused diagnostics. Devin supports `edit` but not guaranteed `read` access. Muse supports both; its CLI does not expose model or session listing.
 
 ### Skills
 

@@ -15,8 +15,8 @@ description: Start or resume one coding agent session through the `jamsession` C
    do not run state-changing commands.`
 3. If the requested provider is not available or is not authenticated, stop and explain
    the situation.
-4. If resuming work and the session ID is unknown, use `jamsession list <provider>`
-   to get a list of recent sessions.
+4. If resuming work and the session ID is unknown, try `jamsession list <provider>`.
+   Some providers cannot list sessions; do not guess an ID when listing is unavailable.
 5. Start work with:
 
    ```text

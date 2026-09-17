@@ -1,0 +1,87 @@
+#!/usr/bin/env bash
+
+set -u
+
+ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_jamsession_adapter_common
+source "$ADAPTER_DIR/_jamsession_adapter_common"
+jamsession_adapter_setup muse muse JAMSESSION_MUSE_BIN
+
+help_text() {
+  cat <<'EOF'
+jamsession_muse
+
+Run:    jamsession_muse run <new|session> <model> <effort> <read|edit> <prompt>
+Other:  jamsession_muse <list|models|usage|status|doctor|help>
+
+Muse uses headless `exec` and resumes with its native session UUID. Read mode
+disables both shell execution and workspace writes. Edit mode allows unattended
+workspace changes within Muse's normal sandbox. Muse does not expose native
+session or model listing commands.
+EOF
+}
+
+run_agent() {
+  jamsession_validate_run "$@"
+  jamsession_require_binary
+
+  local events errors status session_id line final_text
+  local -a args
+  jamsession_make_temp_dir
+  events="$JAMSESSION_TEMP_DIR/events"
+  errors="$JAMSESSION_TEMP_DIR/errors"
+  args=(exec --json --trust-workspace --disable-approval)
+  [ "$JAMSESSION_MODEL" = default ] || args+=(--model "$JAMSESSION_MODEL")
+  [ "$JAMSESSION_EFFORT" = default ] || args+=(--reasoning-effort "$JAMSESSION_EFFORT")
+  if [ "$JAMSESSION_ACCESS" = read ]; then
+    args+=(--disable-shell --disable-write)
+    jamsession_hint "Muse shell and workspace writes are disabled."
+  else
+    jamsession_hint "Muse may edit the current workspace without asking for approval."
+  fi
+  if [ "$JAMSESSION_SESSION" != new ]; then
+    args+=(--session-id "$JAMSESSION_SESSION")
+  fi
+  args+=("$JAMSESSION_PROMPT")
+
+  status=0
+  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null >"$events" 2>"$errors") || status=$?
+  [ ! -s "$errors" ] || cat "$errors" >&2
+
+  session_id=""
+  if [ "$JAMSESSION_SESSION" = new ]; then
+    session_id="$(sed -n 's/.*"stream":{"kind":"session","id":"\([^"]*\)".*/\1/p' "$events" | head -n 1)"
+  else
+    session_id="$JAMSESSION_SESSION"
+  fi
+  [ -z "$session_id" ] || jamsession_session "$session_id"
+
+  final_text=""
+  while IFS= read -r line; do
+    case "$line" in
+      *'"payload_type":"run.terminal.completed"'*)
+        final_text="$(jamsession_json_string "$line" text || true)"
+        ;;
+    esac
+  done <"$events"
+  [ -z "$final_text" ] || printf '%s\n' "$final_text"
+  if [ "$status" -eq 0 ] && [ -z "$session_id" ]; then
+    jamsession_die "Muse returned no session identifier"
+  fi
+  if [ "$status" -ne 0 ] && [ -s "$events" ] && [ -z "$final_text" ]; then
+    tail -n 1 "$events" >&2
+  fi
+  exit "$status"
+}
+
+case "${1:-help}" in
+  run) shift; run_agent "$@" ;;
+  list|models|usage|status) jamsession_unsupported "$1" ;;
+  doctor)
+    jamsession_require_binary
+    "$JAMSESSION_PROVIDER_BIN" --version
+    printf 'authentication: not checked (Muse exposes no noninteractive status)\n'
+    ;;
+  help|-h|--help) help_text ;;
+  *) jamsession_die "unknown command '$1'" ;;
+esac

@@ -8,7 +8,7 @@ set -u
 unset JAMSESSION_HOME JAMSESSION_ADAPTER_DIR JAMSESSION_CONFIG JAMSESSION_SKILL_DIR \
   JAMSESSION_PACK_DIR JAMSESSION_SOURCE_URL JAMSESSION_INSTALL_URL JAMSESSION_CWD \
   JAMSESSION_CODEX_BIN JAMSESSION_CLAUDE_BIN JAMSESSION_CURSOR_BIN \
-  JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN
+  JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN JAMSESSION_MUSE_BIN
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/jamsession-test.XXXXXX")"
@@ -58,6 +58,7 @@ check "adapter helper is not exposed as a provider" sh -c "! grep -Fq _jamsessio
 run_command "$ROOT/jamsession" providers
 check "providers lists the bundled adapters" contains "$stdout_file" claude
 check "providers lists Devin" contains "$stdout_file" devin
+check "providers lists Muse" contains "$stdout_file" muse
 cp "$stdout_file" "$TEMP_ROOT/providers-output"
 run_command "$ROOT/jamsession" adapters
 check "adapters is an exact alias for providers" sh -c "diff -q '$TEMP_ROOT/providers-output' '$stdout_file' >/dev/null"
@@ -226,6 +227,15 @@ esac
 printf '%s\n' DEVIN_RESULT
 exit "${FAKE_EXIT:-0}"
 EOF
+
+cat >"$FAKE_BIN/muse" <<'EOF'
+#!/bin/sh
+if [ "${1:-}" = --version ]; then printf '%s\n' MUSE_VERSION; exit 0; fi
+printf '%s\n' "$*" >"$FAKE_LOG"
+printf '%s\n' '{"stream":{"kind":"session","id":"muse-session"},"payload_type":"runtime.command.accepted"}'
+printf '%s\n' '{"payload_type":"run.terminal.completed","payload":{"text":"MUSE_RESULT"}}'
+exit "${FAKE_EXIT:-0}"
+EOF
 chmod 755 "$FAKE_BIN"/*
 
 LOG="$TEMP_ROOT/args"
@@ -258,6 +268,8 @@ check "aggregate usage succeeds when every fixture parses" test "$status" -eq 0
 
 run_command "$ROOT/jamsession" usage devin --json
 check "Devin usage reports unavailable instead of an invented quota" contains "$stdout_file" '"agent":"devin","status":"unavailable"'
+run_command "$ROOT/jamsession" usage muse --json
+check "Muse usage reports unavailable instead of an invented quota" contains "$stdout_file" '"agent":"muse","status":"unavailable"'
 
 GROK_USAGE_TUI="$TEMP_ROOT/grok-usage-tui"
 cat >"$GROK_USAGE_TUI" <<'EOF'
@@ -505,6 +517,28 @@ run_command env FAKE_DEVIN_STATE="$DEVIN_STATE" JAMSESSION_DEVIN_BIN="$FAKE_BIN/
   "$ROOT/adapters/jamsession_devin" doctor
 check "Devin doctor checks native authentication" contains "$stdout_file" "authentication: ready"
 
+run_command env FAKE_LOG="$LOG" JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" \
+  "$ROOT/adapters/jamsession_muse" run new muse-model medium read prompt
+check "Muse returns its final response" equals "$stdout_file" MUSE_RESULT
+check "Muse reports its native session ID" contains "$stderr_file" "session: muse-session"
+check "Muse passes the explicit model" contains "$LOG" "--model muse-model"
+check "Muse passes the explicit effort" contains "$LOG" "--reasoning-effort medium"
+check "Muse read mode disables shell execution" contains "$LOG" "--disable-shell"
+check "Muse read mode disables workspace writes" contains "$LOG" "--disable-write"
+
+run_command env FAKE_LOG="$LOG" JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" \
+  "$ROOT/adapters/jamsession_muse" run muse-session default default edit prompt
+check "Muse resumes the requested session" contains "$LOG" "--session-id muse-session"
+check "Muse edit mode omits read-only restrictions" sh -c "! grep -Eq -- '--disable-(shell|write)' '$LOG'"
+check "Muse reports a resumed session" contains "$stderr_file" "session: muse-session"
+
+run_command env JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_muse" models
+check "Muse model listing explicitly reports unavailable" test "$status" -eq 3
+run_command env JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_muse" list
+check "Muse session listing explicitly reports unavailable" test "$status" -eq 3
+run_command env JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_muse" doctor
+check "Muse doctor does not claim authentication was verified" contains "$stdout_file" "authentication: not checked"
+
 run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
   "$ROOT/adapters/jamsession_codex" doctor
 check "Codex doctor checks native authentication" contains "$stdout_file" CODEX_AUTH_OK
@@ -528,6 +562,7 @@ run_command env HOME="$TEMP_ROOT/user" JAMSESSION_HOME="$INIT_HOME" JAMSESSION_C
   PATH="$FAKE_BIN:/usr/bin:/bin" "$ROOT/jamsession" init
 check "init creates shell configuration" test -f "$INIT_HOME/jamsession.conf"
 check "init records discovered Codex path" contains "$INIT_HOME/jamsession.conf" JAMSESSION_CODEX_BIN
+check "init records discovered Muse path" contains "$INIT_HOME/jamsession.conf" JAMSESSION_MUSE_BIN
 before="$(cat "$INIT_HOME/jamsession.conf")"
 run_command env HOME="$TEMP_ROOT/user" JAMSESSION_HOME="$INIT_HOME" JAMSESSION_CONFIG="$INIT_HOME/jamsession.conf" \
   PATH="$FAKE_BIN:/usr/bin:/bin" "$ROOT/jamsession" init
@@ -540,6 +575,7 @@ chmod 755 "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_custom"
 run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$ROOT/install.sh"
 check "installer installs the command" test -x "$INSTALL_HOME/.agents/jamsession/bin/jamsession"
 check "installer installs Devin's adapter" test -x "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_devin"
+check "installer installs Muse's adapter" test -x "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_muse"
 check "installer links the command" test -L "$INSTALL_HOME/.local/bin/jamsession"
 run_command env HOME="$INSTALL_HOME" JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" \
   "$INSTALL_HOME/.local/bin/jamsession" usage codex --json
