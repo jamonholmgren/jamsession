@@ -12,7 +12,7 @@ help_text() {
 jamsession_cursor
 
 Run:    jamsession_cursor run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_cursor <list|models|usage|status|doctor|help>
+Other:  jamsession_cursor <list|which|models|usage|status|doctor|help>
 
 Cursor read mode uses ask mode. Edit mode uses --force and --trust so the
 non-interactive session cannot stall at an approval prompt. Explicit effort is
@@ -21,6 +21,19 @@ an exact identifier such as `cursor-grok-4.6-high`. Exact identifiers still
 work. It is an error to request effort with the default model or with a model
 that already carries overrides.
 EOF
+}
+
+which_transcript() {
+  jamsession_validate_which "$@"
+  local root="$HOME/.cursor/chats" path="$HOME/.cursor/chats"
+  if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
+    path="$(jamsession_find_session_file "$root" "$JAMSESSION_WHICH_SESSION" store.db)"
+    [ -n "$path" ] || jamsession_die "session '$JAMSESSION_WHICH_SESSION' was not found under $root"
+    printf 'path: %s\nformat: SQLite with provider-internal blobs\nread: sqlite3 -readonly %q '\''.tables'\''\n' "$path" "$path"
+  else
+    printf 'path: %s\nformat: per-session SQLite directories\nfind: find %q -type f -name store.db\n' "$path" "$path"
+  fi
+  printf 'note: Cursor exposes no stable raw transcript export; use cursor-agent --resume %s for provider-native viewing\n' "${JAMSESSION_WHICH_SESSION:-SESSION_ID}"
 }
 
 model_effort_suffix() {
@@ -163,6 +176,7 @@ run_agent() {
 
 case "${1:-help}" in
   run) shift; run_agent "$@" ;;
+  which) shift; which_transcript "$@" ;;
   models) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" --list-models ;;
   list|usage|status) jamsession_unsupported "$1" ;;
   doctor) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" status ;;

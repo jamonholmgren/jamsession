@@ -12,12 +12,29 @@ help_text() {
 jamsession_codex
 
 Run:    jamsession_codex run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_codex <list|models|usage|status|doctor|help>
+Other:  jamsession_codex <list|which|models|usage|status|doctor|help>
 
 Codex read mode uses its read-only sandbox. Edit mode uses workspace-write with
 interactive approvals disabled. Codex does not expose a non-interactive native
 session or model listing, so those operations report unavailable.
 EOF
+}
+
+which_transcript() {
+  jamsession_validate_which "$@"
+  local root="${CODEX_HOME:-$HOME/.codex}" path=""
+  if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
+    path="$(find "$root/sessions" "$root/archived_sessions" -type f -name "*-$JAMSESSION_WHICH_SESSION.jsonl" -print -quit 2>/dev/null)"
+    [ -n "$path" ] || jamsession_die "session '$JAMSESSION_WHICH_SESSION' was not found under $root"
+  else
+    path="$root/sessions"
+  fi
+  printf 'path: %s\nformat: JSONL\n' "$path"
+  if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
+    printf 'read: less %q\n' "$path"
+  else
+    printf 'find: find %q -type f -name '\''*.jsonl'\''\n' "$path"
+  fi
 }
 
 run_agent() {
@@ -92,6 +109,7 @@ run_agent() {
 
 case "${1:-help}" in
   run) shift; run_agent "$@" ;;
+  which) shift; which_transcript "$@" ;;
   list|models|usage|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary

@@ -12,7 +12,7 @@ help_text() {
 jamsession_claude
 
 Run:    jamsession_claude run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_claude <list|models|usage|status|doctor|help>
+Other:  jamsession_claude <list|which|models|usage|status|doctor|help>
 
 Claude read mode uses plan permission mode. Edit mode uses bypassPermissions
 because headless sessions cannot answer permission prompts; use it only in a
@@ -21,6 +21,23 @@ rather than a silent default. Model listing reads Claude's interactive model
 picker; older models that the picker omits can still be passed by full name.
 Claude exposes no non-interactive native session or usage listing.
 EOF
+}
+
+which_transcript() {
+  jamsession_validate_which "$@"
+  local root="$HOME/.claude/projects" path=""
+  if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
+    path="$(find "$root" -type f -name "$JAMSESSION_WHICH_SESSION.jsonl" -print -quit 2>/dev/null)"
+    [ -n "$path" ] || jamsession_die "session '$JAMSESSION_WHICH_SESSION' was not found under $root"
+  else
+    path="$root"
+  fi
+  printf 'path: %s\nformat: JSONL\n' "$path"
+  if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
+    printf 'read: less %q\n' "$path"
+  else
+    printf 'find: find %q -type f -name '\''*.jsonl'\''\n' "$path"
+  fi
 }
 
 list_models() {
@@ -86,6 +103,7 @@ run_agent() {
 
 case "${1:-help}" in
   run) shift; run_agent "$@" ;;
+  which) shift; which_transcript "$@" ;;
   models) jamsession_require_binary; list_models ;;
   list|usage|status) jamsession_unsupported "$1" ;;
   doctor)

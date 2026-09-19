@@ -12,13 +12,29 @@ help_text() {
 jamsession_copilot
 
 Run:    jamsession_copilot run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_copilot <list|models|usage|status|doctor|help>
+Other:  jamsession_copilot <list|which|models|usage|status|doctor|help>
 
 Copilot edit mode allows its tools to run without confirmation. This adapter
 rejects read mode until Copilot's plan mode is verified to block every write
 path in non-interactive sessions. The auto model selects its own effort, so
 combining it with an explicit effort is an error.
 EOF
+}
+
+which_transcript() {
+  jamsession_validate_which "$@"
+  local root="$HOME/.copilot/session-state" path
+  path="$root"
+  if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
+    path="$root/$JAMSESSION_WHICH_SESSION/events.jsonl"
+    [ -f "$path" ] || jamsession_die "session '$JAMSESSION_WHICH_SESSION' was not found under $root"
+  fi
+  printf 'path: %s\nformat: JSONL\n' "$path"
+  if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
+    printf 'read: less %q\n' "$path"
+  else
+    printf 'find: find %q -type f -name events.jsonl\n' "$path"
+  fi
 }
 
 run_agent() {
@@ -52,6 +68,7 @@ run_agent() {
 
 case "${1:-help}" in
   run) shift; run_agent "$@" ;;
+  which) shift; which_transcript "$@" ;;
   list|models|usage|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary

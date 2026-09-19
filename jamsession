@@ -35,6 +35,7 @@ jamsession — one small interface for coding-agent CLIs
 Usage:
   jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
   jamsession list <provider> [count]
+  jamsession which <provider> [session]
   jamsession models <provider>
   jamsession usage [provider] [--json]
   jamsession status [provider]
@@ -370,7 +371,7 @@ uninstall_command() {
 compact_usage() {
   cat >&2 <<'EOF'
 Usage: jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
-       jamsession <list|models> <provider> [arguments]
+       jamsession <list|which|models> <provider> [arguments]
        jamsession <usage|status|doctor> [provider]
        jamsession <providers|init|make-adapter|skills|update|help>
        jamsession skills <list|install|uninstall> <name|all>
@@ -503,6 +504,7 @@ jamsession_$PROVIDER adapter
 Commands:
   jamsession_$PROVIDER run <new|session> <model> <effort> <read|edit> <prompt>
   jamsession_$PROVIDER list [count]
+  jamsession_$PROVIDER which [session]
   jamsession_$PROVIDER models
   jamsession_$PROVIDER usage
   jamsession_$PROVIDER status
@@ -521,7 +523,7 @@ case "${1:-help}" in
     [ $# -eq 6 ] || die "run needs <new|session> <model> <effort> <read|edit> <prompt>"
     unsupported run
     ;;
-  list|models|usage|status|doctor) unsupported "$1" ;;
+  list|which|models|usage|status|doctor) unsupported "$1" ;;
   help|-h|--help) help_text ;;
   *) die "unknown command '$1'" ;;
 esac
@@ -666,11 +668,15 @@ Runs provider authentication and installation diagnostics without collecting
 subscription usage.
 EOF
       ;;
-    list|models)
+    list|models|which)
       cat <<EOF
-Usage: jamsession $1 <provider>
+Usage: jamsession $1 <provider>$([ "$1" = which ] && printf ' [session]')
 
-Runs the provider's native $1 operation.
+$(if [ "$1" = which ]; then
+  printf '%s\n' "Shows the local transcript store and safe access instructions. Pass a provider-native session ID when you want its exact file or lookup guidance. This is read-only discovery; providers may use JSONL, directories, or SQLite."
+else
+  printf '%s\n' "Runs the provider's native $1 operation."
+fi)
 EOF
       ;;
     *)
@@ -697,6 +703,11 @@ case "$command_name" in
     [ $# -ge 1 ] && [ $# -le 2 ] || die "list needs <provider> [count]"
     provider="$1"; shift
     exec "$(require_adapter "$provider")" list "$@"
+    ;;
+  which)
+    [ $# -ge 1 ] && [ $# -le 2 ] || die "which needs <provider> [session]"
+    provider="$1"; shift
+    exec "$(require_adapter "$provider")" which "$@"
     ;;
   models)
     [ $# -eq 1 ] || die "$command_name needs <provider>"

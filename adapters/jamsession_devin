@@ -12,7 +12,7 @@ help_text() {
 jamsession_devin
 
 Run:    jamsession_devin run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_devin <list|models|usage|status|doctor|help>
+Other:  jamsession_devin <list|which|models|usage|status|doctor|help>
 
 Devin uses --print for unattended work and resumes its native session IDs.
 Edit mode uses dangerous permission mode so tool approvals cannot stall the
@@ -20,6 +20,57 @@ run. Read mode is unsupported: auto mode approves only read-only tools, but
 does not guarantee that the agent cannot write. Use an exact ID from
 `jamsession models devin` when specifying effort.
 EOF
+}
+
+devin_sqlite() {
+  local path="$1" query="$2"
+  if [ -f "$path-shm" ]; then
+    sqlite3 -readonly "$path" "$query"
+  else
+    sqlite3 "file:$path?immutable=1" "$query"
+  fi
+}
+
+devin_sqlite_command() {
+  local path="$1" query="$2"
+  if [ -f "$path-shm" ]; then
+    printf 'sqlite3 -readonly %q %q' "$path" "$query"
+  else
+    printf 'sqlite3 %q %q' "file:$path?immutable=1" "$query"
+  fi
+}
+
+devin_live_lock_pid() {
+  local session="$1" lock="$HOME/.local/share/devin/cli/session_locks/$1.lock" pid
+  [ -f "$lock" ] || return 1
+  pid="$(tr -cd '0-9' <"$lock")"
+  [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null || return 1
+  printf '%s\n' "$pid"
+}
+
+which_transcript() {
+  jamsession_validate_which "$@"
+  local path="$HOME/.local/share/devin/cli/sessions.db" query pid summary
+  [ -f "$path" ] || jamsession_die "Devin transcript database was not found: $path"
+  printf 'path: %s\nformat: SQLite\n' "$path"
+  if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
+    if command -v sqlite3 >/dev/null 2>&1 && \
+      [ "$(devin_sqlite "$path" "SELECT count(*) FROM sessions WHERE id = '$JAMSESSION_WHICH_SESSION';")" != 1 ]; then
+      jamsession_die "session '$JAMSESSION_WHICH_SESSION' was not found in $path"
+    fi
+    query="WITH RECURSIVE chain(node_id) AS (SELECT main_chain_id FROM sessions WHERE id = '$JAMSESSION_WHICH_SESSION' UNION ALL SELECT m.parent_node_id FROM message_nodes m JOIN chain c ON m.node_id = c.node_id WHERE m.session_id = '$JAMSESSION_WHICH_SESSION' AND m.parent_node_id IS NOT NULL) SELECT node_id, json_extract(chat_message, '$.role'), json_extract(chat_message, '$.content') FROM message_nodes WHERE session_id = '$JAMSESSION_WHICH_SESSION' AND node_id IN (SELECT node_id FROM chain) ORDER BY node_id;"
+    printf 'read: '; devin_sqlite_command "$path" "$query"; printf '\n'
+    pid="$(devin_live_lock_pid "$JAMSESSION_WHICH_SESSION" || true)"
+    [ -z "$pid" ] || printf 'lock: held by pid %s; close that Devin process to resume\n' "$pid"
+    summary="$HOME/.local/share/devin/summaries/$JAMSESSION_WHICH_SESSION.md"
+    [ ! -f "$summary" ] || printf 'summary: %s\n' "$summary"
+  else
+    query="SELECT id, working_directory, datetime(last_activity_at, 'unixepoch'), title FROM sessions WHERE hidden = 0 ORDER BY last_activity_at DESC;"
+    printf 'read: '; devin_sqlite_command "$path" '.tables'; printf '\n'
+    printf 'sessions: '; devin_sqlite_command "$path" "$query"; printf '\n'
+  fi
+  [ -f "$path-shm" ] || printf 'note: immutable mode is used only while no live Devin SQLite connection exists\n'
+  printf 'note: reads work while the session is open elsewhere; only resuming that session is blocked\n'
 }
 
 model_ids() {
@@ -57,7 +108,7 @@ run_agent() {
   [ "$JAMSESSION_ACCESS" = edit ] || \
     jamsession_die "read access is unsupported because Devin cannot guarantee no writes"
 
-  local model status before after new_ids session_id
+  local model status before after new_ids session_id lock_pid
   local -a args
   model="$(resolve_model "$JAMSESSION_MODEL" "$JAMSESSION_EFFORT")" || exit $?
   args=(-p --permission-mode dangerous --respect-workspace-trust false)
@@ -66,6 +117,8 @@ run_agent() {
     before="$(cd "$JAMSESSION_CWD" && session_ids)" || jamsession_die "could not list Devin sessions before launch"
   else
     session_id="$JAMSESSION_SESSION"
+    lock_pid="$(devin_live_lock_pid "$session_id" || true)"
+    [ -z "$lock_pid" ] || jamsession_die "session '$session_id' is open in another Devin process (pid $lock_pid); close it, or inspect it with 'jamsession which devin $session_id'"
     args+=(--resume "$session_id")
     jamsession_session "$session_id"
   fi
@@ -86,6 +139,7 @@ run_agent() {
 
 case "${1:-help}" in
   run) shift; run_agent "$@" ;;
+  which) shift; which_transcript "$@" ;;
   list)
     shift
     [ $# -le 1 ] || jamsession_die "list takes an optional count"

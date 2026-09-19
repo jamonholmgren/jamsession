@@ -30,6 +30,10 @@ description: Start or resume one coding agent session through the `jamsession` C
    jamsession run <provider> <session> <model> <effort> <read|edit> <prompt>
    ```
 
+   If a session cannot be resumed, is locked, or only needs inspection, run
+   `jamsession which <provider> <session>` and follow its read-only transcript
+   guidance. Do not remove provider locks or edit transcript stores.
+
 7. Start a new session when prior context is irrelevant, noisy, or contains a
    wrong direction. Resume when the session's own findings or unfinished work
    are the main asset.

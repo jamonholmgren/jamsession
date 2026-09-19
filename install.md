@@ -56,6 +56,15 @@ and diagnostics go to stderr. Retain the printed session ID to continue:
 jamsession run codex <session-id> gpt-5.6-sol high read "Check the revision."
 ```
 
+To inspect retained session data without resuming an agent, run:
+
+```sh
+jamsession which <provider> [session-id]
+```
+
+It prints the local transcript store, its format, and read-only access guidance.
+Some providers store one file per session; others use a shared SQLite database.
+
 Use `read` for work that must not modify the workspace. An adapter hard-errors
 when its provider cannot mechanically enforce that restriction. Provider-native
 session metadata and Jam Session temporary output may still be written outside

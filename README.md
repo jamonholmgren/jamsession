@@ -85,10 +85,11 @@ jamsession providers
 jamsession status
 jamsession models cursor # lists models available on cursor agent
 jamsession list grok 5 # lists the last 5 grok sessions in this code base (if available)
+jamsession which devin SESSION_ID # locates the transcript store and explains read-only access
 jamsession init # installs jam session in the current project
 ```
 
-Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`, `devin`, `muse`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused diagnostics. Devin supports `edit` but not guaranteed `read` access. Muse supports both; its CLI does not expose model or session listing.
+Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`, `devin`, `muse`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused diagnostics. `which <provider> [session]` reports the provider's local transcript store and safe access instructions. Devin supports `edit` but not guaranteed `read` access. Muse supports both; its CLI does not expose model or session listing.
 
 ### Skills
 

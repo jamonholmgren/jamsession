@@ -69,6 +69,7 @@ check "providers rejects arguments" test "$status" -eq 2
 
 run_command "$ROOT/jamsession" help
 check "main help documents providers" contains "$stdout_file" "jamsession providers"
+check "main help documents transcript discovery" contains "$stdout_file" "jamsession which <provider> [session]"
 check "main help notes the adapters alias" contains "$stdout_file" "\`adapters\` is an exact alias"
 check "main help does not present adapters as the primary name" sh -c "! grep -q '^  jamsession adapters\$' '$stdout_file'"
 check "main help documents skills uninstall" contains "$stdout_file" "uninstall <name|all>"
@@ -80,6 +81,10 @@ check "the removed packs command is rejected" test "$status" -eq 2
 run_command "$ROOT/jamsession" help providers
 check "provider help explains the listing" contains "$stdout_file" "Usage: jamsession providers"
 check "provider help names the alias" contains "$stdout_file" "exact alias"
+
+run_command "$ROOT/jamsession" help which
+check "which help documents its optional session" contains "$stdout_file" "jamsession which <provider> [session]"
+check "which help explains read-only transcript discovery" contains "$stdout_file" "read-only discovery"
 
 run_command "$ROOT/jamsession" help configure
 check "configure help does not execute its examples" test ! -s "$stderr_file"
@@ -538,6 +543,79 @@ run_command env JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_
 check "Muse session listing explicitly reports unavailable" test "$status" -eq 3
 run_command env JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_muse" doctor
 check "Muse doctor does not claim authentication was verified" contains "$stdout_file" "authentication: not checked"
+
+WHICH_HOME="$TEMP_ROOT/which-home"
+mkdir -p \
+  "$WHICH_HOME/.codex/sessions/2026/09/19" \
+  "$WHICH_HOME/.claude/projects/project" \
+  "$WHICH_HOME/.cursor/chats/workspace/cursor-session" \
+  "$WHICH_HOME/.grok/sessions/project/grok-session" \
+  "$WHICH_HOME/.copilot/session-state/copilot-session" \
+  "$WHICH_HOME/.local/share/devin/cli" \
+  "$WHICH_HOME/.local/share/muse/sessions/2026/09/19/muse-session"
+: >"$WHICH_HOME/.codex/sessions/2026/09/19/rollout-test-codex-session.jsonl"
+: >"$WHICH_HOME/.claude/projects/project/claude-session.jsonl"
+: >"$WHICH_HOME/.cursor/chats/workspace/cursor-session/store.db"
+: >"$WHICH_HOME/.grok/sessions/project/grok-session/events.jsonl"
+: >"$WHICH_HOME/.copilot/session-state/copilot-session/events.jsonl"
+if command -v sqlite3 >/dev/null 2>&1; then
+  sqlite3 "$WHICH_HOME/.local/share/devin/cli/sessions.db" <<'SQL'
+CREATE TABLE sessions (id TEXT PRIMARY KEY, working_directory TEXT, last_activity_at INTEGER, title TEXT, main_chain_id INTEGER, hidden INTEGER DEFAULT 0);
+CREATE TABLE message_nodes (session_id TEXT, node_id INTEGER, parent_node_id INTEGER, chat_message TEXT);
+INSERT INTO sessions VALUES ('devin-session', '/tmp/work', 1, 'Test', 2, 0);
+INSERT INTO message_nodes VALUES ('devin-session', 1, NULL, '{"role":"user","content":"hello"}');
+INSERT INTO message_nodes VALUES ('devin-session', 2, 1, '{"role":"assistant","content":"hi"}');
+SQL
+else
+  : >"$WHICH_HOME/.local/share/devin/cli/sessions.db"
+fi
+: >"$WHICH_HOME/.local/share/muse/sessions/2026/09/19/muse-session/session.jsonl"
+
+run_command env HOME="$WHICH_HOME" "$ROOT/jamsession" which codex codex-session
+check "Codex which resolves an exact transcript" contains "$stdout_file" "rollout-test-codex-session.jsonl"
+run_command env HOME="$WHICH_HOME" "$ROOT/jamsession" which claude claude-session
+check "Claude which resolves an exact transcript" contains "$stdout_file" "claude-session.jsonl"
+run_command env HOME="$WHICH_HOME" "$ROOT/jamsession" which cursor cursor-session
+check "Cursor which resolves its session store" contains "$stdout_file" "cursor-session/store.db"
+check "Cursor which names its internal transcript limitation" contains "$stdout_file" "no stable raw transcript export"
+run_command env HOME="$WHICH_HOME" "$ROOT/jamsession" which grok grok-session
+check "Grok which recommends its native export" contains "$stdout_file" "grok export grok-session"
+run_command env HOME="$WHICH_HOME" "$ROOT/jamsession" which copilot copilot-session
+check "Copilot which resolves events JSONL" contains "$stdout_file" "copilot-session/events.jsonl"
+run_command env HOME="$WHICH_HOME" "$ROOT/jamsession" which devin devin-session
+check "Devin which resolves its SQLite store" contains "$stdout_file" ".local/share/devin/cli/sessions.db"
+check "Devin which uses immutable mode without WAL sidecars" contains "$stdout_file" "immutable=1"
+check "Devin which walks the live transcript chain" contains "$stdout_file" "WITH\\ RECURSIVE"
+check "Devin which filters the requested session" contains "$stdout_file" "devin-session"
+run_command env HOME="$WHICH_HOME" "$ROOT/jamsession" which devin
+check "Devin which lists sessions from its SQLite store" contains "$stdout_file" "hidden\\ =\\ 0"
+run_command env HOME="$WHICH_HOME" "$ROOT/jamsession" which muse muse-session
+check "Muse which resolves session JSONL" contains "$stdout_file" "muse-session/session.jsonl"
+check "Muse which recommends redacted native export" contains "$stdout_file" "muse export --session muse-session --redacted"
+run_command env HOME="$WHICH_HOME" "$ROOT/jamsession" which devin "bad' OR 1=1"
+check "which rejects unsafe session characters" test "$status" -eq 2
+run_command env HOME="$WHICH_HOME" "$ROOT/jamsession" which devin -x
+check "which rejects option-like session IDs" test "$status" -eq 2
+if command -v sqlite3 >/dev/null 2>&1; then
+  run_command env HOME="$WHICH_HOME" "$ROOT/jamsession" which devin missing-session
+  check "Devin which rejects an unknown session" test "$status" -eq 2
+fi
+
+mkdir -p "$WHICH_HOME/.local/share/devin/cli/session_locks"
+printf '%s\n' "$$" >"$WHICH_HOME/.local/share/devin/cli/session_locks/locked-session.lock"
+rm -f "$LOG"
+run_command env HOME="$WHICH_HOME" FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" \
+  JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" run locked-session default default edit prompt
+check "Devin rejects a resume held by a live process" test "$status" -eq 2
+check "locked Devin guidance points to which" contains "$stderr_file" "jamsession which devin locked-session"
+check "locked Devin resume does not invoke the provider" test ! -e "$LOG"
+
+printf '%s\n' 99999999 >"$WHICH_HOME/.local/share/devin/cli/session_locks/stale-session.lock"
+run_command env HOME="$WHICH_HOME" FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" \
+  JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" run stale-session default default edit prompt
+check "Devin leaves stale-lock handling to the provider" contains "$LOG" "--resume stale-session"
 
 run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
   "$ROOT/adapters/jamsession_codex" doctor

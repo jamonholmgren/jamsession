@@ -12,13 +12,27 @@ help_text() {
 jamsession_muse
 
 Run:    jamsession_muse run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_muse <list|models|usage|status|doctor|help>
+Other:  jamsession_muse <list|which|models|usage|status|doctor|help>
 
 Muse uses headless `exec` and resumes with its native session UUID. Read mode
 disables both shell execution and workspace writes. Edit mode allows unattended
 workspace changes within Muse's normal sandbox. Muse does not expose native
 session or model listing commands.
 EOF
+}
+
+which_transcript() {
+  jamsession_validate_which "$@"
+  local root="$HOME/.local/share/muse/sessions" path
+  path="$root"
+  if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
+    path="$(jamsession_find_session_file "$root" "$JAMSESSION_WHICH_SESSION" session.jsonl)"
+    [ -n "$path" ] || jamsession_die "session '$JAMSESSION_WHICH_SESSION' was not found under $root"
+    printf 'path: %s\nformat: JSONL\nread: less %q\n' "$path" "$path"
+    printf 'export: muse export --session %q --redacted --out /tmp/muse-session.json\n' "$JAMSESSION_WHICH_SESSION"
+  else
+    printf 'path: %s\nformat: per-session JSONL directories\nread: muse export --last --redacted\n' "$path"
+  fi
 }
 
 run_agent() {
@@ -76,6 +90,7 @@ run_agent() {
 
 case "${1:-help}" in
   run) shift; run_agent "$@" ;;
+  which) shift; which_transcript "$@" ;;
   list|models|usage|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary

@@ -90,6 +90,23 @@ jamsession_positive_count() {
   case "$1" in ""|*[!0-9]*|0) jamsession_die "count must be a positive integer" ;; esac
 }
 
+jamsession_validate_which() {
+  [ $# -le 1 ] || jamsession_die "which takes an optional session ID"
+  JAMSESSION_WHICH_SESSION="${1:-}"
+  case "$JAMSESSION_WHICH_SESSION" in
+    -*) jamsession_die "session ID must not begin with '-'" ;;
+    ""|*[!a-zA-Z0-9._-]*)
+      [ -z "$JAMSESSION_WHICH_SESSION" ] || jamsession_die "session ID contains unsupported characters"
+      ;;
+  esac
+}
+
+jamsession_find_session_file() {
+  local root="$1" session="$2" basename="$3"
+  [ -d "$root" ] || return 1
+  find "$root" -type f -path "*/$session/$basename" -print -quit 2>/dev/null
+}
+
 # Extract one string from compact provider JSON. This intentionally implements
 # only JSON string escaping, not a general JSON parser.
 jamsession_json_string() {

@@ -12,13 +12,26 @@ help_text() {
 jamsession_grok
 
 Run:    jamsession_grok run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_grok <list|models|usage|status|doctor|help>
+Other:  jamsession_grok <list|which|models|usage|status|doctor|help>
 
 Grok edit mode uses bypassPermissions because headless approval modes can end a
 session without returning its answer. This adapter rejects read mode: Grok's
 current read-only controls do not reliably prevent shell writes. Grok reasoning
 effort stops at high, so xhigh or max is an error rather than a quiet downgrade.
 EOF
+}
+
+which_transcript() {
+  jamsession_validate_which "$@"
+  local root="$HOME/.grok/sessions" path=""
+  if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
+    path="$(jamsession_find_session_file "$root" "$JAMSESSION_WHICH_SESSION" events.jsonl)"
+    [ -n "$path" ] || jamsession_die "session '$JAMSESSION_WHICH_SESSION' was not found under $root"
+    printf 'path: %s\nformat: JSONL\nread: grok export %q\n' "$path" "$JAMSESSION_WHICH_SESSION"
+  else
+    printf 'path: %s\nformat: per-session JSONL directories\nread: grok sessions list; grok export SESSION_ID\n' "$root"
+  fi
+  printf 'note: grok export may start or contact Grok\047s local leader daemon\n'
 }
 
 run_agent() {
@@ -54,6 +67,7 @@ run_agent() {
 
 case "${1:-help}" in
   run) shift; run_agent "$@" ;;
+  which) shift; which_transcript "$@" ;;
   list)
     shift
     [ $# -le 1 ] || jamsession_die "list takes an optional count"
