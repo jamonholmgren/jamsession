@@ -678,7 +678,7 @@ run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jams
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
   "$ROOT/jamsession" skills install jamsession-model-recommendations
 check "model-recommendations skill installs on request" test -f "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md"
-check "model recommendations carry a freshness date" contains "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md" "fresh as of September 15, 2026"
+check "model recommendations carry a freshness date" contains "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md" "fresh as of September 22, 2026"
 
 run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
@@ -1027,8 +1027,8 @@ check "no workflow still refers to the old name" \
   sh -c "! grep -rqi jamwrap '$ROOT/.github/workflows/'"
 check "the model recommendation skill is bundled" \
   sh -c "grep -q '^name: jamsession-model-recommendations$' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
-check "model recommendations prefer Fable slightly over Astra" \
-  sh -c "grep -Fq 'slightly prefers Fable' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
+check "model recommendations prefer Opus 5.5" \
+  sh -c "grep -Fq 'Claude Opus 5.5 - preferred top-tier model' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
 check "the agent-usage skill requests structured usage" \
   sh -c "grep -Fq 'jamsession usage --json' '$ROOT/skills/jamsession-get-agent-usage/SKILL.md'"
 check "the remote-agent skill depends on no separately optional skill" \
