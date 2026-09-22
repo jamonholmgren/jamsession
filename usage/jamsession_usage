@@ -7,9 +7,39 @@ TIMEOUT="${JAMSESSION_USAGE_TIMEOUT:-20}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_DIR=""
 CAPTURE_FILE=""
+CAPTURE_PID=""
 PROVIDER_WINDOWS=""
 
+descendant_pids() {
+  local pid="$1" depth="${2:-0}" child
+  [ "$depth" -lt 8 ] || return 0
+  printf '%s\n' "$pid"
+  # pgrep needs sysmond, which can be down. ps still lists parents.
+  for child in $(ps -axo pid=,ppid= | awk -v parent="$pid" '$2 == parent { print $1 }'); do
+    descendant_pids "$child" $((depth + 1))
+  done
+}
+
+stop_pid_tree() {
+  local root="$1" signal pid pids
+  [ -n "$root" ] || return 0
+  pids="$(descendant_pids "$root" | awk 'NF { rows[++count] = $0 } END { for (i = count; i >= 1; i--) print rows[i] }')"
+  for signal in TERM KILL; do
+    printf '%s\n' "$pids" | while IFS= read -r pid; do
+      [ -n "$pid" ] || continue
+      kill "-$signal" "$pid" 2>/dev/null || true
+    done
+    [ "$signal" = TERM ] || break
+    sleep 1
+  done
+}
+
 cleanup() {
+  if [ -n "$CAPTURE_PID" ]; then
+    stop_pid_tree "$CAPTURE_PID"
+    wait "$CAPTURE_PID" 2>/dev/null || true
+    CAPTURE_PID=""
+  fi
   [ -n "$TEMP_DIR" ] || return 0
   if [ -n "${JAMSESSION_USAGE_DEBUG_DIR:-}" ]; then
     mkdir -p "$JAMSESSION_USAGE_DEBUG_DIR"
@@ -166,6 +196,7 @@ capture_tui() {
       >"$TEMP_DIR/$provider.stdout" 2>"$TEMP_DIR/$provider.script.err" &
   fi
   pid=$!
+  CAPTURE_PID=$pid
   deadline=$((SECONDS + TIMEOUT))
   while kill -0 "$pid" 2>/dev/null && [ "$SECONDS" -lt "$deadline" ]; do
     case "$provider" in
@@ -175,12 +206,19 @@ capture_tui() {
     esac
     sleep 1
   done
-  if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null || true
-    sleep 1
-    kill -9 "$pid" 2>/dev/null || true
+  # `script` starts its own session, so killing only this pipeline subshell
+  # leaves the usage TUI reparented to launchd. Stop the whole descendant tree,
+  # then anything still named with this capture file.
+  stop_pid_tree "$pid"
+  extra_pids="$(ps -axo pid=,command= | awk -v out="$output" 'index($0, out) { print $1 }')"
+  if [ -n "$extra_pids" ]; then
+    printf '%s\n' "$extra_pids" | while IFS= read -r extra_pid; do
+      [ -n "$extra_pid" ] || continue
+      stop_pid_tree "$extra_pid"
+    done
   fi
   wait "$pid" 2>/dev/null || true
+  CAPTURE_PID=""
   [ -s "$output" ] || return 1
   CAPTURE_FILE="$output"
 }
