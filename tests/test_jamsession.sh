@@ -157,6 +157,14 @@ case " $* " in
     printf '%s\n' '[claude-code:unrecognized_model]' >&2
     exit 1
     ;;
+  *" --model synthetic-error "*)
+    printf '%s\n' "There's an issue with the selected model (synthetic-error). It may not exist."
+    exit 0
+    ;;
+  *" --model logged-out "*)
+    printf '%s\n' 'Not logged in · Please run /login'
+    exit 0
+    ;;
 esac
 printf '%s\n' CLAUDE_RESULT
 exit "${FAKE_EXIT:-0}"
@@ -177,7 +185,7 @@ EOF
 
 cat >"$FAKE_BIN/claude-model-reader" <<'EOF'
 #!/bin/sh
-printf '%s\n' '1. Default (recommended)  Opus 5' '2. Opus  Opus 5' '3. Fable  Fable 5.1' '4. Sonnet  Sonnet 5' '5. Haiku  Haiku 4.5'
+printf '%s\n' 'default - Opus 5' 'opus 5 - Best for everyday tasks' 'fable 5.1 - Fable 5.1 for the hardest tasks' 'haiku 4.5 - Fastest'
 EOF
 
 cat >"$FAKE_BIN/cursor-agent" <<'EOF'
@@ -567,12 +575,25 @@ run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
   JAMSESSION_PYTHON_BIN="$FAKE_BIN/claude-model-reader" \
   "$ROOT/adapters/jamsession_claude" models
 check "Claude models reads the interactive picker" contains "$stdout_file" "Fable 5.1"
+check "Claude models prefixes picker names with CLI IDs" contains "$stdout_file" "claude-fable-5-1 - fable 5.1 - "
 
 run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
   JAMSESSION_PYTHON_BIN="$FAKE_BIN/claude-model-reader" \
   "$ROOT/adapters/jamsession_claude" run new invalid-model medium read prompt
 check "Claude preserves an invalid-model failure" test "$status" -eq 1
 check "Claude invalid-model failures print picker choices" contains "$stderr_file" "Fable 5.1"
+
+run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+  "$ROOT/adapters/jamsession_claude" run new "Opus 5.5" high read prompt
+check "Claude maps a picker name to its CLI model ID" contains "$LOG" "--model claude-opus-5-5 "
+
+for synthetic_model in synthetic-error logged-out; do
+  run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+    JAMSESSION_PYTHON_BIN="$FAKE_BIN/claude-model-reader" \
+    "$ROOT/adapters/jamsession_claude" run new "$synthetic_model" high read prompt
+  check "Claude $synthetic_model reply exits nonzero" test "$status" -eq 1
+  check "Claude $synthetic_model reply names provider unavailable" contains "$stderr_file" "provider unavailable"
+done
 
 rm -f "$LOG"
 run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \

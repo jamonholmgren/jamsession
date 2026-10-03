@@ -22,7 +22,9 @@ Claude read mode uses plan permission mode. Edit mode uses bypassPermissions
 because headless sessions cannot answer permission prompts; use it only in a
 trusted workspace. Claude has no none effort, so that request is an error
 rather than a silent default. Model listing reads Claude's interactive model
-picker; older models that the picker omits can still be passed by full name.
+picker and prefixes each picker name with its CLI ID; run also accepts picker
+names such as "opus 5.5". Older models the picker omits can still be passed by
+full name. A model or login error reply exits nonzero as provider unavailable.
 Claude exposes no non-interactive native session or usage listing.
 EOF
 }
@@ -44,8 +46,19 @@ which_transcript() {
   fi
 }
 
+# The picker shows names such as "opus 5.5"; the CLI accepts claude-opus-5-5.
+claude_model_id() {
+  local name
+  name="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  if [[ "$name" =~ ^(opus|sonnet|haiku|fable)[\ -]([0-9]+(\.[0-9]+)?)$ ]]; then
+    printf 'claude-%s-%s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]//./-}"
+  else
+    printf '%s\n' "$1"
+  fi
+}
+
 list_models() {
-  local python_bin="${JAMSESSION_PYTHON_BIN:-python3}" helper
+  local python_bin="${JAMSESSION_PYTHON_BIN:-python3}" helper choices line label id
   command -v "$python_bin" >/dev/null 2>&1 || jamsession_die "Claude model listing needs python3 to read the interactive picker"
   if [ -x "${JAMSESSION_HOME:-}/bin/jamsession_tui_usage.py" ]; then
     helper="$JAMSESSION_HOME/bin/jamsession_tui_usage.py"
@@ -53,8 +66,13 @@ list_models() {
     helper="$ADAPTER_DIR/../usage/jamsession_tui_usage.py"
   fi
   [ -f "$helper" ] || jamsession_die "Claude model picker reader is not installed; run jamsession update"
-  "$python_bin" "$helper" claude-models "$JAMSESSION_PROVIDER_BIN" "${JAMSESSION_MODELS_TIMEOUT:-20}" || \
+  choices="$("$python_bin" "$helper" claude-models "$JAMSESSION_PROVIDER_BIN" "${JAMSESSION_MODELS_TIMEOUT:-20}")" || \
     jamsession_die "could not read Claude's interactive model picker"
+  while IFS= read -r line; do
+    label="${line%% - *}"
+    id="$(claude_model_id "$label")"
+    if [ "$id" = "$label" ]; then printf '%s\n' "$line"; else printf '%s - %s\n' "$id" "$line"; fi
+  done <<<"$choices"
 }
 
 run_agent() {
@@ -64,7 +82,7 @@ run_agent() {
   local session_id status provider_output provider_error
   local -a args
   args=(-p --output-format text)
-  [ "$JAMSESSION_MODEL" = default ] || args+=(--model "$JAMSESSION_MODEL")
+  [ "$JAMSESSION_MODEL" = default ] || args+=(--model "$(claude_model_id "$JAMSESSION_MODEL")")
   case "$JAMSESSION_EFFORT" in
     default) ;;
     none) jamsession_die "Claude has no none effort; pass default or a supported effort" ;;
@@ -96,6 +114,13 @@ run_agent() {
   (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null >"$provider_output" 2>"$provider_error") || status=$?
   cat "$provider_output"
   cat "$provider_error" >&2
+  # Claude can answer a failed launch with one synthetic line. Never let that
+  # pass as a successful turn: the session did no work.
+  if [ "$(wc -l <"$provider_output")" -le 1 ] && \
+    grep -Eq "^(There.s an issue with the selected model \(|Not logged in · )" "$provider_output"; then
+    [ "$status" -ne 0 ] || status=1
+    printf 'jamsession_claude: provider unavailable: %s\n' "$(head -n 1 "$provider_output")" >&2
+  fi
   if [ "$status" -ne 0 ] && [ "$JAMSESSION_MODEL" != default ] && \
     grep -Eqi 'unrecognized_model|issue with the selected model|issue with selected model|model.*(may not exist|not found|unknown|invalid)' \
       "$provider_output" "$provider_error"; then

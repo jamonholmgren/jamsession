@@ -14,7 +14,10 @@ description: Start, resume, or message one coding agent session through the `jam
    with: `Do not modify, create, delete, rename, format, stage, or commit files;
    do not run state-changing commands.`
 3. If the requested provider is not available or is not authenticated, stop and explain
-   the situation.
+   the situation. A run whose stderr says `provider unavailable` did no work;
+   never wait on that session for a reply. For "Not logged in", treat the
+   provider as unavailable. For a rejected model, choose an ID from
+   `jamsession models <provider>` or treat the provider as unavailable.
 4. If resuming work and the session ID is unknown, try `jamsession list <provider>`.
    Some providers cannot list sessions; do not guess an ID when listing is unavailable.
 5. Start work with:
