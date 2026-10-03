@@ -360,6 +360,60 @@ run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$TEMP_ROOT/message-devin-state
   JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" "$ROOT/jamsession" message devin target question --resume-with default default edit
 check "Devin fallback targets the existing session" contains "$LOG" "--resume target"
 
+SIZE_HOME="$TEMP_ROOT/size-home"
+mkdir -p "$SIZE_HOME/.claude/projects/workspace" "$SIZE_HOME/.codex/sessions/2026" \
+  "$SIZE_HOME/.copilot/session-state/copilot-size" "$SIZE_HOME/.grok/sessions/workspace/grok-size" \
+  "$SIZE_HOME/.local/share/muse/sessions/2026/muse-session"
+cat >"$SIZE_HOME/.claude/projects/workspace/claude-size.jsonl" <<'JSONL'
+{"type":"assistant","message":{"content":[{"type":"text","text":"\"usage\":{\"input_tokens\":9}"}],"usage":{"input_tokens":2,"cache_creation_input_tokens":20000,"cache_read_input_tokens":240000,"output_tokens":800,"iterations":[{"input_tokens":1}]}}}
+{"type":"user","toolUseResult":{"usage":{"input_tokens":5,"output_tokens":5}}}
+{"type":"assistant","isSidechain":true,"message":{"usage":{"input_tokens":7,"output_tokens":7}}}
+JSONL
+cat >"$SIZE_HOME/.codex/sessions/2026/rollout-codex-session.jsonl" <<'JSONL'
+{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":999999},"last_token_usage":{"input_tokens":1200,"output_tokens":34,"total_tokens":1234}}}}
+JSONL
+printf '%s\n' '{"data":{"currentTokens":100}}' '{"data":{"currentTokens":200}}' \
+  >"$SIZE_HOME/.copilot/session-state/copilot-size/events.jsonl"
+printf '%s\n' '{"turnCount":1,"contextTokensUsed":300,"contextWindowTokens":256000}' \
+  >"$SIZE_HOME/.grok/sessions/workspace/grok-size/signals.json"
+printf '%s\n' '{"payload":{"event":{"kind":"model_completed","usage":{"input_tokens":400,"output_tokens":5,"cached_tokens":390}}}}' \
+  >"$SIZE_HOME/.local/share/muse/sessions/2026/muse-session/session.jsonl"
+
+run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+  "$ROOT/jamsession" run claude claude-size default default read prompt
+check "Claude resume reports the latest main-thread context size" contains "$stderr_file" "session-size: 260802 tokens"
+check "a session past 250K tokens suggests a worksheet hand-off" contains "$stderr_file" "consider a fresh session"
+check "the size report stays off stdout" equals "$stdout_file" CLAUDE_RESULT
+run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+  "$ROOT/jamsession" run claude new default default read prompt
+check "a session without token data says so plainly" contains "$stderr_file" "session-size: unavailable"
+run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  "$ROOT/jamsession" run codex new default default read prompt
+check "Codex reports the latest call, not cumulative usage" contains "$stderr_file" "session-size: 1234 tokens"
+check "a small session gets no hand-off advice" sh -c "! grep -Fq 'fresh session' '$stderr_file'"
+run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" JAMSESSION_COPILOT_BIN="$FAKE_BIN/copilot" \
+  "$ROOT/jamsession" run copilot copilot-size default default edit prompt
+check "Copilot reports its latest context count" contains "$stderr_file" "session-size: 200 tokens"
+run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
+  "$ROOT/jamsession" run grok grok-size default default edit prompt
+check "Grok reports its context count" contains "$stderr_file" "session-size: 300 tokens"
+run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" \
+  "$ROOT/jamsession" run muse new default default read prompt
+check "Muse reports its latest model call" contains "$stderr_file" "session-size: 405 tokens"
+run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" \
+  "$ROOT/jamsession" run cursor new default default read prompt
+check "Cursor explains why its size is unavailable" contains "$stderr_file" "session-size: unavailable (Cursor"
+if command -v sqlite3 >/dev/null 2>&1; then
+  mkdir -p "$SIZE_HOME/.local/share/devin/cli"
+  sqlite3 "$SIZE_HOME/.local/share/devin/cli/sessions.db" \
+    "CREATE TABLE message_nodes (session_id TEXT, node_id INTEGER, metadata TEXT);
+     INSERT INTO message_nodes VALUES ('devin-size', 1, '{\"num_tokens_preceding\":100}'),
+       ('devin-size', 2, NULL), ('devin-size', 3, '{\"num_tokens_preceding\":600}');"
+  run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$TEMP_ROOT/size-devin-state" \
+    JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" "$ROOT/jamsession" run devin devin-size default default edit prompt
+  check "Devin resume reports its latest recorded context" contains "$stderr_file" "session-size: 600 tokens"
+fi
+
 WATCH_REPLY="$TEMP_ROOT/watch reply.txt"
 printf 'literal [ready].\n\n' >"$WATCH_REPLY"
 run_command "$ROOT/jamsession" watch "$WATCH_REPLY" '[ready].' --timeout 0

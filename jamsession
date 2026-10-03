@@ -51,7 +51,8 @@ Usage:
   jamsession help [command|provider]
 
 The prompt may be `-` to read stdin. Provider output goes to stdout; session
-IDs, hints, warnings, and diagnostics go to stderr.
+IDs, session sizes, hints, warnings, and diagnostics go to stderr. Past 250K
+tokens, the size line suggests handing off to a fresh session.
 
 `providers` lists the installed provider adapters. `adapters` is an exact alias.
 EOF

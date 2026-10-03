@@ -52,6 +52,15 @@ devin_live_lock_pid() {
   printf '%s\n' "$pid"
 }
 
+# Devin records the tokens preceding each model reply on the message node.
+session_size() {
+  local path="$HOME/.local/share/devin/cli/sessions.db"
+  command -v sqlite3 >/dev/null 2>&1 || { jamsession_session_size "" "reading Devin sessions needs sqlite3"; return; }
+  case "$1" in ""|*[!a-zA-Z0-9._-]*) jamsession_session_size ""; return ;; esac
+  [ -f "$path" ] || { jamsession_session_size ""; return; }
+  jamsession_session_size "$(devin_sqlite "$path" "SELECT json_extract(metadata, '$.num_tokens_preceding') FROM message_nodes WHERE session_id = '$1' AND json_extract(metadata, '$.num_tokens_preceding') IS NOT NULL ORDER BY node_id DESC LIMIT 1;" 2>/dev/null)"
+}
+
 which_transcript() {
   jamsession_validate_which "$@"
   local path="$HOME/.local/share/devin/cli/sessions.db" query pid summary
@@ -131,7 +140,7 @@ run_agent() {
   jamsession_hint "Devin dangerous mode may run tools beyond the workspace; use a trusted environment."
   status=0
   (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null) || status=$?
-  [ "$JAMSESSION_SESSION" = new ] || exit "$status"
+  [ "$JAMSESSION_SESSION" = new ] || { session_size "$session_id"; exit "$status"; }
   [ "$status" -eq 0 ] || exit "$status"
 
   after="$(cd "$JAMSESSION_CWD" && session_ids)" || jamsession_die "could not list Devin sessions after launch"
@@ -139,6 +148,7 @@ run_agent() {
   [ "$(printf '%s\n' "$new_ids" | grep -c . || true)" -eq 1 ] || \
     jamsession_die "could not identify exactly one new Devin session; run 'jamsession list devin'"
   jamsession_session "$new_ids"
+  session_size "$new_ids"
 }
 
 case "${1:-help}" in

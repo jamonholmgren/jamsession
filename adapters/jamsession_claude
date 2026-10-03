@@ -46,6 +46,22 @@ which_transcript() {
   fi
 }
 
+# The latest main-thread reply's usage is the context the next turn resumes.
+session_size() {
+  local path line input cache_write cache_read output
+  path="$(find "$HOME/.claude/projects" -type f -name "$1.jsonl" -print -quit 2>/dev/null)"
+  [ -n "$path" ] || { jamsession_session_size ""; return; }
+  line="$(grep -F '"type":"assistant"' "$path" | grep -Fv -e '"isSidechain":true' -e '"model":"<synthetic>"' | \
+    grep -F '"usage":{' | tail -n 1)"
+  [ -n "$line" ] || { jamsession_session_size ""; return; }
+  line="${line##*\"usage\":\{}"
+  input="$(jamsession_json_number "$line" input_tokens)"
+  cache_write="$(jamsession_json_number "$line" cache_creation_input_tokens)"
+  cache_read="$(jamsession_json_number "$line" cache_read_input_tokens)"
+  output="$(jamsession_json_number "$line" output_tokens)"
+  jamsession_session_size "$((${input:-0} + ${cache_write:-0} + ${cache_read:-0} + ${output:-0}))"
+}
+
 # The picker shows names such as "opus 5.5"; the CLI accepts claude-opus-5-5.
 claude_model_id() {
   local name
@@ -127,6 +143,7 @@ run_agent() {
     printf '\nAvailable Claude model-picker choices:\n' >&2
     (list_models) >&2 || printf 'Run `jamsession models claude` after checking Claude authentication.\n' >&2
   fi
+  session_size "$session_id"
   exit "$status"
 }
 

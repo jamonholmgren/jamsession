@@ -27,6 +27,10 @@ description: Start, resume, or message one coding agent session through the `jam
    ```
 
 6. Retain the `session: <id>` line from stderr when continuity could help.
+   Each run also prints `session-size:` with the session's current token
+   length, or why the provider exposes none. Past 250K tokens it suggests a
+   fresh session; prefer recording state in the task worksheet and starting
+   `new` over resuming an oversized session for unrelated work.
    Resume only that provider's exact session:
 
    ```text

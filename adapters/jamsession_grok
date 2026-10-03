@@ -38,6 +38,12 @@ which_transcript() {
   printf 'note: grok export may start or contact Grok\047s local leader daemon\n'
 }
 
+session_size() {
+  local path
+  path="$(jamsession_find_session_file "$HOME/.grok/sessions" "$1" signals.json)"
+  jamsession_session_size "$([ -z "$path" ] || jamsession_json_number "$(cat "$path")" contextTokensUsed)"
+}
+
 run_agent() {
   jamsession_validate_run "$@"
   jamsession_require_binary
@@ -66,6 +72,7 @@ run_agent() {
   jamsession_session "$session_id"
   status=0
   "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null || status=$?
+  session_size "$session_id"
   exit "$status"
 }
 

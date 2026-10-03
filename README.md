@@ -74,7 +74,7 @@ jamsession run claude new claude-opus-5 high edit "Implement the requested chang
 jamsession run codex 019abc gpt-5.6-sol high read "Check the revised diff."
 ```
 
-Every part is required. Pass a session ID instead of `new` to resume, and `-` as the prompt to read stdin. The reply goes to stdout; session IDs and diagnostics go to stderr.
+Every part is required. Pass a session ID instead of `new` to resume, and `-` as the prompt to read stdin. The reply goes to stdout; session IDs, the session's current token size, and diagnostics go to stderr. Past 250K tokens it suggests handing off to a fresh session.
 
 `read` means the agent is called with the best settings to avoid changing your workspace. `edit` uses the provider's unattended coding mode. Model and effort are passed through or mapped to provider-supported variants.
 

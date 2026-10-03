@@ -175,6 +175,7 @@ run_agent() {
     [ "$status" -ne 0 ] || status=2
     printf 'jamsession_cursor: could not extract the final response from provider JSON\n' >&2
   fi
+  jamsession_session_size "" "Cursor stores sessions as encrypted blobs with no readable token count"
   exit "$status"
 }
 

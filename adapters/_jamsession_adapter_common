@@ -82,6 +82,28 @@ jamsession_session() {
   printf 'session: %s\n' "$1" >&2
 }
 
+# Report the context a session now carries, as read from the provider's own
+# transcript after the turn. Very long sessions degrade and can fail to compact,
+# so past the limit the caller is told to hand off through its task record.
+jamsession_session_size() {
+  local tokens="$1"
+  case "$tokens" in
+    ""|*[!0-9]*)
+      printf 'session-size: unavailable (%s)\n' "${2:-no token count found for this session}" >&2
+      return 0
+      ;;
+  esac
+  printf 'session-size: %s tokens\n' "$tokens" >&2
+  [ "$tokens" -gt 250000 ] || return 0
+  printf 'session-size: past 250K tokens; consider a fresh session: record state and next steps in the task worksheet, then start new and point it there\n' >&2
+}
+
+# First "field":<integer> in compact JSON. Escaped quotes inside string values
+# cannot match, so a key pattern only finds real keys.
+jamsession_json_number() {
+  [[ $1 =~ \"$2\":([0-9]+) ]] && printf '%s' "${BASH_REMATCH[1]}"
+}
+
 jamsession_hint() {
   [ "$JAMSESSION_SESSION" = new ] || return 0
   printf 'hint: %s\n' "$*" >&2

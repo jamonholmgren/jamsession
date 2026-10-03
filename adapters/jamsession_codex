@@ -41,6 +41,14 @@ which_transcript() {
   fi
 }
 
+# Codex records each model call's usage; the latest total is the live context.
+session_size() {
+  local root="${CODEX_HOME:-$HOME/.codex}" path line
+  path="$(find "$root/sessions" "$root/archived_sessions" -type f -name "*-$1.jsonl" -print -quit 2>/dev/null)"
+  line="$([ -z "$path" ] || grep -F '"last_token_usage":{' "$path" | tail -n 1)"
+  jamsession_session_size "$(jamsession_json_number "${line##*\"last_token_usage\":\{}" total_tokens)"
+}
+
 run_agent() {
   jamsession_validate_run "$@"
   jamsession_require_binary
@@ -94,10 +102,9 @@ run_agent() {
     session_id="$line"
     break
   done < <(sed -n 's/.*"thread_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$temp_events")
+  [ -n "$session_id" ] || [ "$JAMSESSION_SESSION" = new ] || session_id="$JAMSESSION_SESSION"
   if [ -n "$session_id" ]; then
     jamsession_session "$session_id"
-  elif [ "$JAMSESSION_SESSION" != new ]; then
-    jamsession_session "$JAMSESSION_SESSION"
   else
     printf 'jamsession_codex: provider returned no session identifier\n' >&2
   fi
@@ -108,6 +115,7 @@ run_agent() {
   elif [ "$status" -ne 0 ] && [ -s "$temp_events" ]; then
     cat "$temp_events" >&2
   fi
+  [ -z "$session_id" ] || session_size "$session_id"
   exit "$status"
 }
 

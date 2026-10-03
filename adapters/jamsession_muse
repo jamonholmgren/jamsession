@@ -77,6 +77,18 @@ which_transcript() {
   fi
 }
 
+# Each model call's input already includes cached tokens.
+session_size() {
+  local path line input output
+  path="$(jamsession_find_session_file "$HOME/.local/share/muse/sessions" "$1" session.jsonl)"
+  line="$([ -z "$path" ] || grep -F '"kind":"model_completed"' "$path" | tail -n 1)"
+  [ -n "$line" ] || { jamsession_session_size ""; return; }
+  line="${line##*\"usage\":\{}"
+  input="$(jamsession_json_number "$line" input_tokens)"
+  output="$(jamsession_json_number "$line" output_tokens)"
+  jamsession_session_size "$((${input:-0} + ${output:-0}))"
+}
+
 run_agent() {
   jamsession_validate_run "$@"
   jamsession_require_binary
@@ -127,6 +139,7 @@ run_agent() {
   if [ "$status" -ne 0 ] && [ -s "$events" ] && [ -z "$final_text" ]; then
     tail -n 1 "$events" >&2
   fi
+  [ -z "$session_id" ] || session_size "$session_id"
   exit "$status"
 }
 

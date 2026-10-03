@@ -41,6 +41,12 @@ which_transcript() {
   fi
 }
 
+session_size() {
+  local path="$HOME/.copilot/session-state/$1/events.jsonl" tokens=""
+  [ ! -f "$path" ] || tokens="$(grep -o '"currentTokens":[0-9]*' "$path" | tail -n 1)"
+  jamsession_session_size "${tokens#*:}"
+}
+
 run_agent() {
   jamsession_validate_run "$@"
   jamsession_require_binary
@@ -67,6 +73,7 @@ run_agent() {
   jamsession_session "$session_id"
   status=0
   "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null || status=$?
+  session_size "$session_id"
   exit "$status"
 }
 
