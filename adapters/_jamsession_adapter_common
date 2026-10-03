@@ -90,6 +90,14 @@ jamsession_positive_count() {
   case "$1" in ""|*[!0-9]*|0) jamsession_die "count must be a positive integer" ;; esac
 }
 
+jamsession_validate_message() {
+  [ $# -eq 2 ] || jamsession_die "message needs <session> <text>"
+  [ -n "$1" ] || jamsession_die "session must not be empty"
+  case "$1" in -*) jamsession_die "session must not begin with '-'" ;; esac
+  JAMSESSION_MESSAGE_SESSION="$1"
+  jamsession_read_prompt "$2"
+}
+
 jamsession_validate_which() {
   [ $# -le 1 ] || jamsession_die "which takes an optional session ID"
   JAMSESSION_WHICH_SESSION="${1:-}"

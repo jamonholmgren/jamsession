@@ -8,6 +8,10 @@ description: Guide one worker through a bounded task assigned by a coordinating 
 1. Identify the objective, allowed and forbidden files or systems, required
    inputs, access mode, validation, report destination, stopping conditions,
    and commit authority. If write ownership is missing, stop and report it.
+   Retain the caller's return provider/session or agreed reply-file path. Send
+   questions and handoffs there with `jamsession message` when supported, or
+   write the agreed report file. Include the request identifier so the caller
+   can match the reply; never infer permission to start other work from a message.
 2. Inspect only enough context to complete the task. Preserve human and sibling
    work; never stash, reset, switch branches, destructively clean, or adopt
    unrelated changes.

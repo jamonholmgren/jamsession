@@ -1,6 +1,6 @@
 ---
 name: jamsession-summon-agent
-description: Start or resume one coding agent session through the `jamsession` CLI with one of the available providers, model, effort, access level, and provider-native session ID. Use for subagent tasks.
+description: Start, resume, or message one coding agent session through the `jamsession` CLI. Use for subagent tasks and contacting existing sessions.
 ---
 
 # Summon an Agent
@@ -30,7 +30,21 @@ description: Start or resume one coding agent session through the `jamsession` C
    jamsession run <provider> <session> <model> <effort> <read|edit> <prompt>
    ```
 
-   If a session cannot be resumed, is locked, or only needs inspection, run
+   To contact an existing session, especially one already running, use
+   `jamsession message <provider> <session> "<text>"`. Codex and Muse support
+   native asynchronous messaging. Other providers report unavailable; do not
+   silently resume a busy session. A delivery acknowledgement is not an answer.
+
+   Include your exact return provider and session ID, a request identifier,
+   and instructions to reply with `jamsession message <return-provider>
+   <return-session> "<request-id>: <answer>"`. Do not guess your own ID. If your
+   session cannot receive messages, agree on an exact absolute reply-file path
+   before sending, include it in the message, and check it at agreed checkpoints.
+   The recipient must have permission to write that path. Messaging uses the
+   recipient's existing model, permissions, and workspace; it does not grant
+   new authority. An idle session's delivery behavior depends on its provider.
+
+   If messaging is unavailable, or the session only needs inspection, run
    `jamsession which <provider> <session>` and follow its read-only transcript
    guidance. Do not remove provider locks or edit transcript stores.
 

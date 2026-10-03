@@ -12,7 +12,7 @@ help_text() {
 jamsession_cursor
 
 Run:    jamsession_cursor run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_cursor <list|which|models|usage|status|doctor|help>
+Other:  jamsession_cursor <list|which|models|message|usage|status|doctor|help>
 
 Cursor read mode uses ask mode. Edit mode uses --force and --trust so the
 non-interactive session cannot stall at an approval prompt. Explicit effort is
@@ -175,6 +175,7 @@ run_agent() {
 }
 
 case "${1:-help}" in
+  message) shift; jamsession_validate_message "$@"; jamsession_unsupported message ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
   models) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" --list-models ;;

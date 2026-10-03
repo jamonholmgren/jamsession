@@ -65,12 +65,24 @@ jamsession which <provider> [session-id]
 It prints the local transcript store, its format, and read-only access guidance.
 Some providers store one file per session; others use a shared SQLite database.
 
+To message an existing Codex or Muse session, including one already running:
+
+```sh
+jamsession message <provider> <session-id> "<message>"
+```
+
+Include your return provider/session or an agreed absolute reply-file path.
+Sending is asynchronous; acceptance is not an answer. Other bundled providers
+report messaging as unavailable. Run `jamsession help message` for details.
+
 Use `read` for work that must not modify the workspace. An adapter hard-errors
 when its provider cannot mechanically enforce that restriction. Provider-native
 session metadata and Jam Session temporary output may still be written outside
 the workspace. Use `edit` only when the task authorizes unattended changes.
 Devin currently supports `edit` but not guaranteed `read` access.
-Muse supports both modes, but its CLI does not expose model or session listing.
+Muse supports both modes. `jamsession models muse` and `jamsession list muse`
+read its cached local model catalog and session logs, respectively; they do
+not query a live Muse service.
 
 ## Install workflow skills
 

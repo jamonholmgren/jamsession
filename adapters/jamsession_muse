@@ -12,13 +12,53 @@ help_text() {
 jamsession_muse
 
 Run:    jamsession_muse run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_muse <list|which|models|usage|status|doctor|help>
+Other:  jamsession_muse <list|which|models|message|usage|status|doctor|help>
+
+Message: jamsession_muse message <session> <text> sends asynchronously.
 
 Muse uses headless `exec` and resumes with its native session UUID. Read mode
 disables both shell execution and workspace writes. Edit mode allows unattended
 workspace changes within Muse's normal sandbox. Muse does not expose native
-session or model listing commands.
+headless session or model listing commands; list and models read its local
+session logs and cached model catalog.
 EOF
+}
+
+list_sessions() {
+  [ $# -le 1 ] || jamsession_die "list takes an optional count"
+  local count="${1:-5}" root="$HOME/.local/share/muse/sessions" path
+  local -a logs=()
+  jamsession_positive_count "$count"
+  [ -d "$root" ] || jamsession_unsupported list
+  while IFS= read -r -d '' path; do logs+=("$path"); done \
+    < <(find "$root" -type f -name session.jsonl ! -path '*/subagent/*' -print0)
+  [ "${#logs[@]}" -gt 0 ] || jamsession_unsupported list
+  ls -t "${logs[@]}" | head -n "$count" | while IFS= read -r path; do
+    path="${path%/session.jsonl}"
+    printf '%s\n' "${path##*/}"
+  done
+  printf 'note: recent local Muse sessions across workspaces\n' >&2
+}
+
+list_models() {
+  local root="$HOME/.local/share/muse/model-catalog" models
+  local -a catalogs
+  catalogs=("$root"/*.json)
+  [ -f "${catalogs[0]}" ] || jamsession_unsupported models
+  models="$(awk -F '"' '
+    {
+      for (i = 2; i <= NF - 2; i++) {
+        if ($i == "model_id") model = $(i + 2)
+        if ($i == "visibility") {
+          if ($(i + 2) == "visible" && model != "") print model
+          model = ""
+        }
+      }
+    }
+  ' "${catalogs[@]}" | sort -u)"
+  [ -n "$models" ] || jamsession_unsupported models
+  printf '%s\n' "$models"
+  printf 'note: cached local Muse model catalog; Muse may refresh it on launch\n' >&2
 }
 
 which_transcript() {
@@ -89,9 +129,16 @@ run_agent() {
 }
 
 case "${1:-help}" in
+  message)
+    shift; jamsession_validate_message "$@"; jamsession_require_binary
+    (cd "$JAMSESSION_CWD" && printf '%s' "$JAMSESSION_PROMPT" | \
+      "$JAMSESSION_PROVIDER_BIN" session-message send --target "$JAMSESSION_MESSAGE_SESSION" --json)
+    ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
-  list|models|usage|status) jamsession_unsupported "$1" ;;
+  list) shift; list_sessions "$@" ;;
+  models) shift; list_models "$@" ;;
+  usage|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" --version

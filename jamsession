@@ -34,6 +34,7 @@ jamsession — one small interface for coding-agent CLIs
 
 Usage:
   jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
+  jamsession message <provider> <session> <text>
   jamsession list <provider> [count]
   jamsession which <provider> [session]
   jamsession models <provider>
@@ -371,7 +372,7 @@ uninstall_command() {
 compact_usage() {
   cat >&2 <<'EOF'
 Usage: jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
-       jamsession <list|which|models> <provider> [arguments]
+       jamsession <list|which|models|message> <provider> [arguments]
        jamsession <usage|status|doctor> [provider]
        jamsession <providers|init|make-adapter|skills|update|help>
        jamsession skills <list|install|uninstall> <name|all>
@@ -505,6 +506,7 @@ Commands:
   jamsession_$PROVIDER run <new|session> <model> <effort> <read|edit> <prompt>
   jamsession_$PROVIDER list [count]
   jamsession_$PROVIDER which [session]
+  jamsession_$PROVIDER message <session> <text>
   jamsession_$PROVIDER models
   jamsession_$PROVIDER usage
   jamsession_$PROVIDER status
@@ -514,6 +516,8 @@ Commands:
 Implement each command using the provider CLI's native non-interactive and
 resume features. A read run must hard-error unless writes are mechanically
 blocked. Print agent output to stdout and metadata or warnings to stderr.
+Implement message only through a native delivery mechanism; otherwise report
+unavailable. Never implement message as an implicit run/resume fallback.
 See the bundled adapters in ~/.agents/jamsession/adapters/ for small examples.
 HELP
 }
@@ -523,7 +527,7 @@ case "${1:-help}" in
     [ $# -eq 6 ] || die "run needs <new|session> <model> <effort> <read|edit> <prompt>"
     unsupported run
     ;;
-  list|which|models|usage|status|doctor) unsupported "$1" ;;
+  list|which|models|message|usage|status|doctor) unsupported "$1" ;;
   help|-h|--help) help_text ;;
   *) die "unknown command '$1'" ;;
 esac
@@ -642,6 +646,23 @@ must be enforced by the adapter; `edit` permits unattended workspace changes.
 Pass `-` as the prompt to read stdin.
 EOF
       ;;
+    message)
+      cat <<'EOF'
+Usage: jamsession message <provider> <session> <text>
+Alias: jamsession <provider> <session> message <text>
+
+Send to an existing session using the provider's native messaging mechanism.
+Codex queues with `codex queue`; Muse sends with `muse session-message send`.
+Other bundled providers report unavailable. Pass `-` as text to read stdin.
+Delivery is asynchronous: an acknowledgement is not the recipient's answer.
+Include your return provider/session and a concrete question or assignment.
+The recipient can reply with another `jamsession message`. If your session
+cannot receive messages, agree on an exact reply-file path instead. Inspect
+that file or use `jamsession which` to locate the recipient's transcript.
+Messaging passes no model/access overrides; the provider controls execution.
+It never falls back to resuming a locked session or starting another agent.
+EOF
+      ;;
     usage)
       cat <<'EOF'
 Usage: jamsession usage [provider] [--json]
@@ -693,6 +714,11 @@ command_name="$1"
 shift
 
 case "$command_name" in
+  message)
+    [ $# -eq 3 ] || die "message needs <provider> <session> <text>"
+    provider="$1"; shift
+    exec "$(require_adapter "$provider")" message "$@"
+    ;;
   run)
     [ $# -eq 6 ] || die "run needs <provider> <new|session> <model> <effort> <read|edit> <prompt>"
     provider="$1"; shift
@@ -783,5 +809,10 @@ case "$command_name" in
     [ $# -eq 0 ] || die "version takes no arguments"
     printf 'jamsession %s\n' "$JAMSESSION_VERSION"
     ;;
-  *) die "unknown command '$command_name'" ;;
+  *)
+    if [ $# -eq 3 ] && [ "$2" = message ]; then
+      exec "$(require_adapter "$command_name")" message "$1" "$3"
+    fi
+    die "unknown command '$command_name'"
+    ;;
 esac

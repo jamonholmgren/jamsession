@@ -121,6 +121,11 @@ cat >"$FAKE_BIN/codex" <<'EOF'
 #!/bin/sh
 if [ "${1:-}" = --version ]; then printf '%s\n' CODEX_VERSION; exit 0; fi
 if [ "${1:-}" = login ]; then printf '%s\n' CODEX_AUTH_OK; exit 0; fi
+if [ "${1:-}" = queue ]; then
+  printf '%s\n' "$@" >"$FAKE_LOG"
+  printf '%s\n' CODEX_QUEUED
+  exit "${FAKE_EXIT:-0}"
+fi
 last=
 take_last=0
 for argument in "$@"; do
@@ -236,6 +241,12 @@ EOF
 cat >"$FAKE_BIN/muse" <<'EOF'
 #!/bin/sh
 if [ "${1:-}" = --version ]; then printf '%s\n' MUSE_VERSION; exit 0; fi
+if [ "${1:-}" = session-message ]; then
+  printf '%s\n' "$@" >"$FAKE_LOG"
+  cat >"$FAKE_LOG.body"
+  printf '%s\n' MUSE_SENT
+  exit "${FAKE_EXIT:-0}"
+fi
 printf '%s\n' "$*" >"$FAKE_LOG"
 printf '%s\n' '{"stream":{"kind":"session","id":"muse-session"},"payload_type":"runtime.command.accepted"}'
 printf '%s\n' '{"payload_type":"run.terminal.completed","payload":{"text":"MUSE_RESULT"}}'
@@ -244,6 +255,33 @@ EOF
 chmod 755 "$FAKE_BIN"/*
 
 LOG="$TEMP_ROOT/args"
+
+run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  "$ROOT/jamsession" message codex target-session 'Question with "quotes" and $literal'
+check "Codex messages use native queue" contains "$LOG" queue
+check "Codex messages target the exact session" contains "$LOG" target-session
+check "Codex messages preserve literal text" contains "$LOG" 'Question with "quotes" and $literal'
+check "Codex message acknowledgement passes through" equals "$stdout_file" CODEX_QUEUED
+run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  "$ROOT/jamsession" codex target-session message 'alias question'
+check "provider-first messaging alias works" equals "$stdout_file" CODEX_QUEUED
+run_command env FAKE_LOG="$LOG" FAKE_EXIT=7 JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  "$ROOT/jamsession" message codex target-session question
+check "message preserves provider failure" test "$status" -eq 7
+run_command env FAKE_LOG="$LOG" JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" \
+  "$ROOT/jamsession" message muse target-session 'Muse question'
+check "Muse messages use native send" contains "$LOG" session-message
+check "Muse messages target the exact session" contains "$LOG" target-session
+check "Muse message text goes through stdin" equals "$LOG.body" 'Muse question'
+run_command sh -c 'printf "%s\n%s" "line one" "line two" | env FAKE_LOG="$1" JAMSESSION_MUSE_BIN="$2" "$3" message muse target-session -' \
+  sh "$LOG" "$FAKE_BIN/muse" "$ROOT/jamsession"
+check "message accepts multiline stdin" contains "$LOG.body" 'line two'
+run_command "$ROOT/jamsession" message claude target-session question
+check "unsupported messaging reports unavailable" test "$status" -eq 3
+run_command "$ROOT/jamsession" message codex target-session ''
+check "message rejects empty text" test "$status" -eq 2
+run_command "$ROOT/jamsession" message codex -x question
+check "message rejects option-like session" test "$status" -eq 2
 
 USAGE_FIXTURES="$TEMP_ROOT/usage-fixtures"
 mkdir -p "$USAGE_FIXTURES"
@@ -537,10 +575,29 @@ check "Muse resumes the requested session" contains "$LOG" "--session-id muse-se
 check "Muse edit mode omits read-only restrictions" sh -c "! grep -Eq -- '--disable-(shell|write)' '$LOG'"
 check "Muse reports a resumed session" contains "$stderr_file" "session: muse-session"
 
-run_command env JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_muse" models
-check "Muse model listing explicitly reports unavailable" test "$status" -eq 3
-run_command env JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_muse" list
-check "Muse session listing explicitly reports unavailable" test "$status" -eq 3
+MUSE_HOME="$TEMP_ROOT/muse-home"
+mkdir -p "$MUSE_HOME/.local/share/muse/model-catalog" \
+  "$MUSE_HOME/.local/share/muse/sessions/2026/09/24/older-session" \
+  "$MUSE_HOME/.local/share/muse/sessions/2026/09/25/newer-session" \
+  "$MUSE_HOME/.local/share/muse/sessions/2026/09/25/newer-session/subagent/child-session"
+cat >"$MUSE_HOME/.local/share/muse/model-catalog/meta.json" <<'JSON'
+{"rows":[
+  {"model_id":"muse-current","visibility":"visible"},
+  {"model_id":"muse-hidden","visibility":"hidden"},
+  {"model_id":"muse-older","visibility":"visible"}
+]}
+JSON
+: >"$MUSE_HOME/.local/share/muse/sessions/2026/09/24/older-session/session.jsonl"
+: >"$MUSE_HOME/.local/share/muse/sessions/2026/09/25/newer-session/session.jsonl"
+: >"$MUSE_HOME/.local/share/muse/sessions/2026/09/25/newer-session/subagent/child-session/session.jsonl"
+run_command env HOME="$MUSE_HOME" JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_muse" models
+check "Muse lists cached visible models" contains "$stdout_file" muse-current
+check "Muse excludes hidden models" sh -c "! grep -Fq muse-hidden '$stdout_file'"
+run_command env HOME="$MUSE_HOME" JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_muse" list 1
+check "Muse lists its newest local session" equals "$stdout_file" newer-session
+check "Muse excludes child sessions" sh -c "! grep -Fq child-session '$stdout_file'"
+run_command env HOME="$MUSE_HOME" JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_muse" list 0
+check "Muse rejects a zero list count" test "$status" -eq 2
 run_command env JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_muse" doctor
 check "Muse doctor does not claim authentication was verified" contains "$stdout_file" "authentication: not checked"
 

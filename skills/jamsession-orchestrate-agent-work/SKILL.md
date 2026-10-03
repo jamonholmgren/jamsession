@@ -78,6 +78,14 @@ evidence, then return completed tickets or precise blockers to the supervisor.
 The supervisor communicates decisions and questions with the user and feeds the
 next ready ticket to an available manager.
 
+Contact existing managers and workers with `jamsession message <provider>
+<session> "<text>"` when their adapter supports it, including when they are
+already running. Give each request an identifier and an explicit return
+provider/session or agreed reply-file path. Recipients send questions and
+results through that return route. Confirm the answer at a checkpoint;
+provider acceptance alone does not mean the work finished. Use the messaging
+and fallback guidance in `jamsession-summon-agent` when delivery is unsupported.
+
 Keep queue work lean by default:
 
 - Reuse current repository discovery while its inputs remain unchanged.

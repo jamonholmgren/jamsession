@@ -12,7 +12,7 @@ help_text() {
 jamsession_devin
 
 Run:    jamsession_devin run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_devin <list|which|models|usage|status|doctor|help>
+Other:  jamsession_devin <list|which|models|message|usage|status|doctor|help>
 
 Devin uses --print for unattended work and resumes its native session IDs.
 Edit mode uses dangerous permission mode so tool approvals cannot stall the
@@ -138,6 +138,7 @@ run_agent() {
 }
 
 case "${1:-help}" in
+  message) shift; jamsession_validate_message "$@"; jamsession_unsupported message ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
   list)

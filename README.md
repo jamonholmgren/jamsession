@@ -80,6 +80,17 @@ Every part is required. Pass a session ID instead of `new` to resume, and `-` as
 
 ### Get Providers, Models, Sessions
 
+To contact an existing session (including one already running):
+
+```sh
+jamsession message codex SESSION_ID "Which checkout can I use? Reply to ..."
+```
+
+Codex and Muse support asynchronous messages. Include your return provider and
+session ID so the other agent can message back, or agree on a reply-file path.
+Other providers report messaging as unavailable. Run `jamsession help message`
+for the full contract.
+
 ```sh
 jamsession providers
 jamsession status
@@ -89,7 +100,7 @@ jamsession which devin SESSION_ID # locates the transcript store and explains re
 jamsession init # installs jam session in the current project
 ```
 
-Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`, `devin`, `muse`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused diagnostics. `which <provider> [session]` reports the provider's local transcript store and safe access instructions. Devin supports `edit` but not guaranteed `read` access. Muse supports both; its CLI does not expose model or session listing.
+Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`, `devin`, `muse`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused diagnostics. `which <provider> [session]` reports the provider's local transcript store and safe access instructions. Devin supports `edit` but not guaranteed `read` access. Muse supports both; its `models` and `list` commands read Muse's local model cache and session logs.
 
 ### Skills
 

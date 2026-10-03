@@ -12,7 +12,7 @@ help_text() {
 jamsession_copilot
 
 Run:    jamsession_copilot run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_copilot <list|which|models|usage|status|doctor|help>
+Other:  jamsession_copilot <list|which|models|message|usage|status|doctor|help>
 
 Copilot edit mode allows its tools to run without confirmation. This adapter
 rejects read mode until Copilot's plan mode is verified to block every write
@@ -67,6 +67,7 @@ run_agent() {
 }
 
 case "${1:-help}" in
+  message) shift; jamsession_validate_message "$@"; jamsession_unsupported message ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
   list|models|usage|status) jamsession_unsupported "$1" ;;

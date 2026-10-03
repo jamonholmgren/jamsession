@@ -12,7 +12,7 @@ help_text() {
 jamsession_claude
 
 Run:    jamsession_claude run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_claude <list|which|models|usage|status|doctor|help>
+Other:  jamsession_claude <list|which|models|message|usage|status|doctor|help>
 
 Claude read mode uses plan permission mode. Edit mode uses bypassPermissions
 because headless sessions cannot answer permission prompts; use it only in a
@@ -102,6 +102,7 @@ run_agent() {
 }
 
 case "${1:-help}" in
+  message) shift; jamsession_validate_message "$@"; jamsession_unsupported message ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
   models) jamsession_require_binary; list_models ;;
