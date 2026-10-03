@@ -85,6 +85,11 @@ provider/session or agreed reply-file path. Recipients send questions and
 results through that return route. Confirm the answer at a checkpoint;
 provider acceptance alone does not mean the work finished. Use the messaging
 and fallback guidance in `jamsession-summon-agent` when delivery is unsupported.
+For agreed file replies, use `jamsession watch` with a unique final completion
+marker instead of repeated agent check-ins. Foreground waiting prints the reply;
+an explicit target receives a match or timeout notification. Never resume a live
+manager or your own session to deliver it. Background watches need an owned PID,
+log, and cancellation plan; `jamsession help watch` gives the shell pattern.
 
 Keep queue work lean by default:
 

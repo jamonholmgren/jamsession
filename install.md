@@ -72,8 +72,22 @@ jamsession message <provider> <session-id> "<message>"
 ```
 
 Include your return provider/session or an agreed absolute reply-file path.
-Sending is asynchronous; acceptance is not an answer. Other bundled providers
-report messaging as unavailable. Run `jamsession help message` for details.
+Native sending is asynchronous; acceptance is not an answer or a guaranteed
+wake-up. Other bundled providers can resume once with explicitly appended
+`--resume-with <model> <effort> <read|edit>`, only after the owning process exits.
+Native delivery errors never trigger resume. Run `jamsession help message`.
+
+For a file reply, agree on a unique completion marker written last, then wait:
+
+```sh
+jamsession watch /absolute/reply.txt "REQUEST-42-DONE" --timeout 300
+```
+
+It prints the matched reply, or exits 124 on timeout. Existing matches count;
+the default wait is 300 seconds. Append `<provider> <session-id>` to send a
+notification on match or timeout. For your own live session, prefer foreground
+waiting or supported native messaging. See `jamsession help watch` for safe
+shell backgrounding and cancellation.
 
 Use `read` for work that must not modify the workspace. An adapter hard-errors
 when its provider cannot mechanically enforce that restriction. Provider-native

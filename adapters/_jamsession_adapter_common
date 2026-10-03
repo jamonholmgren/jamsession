@@ -14,6 +14,7 @@ jamsession_adapter_setup() {
   fi
   eval "JAMSESSION_PROVIDER_BIN=\${$JAMSESSION_BIN_VARIABLE:-$JAMSESSION_DEFAULT_BIN}"
   JAMSESSION_CWD="${JAMSESSION_CWD:-$PWD}"
+  unset JAMSESSION_PROMPT_LITERAL
 }
 
 # Adapter scratch files live in a private mktemp directory. A predictable path
@@ -51,7 +52,7 @@ jamsession_require_binary() {
 
 jamsession_read_prompt() {
   JAMSESSION_PROMPT="$1"
-  if [ "$JAMSESSION_PROMPT" = "-" ]; then
+  if [ "$JAMSESSION_PROMPT" = "-" ] && [ "${JAMSESSION_PROMPT_LITERAL:-0}" -eq 0 ]; then
     JAMSESSION_PROMPT="$(cat)"
   fi
   [ -n "$JAMSESSION_PROMPT" ] || jamsession_die "prompt must not be empty"
@@ -91,11 +92,39 @@ jamsession_positive_count() {
 }
 
 jamsession_validate_message() {
-  [ $# -eq 2 ] || jamsession_die "message needs <session> <text>"
+  [ $# -eq 2 ] || [ $# -eq 6 ] || jamsession_die "message needs <session> <text> [--resume-with <model> <effort> <read|edit>]"
   [ -n "$1" ] || jamsession_die "session must not be empty"
   case "$1" in -*) jamsession_die "session must not begin with '-'" ;; esac
+  [ "$1" != new ] || jamsession_die "message needs an existing session, not new"
   JAMSESSION_MESSAGE_SESSION="$1"
+  JAMSESSION_MESSAGE_RESUME=0
+  if [ $# -eq 6 ]; then
+    [ "$3" = --resume-with ] || jamsession_die "expected --resume-with <model> <effort> <read|edit>"
+    [ -n "$4" ] && [ -n "$5" ] || jamsession_die "model and effort must not be empty"
+    case "$6" in read|edit) ;; *) jamsession_die "access must be read or edit" ;; esac
+    JAMSESSION_MESSAGE_MODEL="$4"
+    JAMSESSION_MESSAGE_EFFORT="$5"
+    JAMSESSION_MESSAGE_ACCESS="$6"
+    JAMSESSION_MESSAGE_RESUME=1
+  fi
   jamsession_read_prompt "$2"
+}
+
+jamsession_native_message_settings() {
+  [ "$JAMSESSION_MESSAGE_RESUME" -eq 0 ] || \
+    printf 'warning: --resume-with ignored; native delivery keeps the session\047s model/effort/access\n' >&2
+}
+
+# Only adapters without native messaging call this. A native send's exit code
+# never selects fallback: an error may occur after its message was accepted.
+jamsession_resume_message() {
+  [ "$JAMSESSION_MESSAGE_RESUME" -eq 1 ] || jamsession_unsupported message
+  printf 'delivery: resume (not queued); the target must have no owning process\n' >&2
+  # Bash dynamic scope marks only this internal call's already-decoded text.
+  # Do not reinterpret a literal dash or strip literal trailing newlines.
+  local JAMSESSION_PROMPT_LITERAL=1
+  run_agent "$JAMSESSION_MESSAGE_SESSION" "$JAMSESSION_MESSAGE_MODEL" \
+    "$JAMSESSION_MESSAGE_EFFORT" "$JAMSESSION_MESSAGE_ACCESS" "$JAMSESSION_PROMPT"
 }
 
 jamsession_validate_which() {

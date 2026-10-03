@@ -15,6 +15,8 @@ Run:    jamsession_muse run <new|session> <model> <effort> <read|edit> <prompt>
 Other:  jamsession_muse <list|which|models|message|usage|status|doctor|help>
 
 Message: jamsession_muse message <session> <text> sends asynchronously.
+Optional --resume-with settings are validated but unused by native delivery.
+A closed ingress errors; it never triggers a resume. See `jamsession help message`.
 
 Muse uses headless `exec` and resumes with its native session UUID. Read mode
 disables both shell execution and workspace writes. Edit mode allows unattended
@@ -131,6 +133,7 @@ run_agent() {
 case "${1:-help}" in
   message)
     shift; jamsession_validate_message "$@"; jamsession_require_binary
+    jamsession_native_message_settings
     (cd "$JAMSESSION_CWD" && printf '%s' "$JAMSESSION_PROMPT" | \
       "$JAMSESSION_PROVIDER_BIN" session-message send --target "$JAMSESSION_MESSAGE_SESSION" --json)
     ;;

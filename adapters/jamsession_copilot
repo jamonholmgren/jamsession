@@ -14,6 +14,10 @@ jamsession_copilot
 Run:    jamsession_copilot run <new|session> <model> <effort> <read|edit> <prompt>
 Other:  jamsession_copilot <list|which|models|message|usage|status|doctor|help>
 
+Message: message <session> <text> --resume-with <model> <effort> <read|edit>
+resumes once, not queued. Stop the owning process first; ownership cannot be
+verified. See `jamsession help message` and `jamsession help watch`.
+
 Copilot edit mode allows its tools to run without confirmation. This adapter
 rejects read mode until Copilot's plan mode is verified to block every write
 path in non-interactive sessions. The auto model selects its own effort, so
@@ -67,7 +71,7 @@ run_agent() {
 }
 
 case "${1:-help}" in
-  message) shift; jamsession_validate_message "$@"; jamsession_unsupported message ;;
+  message) shift; jamsession_validate_message "$@"; jamsession_resume_message ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
   list|models|usage|status) jamsession_unsupported "$1" ;;

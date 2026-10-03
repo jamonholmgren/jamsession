@@ -88,8 +88,23 @@ jamsession message codex SESSION_ID "Which checkout can I use? Reply to ..."
 
 Codex and Muse support asynchronous messages. Include your return provider and
 session ID so the other agent can message back, or agree on a reply-file path.
-Other providers report messaging as unavailable. Run `jamsession help message`
-for the full contract.
+Other bundled providers can resume once if you append
+`--resume-with <model> <effort> <read|edit>` and the session's owning process has
+exited. Native send errors never fall back to resume. See `jamsession help message`.
+
+Waiting for a file reply doesn't need another agent call:
+
+```sh
+jamsession watch /absolute/reply.txt "REQUEST-42-DONE" --timeout 300
+jamsession watch /absolute/reply.txt "REQUEST-42-DONE" codex SESSION_ID
+```
+
+The first waits and prints the reply; the second also messages that session on
+match or timeout. Use a unique marker written last. Already-arrived replies
+count. Default wait is five minutes. For your own live session, use foreground
+waiting or native messaging—not resume fallback. Native messaging is not a
+guaranteed wake-up; Muse may reject a closed session. `jamsession help watch`
+explains backgrounding and cancellation without a daemon.
 
 ```sh
 jamsession providers

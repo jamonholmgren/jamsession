@@ -14,6 +14,10 @@ jamsession_devin
 Run:    jamsession_devin run <new|session> <model> <effort> <read|edit> <prompt>
 Other:  jamsession_devin <list|which|models|message|usage|status|doctor|help>
 
+Message: message <session> <text> --resume-with <model> <effort> <read|edit>
+resumes once, not queued; existing live locks still block it. See
+`jamsession help message` and `jamsession help watch`.
+
 Devin uses --print for unattended work and resumes its native session IDs.
 Edit mode uses dangerous permission mode so tool approvals cannot stall the
 run. Read mode is unsupported: auto mode approves only read-only tools, but
@@ -138,7 +142,7 @@ run_agent() {
 }
 
 case "${1:-help}" in
-  message) shift; jamsession_validate_message "$@"; jamsession_unsupported message ;;
+  message) shift; jamsession_validate_message "$@"; jamsession_resume_message ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
   list)

@@ -32,17 +32,33 @@ description: Start, resume, or message one coding agent session through the `jam
 
    To contact an existing session, especially one already running, use
    `jamsession message <provider> <session> "<text>"`. Codex and Muse support
-   native asynchronous messaging. Other providers report unavailable; do not
-   silently resume a busy session. A delivery acknowledgement is not an answer.
+   native asynchronous messaging, but may not wake an idle session. A native
+   send error is final, not permission to retry through resume. Other bundled
+   providers allow one synchronous resume only when you explicitly append
+   `--resume-with <model> <effort> <read|edit>`. The owning process must have
+   exited, even if its UI looks idle. Claude's active-list guard and Devin's
+   lock check are best-effort, not universal ownership guarantees. Never resume
+   your own live session. A delivery acknowledgement is not an answer.
 
    Include your exact return provider and session ID, a request identifier,
    and instructions to reply with `jamsession message <return-provider>
    <return-session> "<request-id>: <answer>"`. Do not guess your own ID. If your
    session cannot receive messages, agree on an exact absolute reply-file path
-   before sending, include it in the message, and check it at agreed checkpoints.
-   The recipient must have permission to write that path. Messaging uses the
-   recipient's existing model, permissions, and workspace; it does not grant
-   new authority. An idle session's delivery behavior depends on its provider.
+   before sending and include it in the message. The recipient must have
+   permission to write that path. Agree on a unique single-line completion
+   marker written last, preferably publish the full reply by atomic rename,
+   and do not embed the marker in instructions inside the watched file.
+
+   Use `jamsession watch <absolute-reply-file> "<marker>"` to wait and print the
+   reply without another model call. Optionally append your exact provider and
+   session to notify through `message` on match or timeout. Default wait is
+   300 seconds; `--timeout` changes it. Existing matches count. For your own
+   live session use foreground waiting or supported native messaging, never
+   resume fallback. Native delivery keeps existing execution settings; explicit
+   fallback uses normal run permissions and cannot silently weaken read access.
+   See `jamsession help watch` for backgrounding, cancellation, and exit codes,
+   and `jamsession help message` for ownership limits. Retain an owned watch's
+   PID/log; avoid repeatedly asking another agent whether a reply has arrived.
 
    If messaging is unavailable, or the session only needs inspection, run
    `jamsession which <provider> <session>` and follow its read-only transcript

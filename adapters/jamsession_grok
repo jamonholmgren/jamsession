@@ -14,6 +14,10 @@ jamsession_grok
 Run:    jamsession_grok run <new|session> <model> <effort> <read|edit> <prompt>
 Other:  jamsession_grok <list|which|models|message|usage|status|doctor|help>
 
+Message: message <session> <text> --resume-with <model> <effort> <read|edit>
+resumes once, not queued. Stop the owning process first; ownership cannot be
+verified. See `jamsession help message` and `jamsession help watch`.
+
 Grok edit mode uses bypassPermissions because headless approval modes can end a
 session without returning its answer. This adapter rejects read mode: Grok's
 current read-only controls do not reliably prevent shell writes. Grok reasoning
@@ -66,7 +70,14 @@ run_agent() {
 }
 
 case "${1:-help}" in
-  message) shift; jamsession_validate_message "$@"; jamsession_unsupported message ;;
+  message)
+    shift; jamsession_validate_message "$@"
+    [ "$JAMSESSION_MESSAGE_RESUME" -eq 1 ] || jamsession_unsupported message
+    if [ -n "${GROK_SESSION_ID:-}" ] && [ "$JAMSESSION_MESSAGE_SESSION" = "$GROK_SESSION_ID" ]; then
+      jamsession_die "cannot resume your own Grok session; use foreground watch"
+    fi
+    jamsession_resume_message
+    ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
   list)

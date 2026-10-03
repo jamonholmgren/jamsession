@@ -122,11 +122,13 @@ cat >"$FAKE_BIN/codex" <<'EOF'
 if [ "${1:-}" = --version ]; then printf '%s\n' CODEX_VERSION; exit 0; fi
 if [ "${1:-}" = login ]; then printf '%s\n' CODEX_AUTH_OK; exit 0; fi
 if [ "${1:-}" = queue ]; then
+  printf '%s\n' queue >>"$FAKE_LOG.calls"
   printf '%s\n' "$@" >"$FAKE_LOG"
   printf '%s\n' CODEX_QUEUED
   exit "${FAKE_EXIT:-0}"
 fi
 last=
+printf '%s\n' run >>"$FAKE_LOG.calls"
 take_last=0
 for argument in "$@"; do
   if [ "$take_last" -eq 1 ]; then last=$argument; take_last=0; fi
@@ -142,7 +144,13 @@ cat >"$FAKE_BIN/claude" <<'EOF'
 #!/bin/sh
 if [ "${1:-}" = --version ]; then printf '%s\n' CLAUDE_VERSION; exit 0; fi
 if [ "${1:-}" = auth ]; then printf '%s\n' CLAUDE_AUTH_OK; exit 0; fi
+if [ "${1:-}" = agents ]; then
+  printf '%s\n' "${FAKE_ACTIVE_CLAUDE:-[]}"
+  exit "${FAKE_AGENTS_EXIT:-0}"
+fi
 printf '%s\n' "$*" >"$FAKE_LOG"
+for last_argument do :; done
+printf '%s' "$last_argument" >"$FAKE_LOG.last"
 case " $* " in
   *" --model invalid-model "*)
     printf '%s\n' 'There is an issue with the selected model. It may not exist.'
@@ -282,6 +290,168 @@ run_command "$ROOT/jamsession" message codex target-session ''
 check "message rejects empty text" test "$status" -eq 2
 run_command "$ROOT/jamsession" message codex -x question
 check "message rejects option-like session" test "$status" -eq 2
+
+run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  "$ROOT/jamsession" message codex new question --resume-with default default read
+check "messaging cannot create a new session" test "$status" -eq 2
+run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  "$ROOT/jamsession" message codex target question --resume-with model high maybe
+check "messaging rejects invalid fallback access before sending" test "$status" -eq 2
+rm -f "$LOG.calls"
+run_command env FAKE_LOG="$LOG" FAKE_EXIT=3 JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  "$ROOT/jamsession" message codex target question --resume-with model high read
+check "native exit 3 remains a delivery error" test "$status" -eq 3
+check "native failure never launches a resume" equals "$LOG.calls" queue
+check "native delivery explains unused fallback settings" contains "$stderr_file" "--resume-with ignored"
+check "native queue receives no model override" sh -c "! grep -Fxq -- '-m' '$LOG'"
+run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+  "$ROOT/jamsession" message claude target question --resume-with model high read
+check "explicit Claude fallback succeeds" test "$status" -eq 0
+check "fallback resumes the exact session" contains "$LOG" "--resume target"
+check "fallback enforces the requested read access" contains "$LOG" "--permission-mode plan"
+check "fallback passes chosen model" contains "$LOG" "--model model"
+check "fallback is visibly synchronous" contains "$stderr_file" "resume (not queued)"
+run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+  "$ROOT/jamsession" claude target message 'alias reply' --resume-with model high read
+check "provider-first alias supports explicit fallback" equals "$LOG.last" 'alias reply'
+run_command sh -c 'printf "%s\n%s" "line one" "line two" | env FAKE_LOG="$1" JAMSESSION_CLAUDE_BIN="$2" "$3" message claude target - --resume-with default default read' \
+  sh "$LOG" "$FAKE_BIN/claude" "$ROOT/jamsession"
+check "resume fallback reads caller stdin once" equals "$LOG.last" $'line one\nline two'
+run_command sh -c 'printf "%s" "-" | env FAKE_LOG="$1" JAMSESSION_CLAUDE_BIN="$2" "$3" message claude target - --resume-with default default read' \
+  sh "$LOG" "$FAKE_BIN/claude" "$ROOT/jamsession"
+check "fallback preserves a literal dash reply" equals "$LOG.last" '-'
+run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+  "$ROOT/jamsession" message claude target $'reply\n\n' --resume-with default default read
+printf 'reply\n\n' >"$TEMP_ROOT/literal-message"
+check "fallback preserves literal trailing newlines" cmp -s "$LOG.last" "$TEMP_ROOT/literal-message"
+run_command sh -c 'printf "%s" "stdin body" | env JAMSESSION_PROMPT_LITERAL=1 FAKE_LOG="$1" JAMSESSION_CLAUDE_BIN="$2" "$3" message claude target - --resume-with default default read' \
+  sh "$LOG" "$FAKE_BIN/claude" "$ROOT/jamsession"
+check "private literal flag cannot disable caller stdin" equals "$LOG.last" 'stdin body'
+rm -f "$LOG"
+run_command env FAKE_LOG="$LOG" FAKE_ACTIVE_CLAUDE='[{"sessionId":"target","status":"idle"}]' \
+  JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" "$ROOT/jamsession" message claude target question --resume-with model high read
+check "an idle but open Claude session is refused" test "$status" -eq 2
+check "busy Claude fallback launches no provider turn" test ! -e "$LOG"
+run_command env FAKE_LOG="$LOG" FAKE_AGENTS_EXIT=1 JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+  "$ROOT/jamsession" message claude target question --resume-with model high read
+check "Claude ownership discovery failure refuses fallback" test "$status" -eq 2
+run_command env FAKE_LOG="$LOG" GROK_SESSION_ID=target JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
+  "$ROOT/jamsession" message grok target question --resume-with default high edit
+check "known own Grok session cannot be resumed for messaging" test "$status" -eq 2
+run_command env FAKE_LOG="$LOG" JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
+  "$ROOT/jamsession" message grok another-session question --resume-with default high read
+check "fallback never weakens Grok read access" test "$status" -eq 2
+run_command env FAKE_LOG="$LOG" JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" \
+  "$ROOT/jamsession" message cursor target question --resume-with default default read
+check "Cursor fallback retains its existing read adapter" test "$status" -eq 0
+check "Cursor fallback targets an existing chat" contains "$LOG" "--resume target"
+run_command env FAKE_LOG="$LOG" JAMSESSION_COPILOT_BIN="$FAKE_BIN/copilot" \
+  "$ROOT/jamsession" message copilot target question --resume-with auto default edit
+check "Copilot fallback targets the existing session" contains "$LOG" "--session-id target"
+run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$TEMP_ROOT/message-devin-state" \
+  JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" "$ROOT/jamsession" message devin target question --resume-with default default edit
+check "Devin fallback targets the existing session" contains "$LOG" "--resume target"
+
+WATCH_REPLY="$TEMP_ROOT/watch reply.txt"
+printf 'literal [ready].\n\n' >"$WATCH_REPLY"
+run_command "$ROOT/jamsession" watch "$WATCH_REPLY" '[ready].' --timeout 0
+check "watch accepts a reply that arrived before it started" test "$status" -eq 0
+check "watch returns the exact matched snapshot including trailing newlines" cmp -s "$WATCH_REPLY" "$stdout_file"
+run_command "$ROOT/jamsession" watch "$WATCH_REPLY" '[missing].' --timeout 0
+check "watch matches literal text rather than regex syntax" test "$status" -eq 124
+check "timeout never prints unmatched file contents" test ! -s "$stdout_file"
+check "watch timeout explains the watched file" contains "$stderr_file" 'Timeout after 0 seconds'
+for bad_timeout in -1 NaN 86401 999999999999999999999; do
+  run_command "$ROOT/jamsession" watch "$WATCH_REPLY" ready --timeout "$bad_timeout"
+  check "watch rejects timeout $bad_timeout" test "$status" -eq 2
+done
+run_command "$ROOT/jamsession" watch "$WATCH_REPLY" $'line one\nline two' --timeout 0
+check "watch rejects multiline grep patterns" test "$status" -eq 2
+run_command "$ROOT/jamsession" watch "$TEMP_ROOT" ready --timeout 0
+check "watch refuses a directory" test "$status" -eq 2
+mkfifo "$TEMP_ROOT/watch-fifo"
+run_command "$ROOT/jamsession" watch "$TEMP_ROOT/watch-fifo" ready --timeout 0
+check "watch refuses streams without blocking" test "$status" -eq 2
+run_command "$ROOT/jamsession" watch "$WATCH_REPLY" ready --resume-with default default read
+check "watch requires a target for fallback settings" test "$status" -eq 2
+run_command "$ROOT/jamsession" watch "$WATCH_REPLY" ready codex
+check "watch rejects a partial target" test "$status" -eq 2
+run_command "$ROOT/jamsession" watch "$WATCH_REPLY" ready --timeout 0 --timeout 0
+check "watch rejects duplicate timeout decisions" test "$status" -eq 2
+rm -f "$WATCH_REPLY"
+(sleep 0.2; printf 'request-42-DONE\nfull reply\n' >"$WATCH_REPLY.new"; mv "$WATCH_REPLY.new" "$WATCH_REPLY") &
+writer_pid=$!
+run_command "$ROOT/jamsession" watch "$WATCH_REPLY" request-42-DONE --timeout 3
+wait "$writer_pid"
+check "watch sees a file published later by another process" test "$status" -eq 0
+check "delayed reply is printed whole" cmp -s "$WATCH_REPLY" "$stdout_file"
+FAULT_BIN="$TEMP_ROOT/watch-fault-tools"
+mkdir -p "$FAULT_BIN"
+cat >"$FAULT_BIN/cp" <<'EOF'
+#!/bin/sh
+if [ "${WATCH_COPY_ERROR:-0}" = 1 ]; then
+  printf 'cp: snapshot: No space left on device\n' >&2
+  exit 1
+fi
+if [ -n "${WATCH_COPY_ONCE:-}" ] && [ ! -f "$WATCH_COPY_ONCE" ]; then
+  : >"$WATCH_COPY_ONCE"
+  printf 'cp: reply: No such file or directory\n' >&2
+  exit 1
+fi
+exec "$REAL_CP" "$@"
+EOF
+cat >"$FAULT_BIN/grep" <<'EOF'
+#!/bin/sh
+if [ "${WATCH_SEARCH_ERROR:-0}" = 1 ]; then exit 2; fi
+exec "$REAL_GREP" "$@"
+EOF
+chmod 755 "$FAULT_BIN/cp" "$FAULT_BIN/grep"
+REAL_CP="$(command -v cp)"; REAL_GREP="$(command -v grep)"
+rm -f "$LOG.calls"
+run_command env PATH="$FAULT_BIN:$PATH" REAL_CP="$REAL_CP" REAL_GREP="$REAL_GREP" WATCH_COPY_ERROR=1 \
+  FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  "$ROOT/jamsession" watch "$WATCH_REPLY" request-42-DONE codex target --timeout 0
+check "snapshot I/O failure is not a timeout" test "$status" -eq 2
+check "snapshot failure sends no misleading timeout notification" test ! -e "$LOG.calls"
+run_command env PATH="$FAULT_BIN:$PATH" REAL_CP="$REAL_CP" REAL_GREP="$REAL_GREP" WATCH_SEARCH_ERROR=1 \
+  "$ROOT/jamsession" watch "$WATCH_REPLY" request-42-DONE --timeout 0
+check "search I/O failure is not a timeout" test "$status" -eq 2
+run_command env PATH="$FAULT_BIN:$PATH" REAL_CP="$REAL_CP" REAL_GREP="$REAL_GREP" WATCH_COPY_ONCE="$TEMP_ROOT/disappeared-once" \
+  "$ROOT/jamsession" watch "$WATCH_REPLY" request-42-DONE --timeout 2
+check "disappearance during snapshot retries a recreated readable file" test "$status" -eq 0
+run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  "$ROOT/jamsession" watch "$WATCH_REPLY" request-42-DONE codex target --timeout 0
+check "notifying watch keeps stdout as the reply" cmp -s "$WATCH_REPLY" "$stdout_file"
+check "watch routes acknowledgement separately" contains "$stderr_file" CODEX_QUEUED
+check "watch notifies the exact target" contains "$LOG" target
+check "watch notification does not copy the reply body" sh -c "! grep -Fq 'full reply' '$LOG'"
+rm -f "$LOG.calls"
+run_command env FAKE_LOG="$LOG" FAKE_EXIT=7 JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  "$ROOT/jamsession" watch "$WATCH_REPLY" request-42-DONE codex target --timeout 0 --resume-with model high read
+check "watch propagates notification failure" test "$status" -eq 7
+check "watch does not retry failed notification" equals "$LOG.calls" queue
+check "delivery outcome is reported separately" contains "$stderr_file" 'delivery-result: 7'
+run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
+  "$ROOT/jamsession" watch "$WATCH_REPLY" missing codex target --timeout 0
+check "delivered timeout retains watch timeout status" test "$status" -eq 124
+check "timeout sends an explicit notification" contains "$LOG" 'Timeout after 0 seconds'
+run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+  "$ROOT/jamsession" watch "$WATCH_REPLY" request-42-DONE claude target --timeout 0 --resume-with model high read
+check "watch uses explicit resume fallback" test "$status" -eq 0
+check "watch fallback message locates the reply" contains "$LOG.last" 'has contents containing'
+run_command "$ROOT/jamsession" watch "$TEMP_ROOT/never-created" missing --timeout 1
+check "watch deadline expires when a file never arrives" test "$status" -eq 124
+"$ROOT/jamsession" watch "$TEMP_ROOT/never-created" missing --timeout 30 >"$TEMP_ROOT/cancel.out" 2>"$TEMP_ROOT/cancel.err" &
+watch_pid=$!
+cancel_started=$SECONDS
+while ! grep -Fq 'watching:' "$TEMP_ROOT/cancel.err" && [ $((SECONDS - cancel_started)) -lt 10 ]; do
+  kill -0 "$watch_pid" 2>/dev/null || break
+  sleep 0.05
+done
+kill -TERM "$watch_pid"
+cancel_status=0; wait "$watch_pid" || cancel_status=$?
+check "polling watch is cancellable" test "$cancel_status" -eq 130
+check "cancelling is not reported as a timeout" sh -c "! grep -Fq 'watch-result: timeout' '$TEMP_ROOT/cancel.err'"
 
 USAGE_FIXTURES="$TEMP_ROOT/usage-fixtures"
 mkdir -p "$USAGE_FIXTURES"

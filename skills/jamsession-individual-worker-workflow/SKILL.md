@@ -12,6 +12,10 @@ description: Guide one worker through a bounded task assigned by a coordinating 
    questions and handoffs there with `jamsession message` when supported, or
    write the agreed report file. Include the request identifier so the caller
    can match the reply; never infer permission to start other work from a message.
+   For a watched reply file, publish the complete report atomically or write the
+   agreed unique completion marker last. Never include that marker in unfinished
+   report text. Use foreground `jamsession watch` when waiting for an answer to
+   your own session; do not resume a live caller or worker as a notification.
 2. Inspect only enough context to complete the task. Preserve human and sibling
    work; never stash, reset, switch branches, destructively clean, or adopt
    unrelated changes.

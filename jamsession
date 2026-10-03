@@ -34,7 +34,8 @@ jamsession — one small interface for coding-agent CLIs
 
 Usage:
   jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
-  jamsession message <provider> <session> <text>
+  jamsession message <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]
+  jamsession watch <file> <text> [<provider> <session>] [--timeout <seconds>]
   jamsession list <provider> [count]
   jamsession which <provider> [session]
   jamsession models <provider>
@@ -373,6 +374,7 @@ compact_usage() {
   cat >&2 <<'EOF'
 Usage: jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
        jamsession <list|which|models|message> <provider> [arguments]
+       jamsession watch <file> <text> [<provider> <session>] [options]
        jamsession <usage|status|doctor> [provider]
        jamsession <providers|init|make-adapter|skills|update|help>
        jamsession skills <list|install|uninstall> <name|all>
@@ -506,7 +508,7 @@ Commands:
   jamsession_$PROVIDER run <new|session> <model> <effort> <read|edit> <prompt>
   jamsession_$PROVIDER list [count]
   jamsession_$PROVIDER which [session]
-  jamsession_$PROVIDER message <session> <text>
+  jamsession_$PROVIDER message <session> <text> [--resume-with <model> <effort> <read|edit>]
   jamsession_$PROVIDER models
   jamsession_$PROVIDER usage
   jamsession_$PROVIDER status
@@ -516,8 +518,12 @@ Commands:
 Implement each command using the provider CLI's native non-interactive and
 resume features. A read run must hard-error unless writes are mechanically
 blocked. Print agent output to stdout and metadata or warnings to stderr.
-Implement message only through a native delivery mechanism; otherwise report
-unavailable. Never implement message as an implicit run/resume fallback.
+Prefer native delivery for message and retain its execution settings. Without
+native delivery, report unavailable unless --resume-with explicitly supplies
+all execution settings for one synchronous resume. Require the existing owner
+to have exited; preserve provider busy locks and access errors. Never infer
+unsupported messaging from a native failure code or retry through resume.
+The scaffold reports unavailable until you implement this contract.
 See the bundled adapters in ~/.agents/jamsession/adapters/ for small examples.
 HELP
 }
@@ -545,6 +551,97 @@ usage_helper() {
   else
     printf '%s\n' "$SCRIPT_DIR/usage/jamsession_usage"
   fi
+}
+
+validate_message_args() {
+  [ $# -eq 3 ] || [ $# -eq 7 ] || die "message needs <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]"
+  require_adapter "$1" >/dev/null
+  case "$2" in ''|new|-*) die "message needs an existing provider-native session ID" ;; esac
+  [ -n "$3" ] || die "message text must not be empty"
+  if [ $# -eq 7 ]; then
+    [ "$4" = --resume-with ] || die "expected --resume-with <model> <effort> <read|edit>"
+    [ -n "$5" ] && [ -n "$6" ] || die "model and effort must not be empty"
+    case "$7" in read|edit) ;; *) die "access must be read or edit" ;; esac
+  fi
+}
+
+watch_file() {
+  [ $# -ge 2 ] || die "watch needs <file> <text> [<provider> <session>] [--timeout <seconds>] [--resume-with <model> <effort> <read|edit>]"
+  local path="$1" text="$2" provider="" session="" timeout=300 timeout_seen=0
+  local started snapshot result=124 notification delivery_status=0 search_status
+  local -a resume_args delivery_args
+  resume_args=()
+  [ -n "$path" ] || die "watch file must not be empty"
+  case "$path" in /*) ;; *) path="$PWD/$path" ;; esac
+  case "$text" in ''|*$'\n'*) die "watch text must be a nonempty single-line literal" ;; esac
+  shift 2
+  if [ $# -gt 0 ] && [[ "$1" != -* ]]; then
+    [ $# -ge 2 ] || die "watch target needs <provider> <session>"
+    provider="$1"; session="$2"; shift 2
+    validate_message_args "$provider" "$session" notification
+  fi
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --timeout)
+        [ $# -ge 2 ] && [ "$timeout_seen" -eq 0 ] || die "watch takes one --timeout <seconds>"
+        timeout="$2"; timeout_seen=1; shift 2
+        case "$timeout" in ''|*[!0-9]*) die "timeout must be an integer from 0 to 86400" ;; esac
+        while [ "${#timeout}" -gt 1 ] && [[ "$timeout" = 0* ]]; do timeout="${timeout#0}"; done
+        [ "${#timeout}" -le 5 ] && [ "$timeout" -le 86400 ] || die "timeout must be an integer from 0 to 86400"
+        ;;
+      --resume-with)
+        [ $# -ge 4 ] && [ "${#resume_args[@]}" -eq 0 ] || die "watch takes one --resume-with <model> <effort> <read|edit>"
+        [ -n "$provider" ] || die "--resume-with needs a watch target provider and session"
+        resume_args=(--resume-with "$2" "$3" "$4"); shift 4
+        validate_message_args "$provider" "$session" notification "${resume_args[@]}"
+        ;;
+      *) die "unknown watch argument '$1'" ;;
+    esac
+  done
+  make_temp_dir
+  snapshot="$JAMSESSION_TEMP_DIR/reply"
+  started="$SECONDS"
+  printf 'watching: %s\n' "$path" >&2
+  while :; do
+    if [ -f "$path" ] && [ -r "$path" ]; then
+      if LC_ALL=C cp "$path" "$snapshot" 2>"$JAMSESSION_TEMP_DIR/copy-error"; then
+        search_status=0
+        LC_ALL=C grep -Fq -- "$text" "$snapshot" || search_status=$?
+        if [ "$search_status" -eq 0 ]; then
+          cat "$snapshot" || return 2
+          result=0
+          break
+        fi
+        [ "$search_status" -eq 1 ] || die "could not search watch snapshot: $path"
+      elif ! LC_ALL=C grep -Eq ': No such file or directory$' "$JAMSESSION_TEMP_DIR/copy-error"; then
+        cat "$JAMSESSION_TEMP_DIR/copy-error" >&2
+        die "could not snapshot watch file: $path"
+      fi
+    elif [ -e "$path" ]; then
+      die "watch requires a readable regular file: $path"
+    fi
+    [ "$((SECONDS - started))" -lt "$timeout" ] || break
+    sleep 1
+  done
+  if [ "$result" -eq 0 ]; then
+    printf 'watch-result: matched (0)\n' >&2
+    printf -v notification '%q has contents containing %q.' "$path" "$text"
+  else
+    printf 'watch-result: timeout (124)\n' >&2
+    printf -v notification 'Timeout after %s seconds watching %q for %q.' "$timeout" "$path" "$text"
+    printf '%s\n' "$notification" >&2
+  fi
+  if [ -n "$provider" ]; then
+    delivery_args=("$provider" "$session" "$notification")
+    # Bash 3.2 with nounset cannot expand an empty array.
+    if [ "${#resume_args[@]}" -gt 0 ]; then
+      delivery_args+=("${resume_args[@]}")
+    fi
+    "$0" message "${delivery_args[@]}" >&2 || delivery_status=$?
+    printf 'delivery-result: %s\n' "$delivery_status" >&2
+    [ "$delivery_status" -eq 0 ] || return "$delivery_status"
+  fi
+  return "$result"
 }
 
 help_topic() {
@@ -648,19 +745,69 @@ EOF
       ;;
     message)
       cat <<'EOF'
-Usage: jamsession message <provider> <session> <text>
-Alias: jamsession <provider> <session> message <text>
+Usage: jamsession message <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]
+Alias: jamsession <provider> <session> message <text> [--resume-with <model> <effort> <read|edit>]
 
 Send to an existing session using the provider's native messaging mechanism.
 Codex queues with `codex queue`; Muse sends with `muse session-message send`.
-Other bundled providers report unavailable. Pass `-` as text to read stdin.
+Other bundled providers report unavailable unless --resume-with explicitly
+supplies model, effort, and access for one synchronous resume. Pass `-` as text
+to read stdin. `new` is not a message target.
 Delivery is asynchronous: an acknowledgement is not the recipient's answer.
 Include your return provider/session and a concrete question or assignment.
 The recipient can reply with another `jamsession message`. If your session
 cannot receive messages, agree on an exact reply-file path instead. Inspect
 that file or use `jamsession which` to locate the recipient's transcript.
-Messaging passes no model/access overrides; the provider controls execution.
-It never falls back to resuming a locked session or starting another agent.
+Native messaging retains the session's model/effort/access, even when fallback
+settings are supplied. It is not guaranteed to wake an idle session; Muse may
+report external_agent_ingress_closed. Native errors never trigger a resume.
+
+Resume fallback requires that no process owns the target, even an idle
+interactive process. Claude checks its active-session list conservatively and
+Devin checks its lock; neither is a universal atomic ownership guarantee.
+Other providers cannot verify ownership. Do not resume your own live session:
+use foreground watch or native messaging. No locks are removed, no session is
+forked, and no delivery is retried. Explicit settings use normal run semantics;
+default default omits model/effort overrides, while edit may grant broad tool
+permissions. Unenforceable read access still errors. Use `run` if you deliberately
+want to choose new execution settings for a native-messaging provider.
+EOF
+      ;;
+    watch)
+      cat <<'EOF'
+Usage: jamsession watch <file> <text> [<provider> <session>]
+                       [--timeout <seconds>] [--resume-with <model> <effort> <read|edit>]
+
+Wait for a single-line literal substring, then print the matched snapshot.
+Default timeout: 300 seconds. Range: 0–86400; 0 checks once. Polling precision
+is approximately one second. Missing files may appear later; other file types
+or unreadable files error. This is for ordinary local text files, not hostile
+paths or streams. Relative paths become absolute before watching.
+
+Existing matching contents count. Use a unique completion marker per request,
+write it last, and never quote it in instructions inside the watched file.
+Prefer publishing the complete reply by atomic rename. A matching marker does
+not prove that a writer has finished if it writes that marker too early.
+
+With a target, send one notification on match or timeout through `message`.
+It includes the path and marker, not file contents; the recipient reads the
+file under its own permissions. Delivery output goes to stderr; stdout stays
+the matched snapshot. Exit 0 means match, 124 means timeout; delivery failure
+returns the provider's code. watch-result and delivery-result distinguish them.
+The file timeout does not limit a subsequent provider call. Nothing is retried.
+
+For your own live session use foreground waiting or supported native messaging.
+--resume-with is only for a target whose owning process has exited. See
+`jamsession help message` for provider ownership and permission limits.
+
+To background it in Bash without a daemon:
+  set -m
+  nohup jamsession watch /absolute/reply.txt 'REQUEST-42-DONE' codex SESSION > /absolute/watch.log 2>&1 &
+  watch_pid=$!
+Keep that PID and log in the caller's task state. After verifying the owned job
+and process group, cancel with `kill -TERM -- -"$watch_pid"`. set -m gives the
+job its own process group; without it, group cancellation can kill the caller.
+Cancellation during delivery cannot recall an accepted message or undo work.
 EOF
       ;;
     usage)
@@ -715,9 +862,13 @@ shift
 
 case "$command_name" in
   message)
-    [ $# -eq 3 ] || die "message needs <provider> <session> <text>"
+    validate_message_args "$@"
     provider="$1"; shift
     exec "$(require_adapter "$provider")" message "$@"
+    ;;
+  watch)
+    watch_file "$@"
+    exit $?
     ;;
   run)
     [ $# -eq 6 ] || die "run needs <provider> <new|session> <model> <effort> <read|edit> <prompt>"
@@ -810,8 +961,10 @@ case "$command_name" in
     printf 'jamsession %s\n' "$JAMSESSION_VERSION"
     ;;
   *)
-    if [ $# -eq 3 ] && [ "$2" = message ]; then
-      exec "$(require_adapter "$command_name")" message "$1" "$3"
+    if { [ $# -eq 3 ] || [ $# -eq 7 ]; } && [ "$2" = message ]; then
+      session="$1"; shift 2
+      validate_message_args "$command_name" "$session" "$@"
+      exec "$(require_adapter "$command_name")" message "$session" "$@"
     fi
     die "unknown command '$command_name'"
     ;;

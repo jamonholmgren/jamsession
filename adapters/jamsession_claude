@@ -14,6 +14,10 @@ jamsession_claude
 Run:    jamsession_claude run <new|session> <model> <effort> <read|edit> <prompt>
 Other:  jamsession_claude <list|which|models|message|usage|status|doctor|help>
 
+Message: message <session> <text> --resume-with <model> <effort> <read|edit>
+resumes once, not queued; the owning process must have exited. Active-session
+checks are best-effort. See `jamsession help message` and `jamsession help watch`.
+
 Claude read mode uses plan permission mode. Edit mode uses bypassPermissions
 because headless sessions cannot answer permission prompts; use it only in a
 trusted workspace. Claude has no none effort, so that request is an error
@@ -102,7 +106,18 @@ run_agent() {
 }
 
 case "${1:-help}" in
-  message) shift; jamsession_validate_message "$@"; jamsession_unsupported message ;;
+  message)
+    shift; jamsession_validate_message "$@"
+    [ "$JAMSESSION_MESSAGE_RESUME" -eq 1 ] || jamsession_unsupported message
+    jamsession_require_binary
+    active_sessions="$("$JAMSESSION_PROVIDER_BIN" agents --json)" || \
+      jamsession_die "cannot check active Claude sessions; use foreground watch or explicit run"
+    # Conservative refusal, not an atomic lock. Headless owners may be absent.
+    if printf '%s\n' "$active_sessions" | LC_ALL=C grep -Fq -- "$JAMSESSION_MESSAGE_SESSION"; then
+      jamsession_die "session '$JAMSESSION_MESSAGE_SESSION' is open in Claude; use foreground watch"
+    fi
+    jamsession_resume_message
+    ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
   models) jamsession_require_binary; list_models ;;
