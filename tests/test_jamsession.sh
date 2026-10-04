@@ -236,6 +236,9 @@ case "${1:-}" in
   --version) printf '%s\n' DEVIN_VERSION; exit 0 ;;
   auth) printf '%s\n' 'Logged in'; exit 0 ;;
   doctor) printf '%s\n' DEVIN_DOCTOR_OK; exit 0 ;;
+  acp)
+    [ -z "${FAKE_ACP_FAIL:-}" ] || exit 1
+    exec python3 "$FAKE_DEVIN_ACP" ;;
   models)
     printf '%s\n' 'Available models' 'Grok 4.6 (grok-4.6)' \
       '  grok-4-6-medium  Grok Medium' '  grok-4-6-high  Grok High'
@@ -804,6 +807,86 @@ check "Devin lists provider-native sessions" contains "$stdout_file" new-devin-s
 run_command env FAKE_DEVIN_STATE="$DEVIN_STATE" JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
   "$ROOT/adapters/jamsession_devin" doctor
 check "Devin doctor checks native authentication" contains "$stdout_file" "authentication: ready"
+
+# --- Devin automation marking over ACP ---------------------------------------
+FAKE_ACP="$TEMP_ROOT/fake-devin-acp.py"
+cat >"$FAKE_ACP" <<'EOF'
+import json, os, sys
+log = os.environ["FAKE_LOG"] + ".acp"
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        msg = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    with open(log, "a") as f:
+        f.write(json.dumps(msg) + "\n")
+    if "id" not in msg:
+        continue
+    method = msg.get("method")
+    result = {"sessionId": os.environ.get("FAKE_ACP_ID", "fake-acp-session")} \
+        if method == "session/new" else \
+        {"stopReason": "cancelled"} if method == "session/prompt" else {}
+    sys.stdout.write(json.dumps(
+        {"jsonrpc": "2.0", "id": msg["id"], "result": result}) + "\n")
+    sys.stdout.flush()
+EOF
+
+DEVIN_ACP_HOME="$TEMP_ROOT/devin-acp-home"
+mkdir -p "$DEVIN_ACP_HOME/.local/share/devin/cli"
+if command -v python3 >/dev/null 2>&1; then
+  rm -f "$LOG" "$LOG.acp"
+  run_command env HOME="$DEVIN_ACP_HOME" FAKE_LOG="$LOG" FAKE_DEVIN_ACP="$FAKE_ACP" \
+    FAKE_DEVIN_STATE="$DEVIN_STATE" JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+    "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit prompt
+  check "Devin ACP run returns its response" equals "$stdout_file" DEVIN_RESULT
+  check "Devin ACP run reports the pre-created session" contains "$stderr_file" "session: fake-acp-session"
+  check "Devin ACP run resumes the pre-created session" contains "$LOG" "--resume fake-acp-session"
+  check "Devin ACP pre-create marks automation" contains "$LOG.acp" '"cognition.ai/isAutomation": true'
+  check "Devin ACP pre-create cancels the setup turn" contains "$LOG.acp" '"method": "session/cancel"'
+fi
+
+if command -v python3 >/dev/null 2>&1 && command -v sqlite3 >/dev/null 2>&1; then
+  sqlite3 "$DEVIN_ACP_HOME/.local/share/devin/cli/sessions.db" \
+    "CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, title TEXT);
+     CREATE TABLE IF NOT EXISTS message_nodes (session_id TEXT, node_id INTEGER, metadata TEXT);
+     INSERT OR REPLACE INTO sessions VALUES ('fake-acp-session', 'Fake task title');"
+  rm -f "$LOG" "$LOG.acp"
+  run_command env HOME="$DEVIN_ACP_HOME" FAKE_LOG="$LOG" FAKE_DEVIN_ACP="$FAKE_ACP" \
+    FAKE_DEVIN_STATE="$DEVIN_STATE" JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+    "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit prompt
+  check "Devin ACP run attempts the [auto] rename" contains "$LOG.acp" '"[auto] Fake task title"'
+  check "Devin ACP rename loads the session first" contains "$LOG.acp" '"method": "session/load"'
+fi
+
+DEVIN_STATE_OPTOUT="$TEMP_ROOT/devin-session-state-optout"
+rm -f "$LOG" "$LOG.acp" "$DEVIN_STATE_OPTOUT"
+run_command env HOME="$DEVIN_ACP_HOME" FAKE_LOG="$LOG" FAKE_DEVIN_ACP="$FAKE_ACP" \
+  FAKE_DEVIN_STATE="$DEVIN_STATE_OPTOUT" JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  JAMSESSION_DEVIN_AUTOMATION=0 \
+  "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit prompt
+check "Devin automation opt-out skips ACP" test ! -e "$LOG.acp"
+check "Devin automation opt-out uses the listed-session diff" contains "$stderr_file" "session: new-devin-session"
+
+if command -v python3 >/dev/null 2>&1; then
+  DEVIN_STATE_FAIL="$TEMP_ROOT/devin-session-state-fail"
+  rm -f "$LOG" "$LOG.acp" "$DEVIN_STATE_FAIL"
+  run_command env HOME="$DEVIN_ACP_HOME" FAKE_LOG="$LOG" FAKE_DEVIN_ACP="$FAKE_ACP" \
+    FAKE_ACP_FAIL=1 FAKE_DEVIN_STATE="$DEVIN_STATE_FAIL" JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+    "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit prompt
+  check "Devin ACP pre-create failure still runs" test "$status" -eq 0
+  check "Devin ACP pre-create failure hints the fallback" contains "$stderr_file" "starting unflagged"
+  check "Devin ACP pre-create failure uses the listed-session diff" contains "$stderr_file" "session: new-devin-session"
+
+  rm -f "$LOG" "$LOG.acp"
+  run_command env HOME="$DEVIN_ACP_HOME" FAKE_LOG="$LOG" FAKE_DEVIN_ACP="$FAKE_ACP" \
+    FAKE_DEVIN_STATE="$DEVIN_STATE" JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+    "$ROOT/adapters/jamsession_devin" run saved-devin-session default default edit prompt
+  check "Devin resumed sessions skip ACP entirely" test ! -e "$LOG.acp"
+  check "Devin resumed sessions still resume exactly" contains "$LOG" "--resume saved-devin-session"
+fi
 
 run_command env FAKE_LOG="$LOG" JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" \
   "$ROOT/adapters/jamsession_muse" run new muse-model medium read prompt

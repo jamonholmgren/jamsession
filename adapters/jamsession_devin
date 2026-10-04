@@ -19,10 +19,13 @@ resumes once, not queued; existing live locks still block it. See
 `jamsession help message` and `jamsession help watch`.
 
 Devin uses --print for unattended work and resumes its native session IDs.
-Edit mode uses dangerous permission mode so tool approvals cannot stall the
-run. Read mode is unsupported: auto mode approves only read-only tools, but
-does not guarantee that the agent cannot write. Use an exact ID from
-`jamsession models devin` when specifying effort.
+New sessions are pre-created over ACP so Desktop files them under Automation
+and their titles carry an [auto] prefix; JAMSESSION_DEVIN_AUTOMATION=0 restores
+the plain launch, and any helper failure falls back to it. Edit mode uses
+dangerous permission mode so tool approvals cannot stall the run. Read mode is
+unsupported: auto mode approves only read-only tools, but does not guarantee
+that the agent cannot write. Use an exact ID from `jamsession models devin`
+when specifying effort.
 EOF
 }
 
@@ -115,19 +118,75 @@ session_ids() {
   "$JAMSESSION_PROVIDER_BIN" list --format csv | awk -F, 'NR > 1 && $1 != "" { print $1 }'
 }
 
+devin_acp_helper() {
+  command -v python3 >/dev/null 2>&1 || return 1
+  [ -f "$ADAPTER_DIR/_jamsession_devin_acp.py" ] || return 1
+  python3 "$ADAPTER_DIR/_jamsession_devin_acp.py" "$@"
+}
+
+# Pre-create the session over ACP so Devin Desktop files it under Automation.
+# A cancelled setup turn persists the row without a model reply. Any failure
+# leaves the caller to fall back to the plain --print launch.
+devin_acp_create() {
+  local session_id err_file
+  command -v python3 >/dev/null 2>&1 || return 1
+  err_file="$(mktemp "${TMPDIR:-/tmp}/jamsession-devin-acp.XXXXXX")" || return 1
+  session_id="$(devin_acp_helper create "$JAMSESSION_PROVIDER_BIN" "$JAMSESSION_CWD" \
+    2>"$err_file")" || {
+    printf 'hint: Devin automation marking unavailable (%s); starting unflagged\n' \
+      "$(head -n 1 "$err_file" 2>/dev/null)" >&2
+    rm -f "$err_file"
+    return 1
+  }
+  rm -f "$err_file"
+  case "$session_id" in
+    ""|*[!a-zA-Z0-9_-]*) return 1 ;;
+  esac
+  printf '%s\n' "$session_id"
+}
+
+# Give the finished run an [auto] title so workers are recognizable at a
+# glance. A cancelled setup turn leaves its prompt as the title; prefer the
+# real task text then. Rename failure is cosmetic and never fails the run.
+devin_acp_rename() {
+  local session_id="$1" path title base
+  command -v python3 >/dev/null 2>&1 || return 0
+  command -v sqlite3 >/dev/null 2>&1 || return 0
+  path="$HOME/.local/share/devin/cli/sessions.db"
+  [ -f "$path" ] || return 0
+  case "$session_id" in ""|*[!a-zA-Z0-9_-]*) return 0 ;; esac
+  title="$(devin_sqlite "$path" "SELECT title FROM sessions WHERE id = '$session_id';" 2>/dev/null)"
+  base="$title"
+  if [ "$title" = "Session setup for a Jam Session worker. Do not reply." ]; then
+    base="$(printf '%s' "$JAMSESSION_PROMPT" | head -n 1 | cut -c 1-80)"
+  fi
+  case "$base" in ""|"[auto] "*) return 0 ;; esac
+  devin_acp_helper rename "$JAMSESSION_PROVIDER_BIN" "$JAMSESSION_CWD" \
+    "$session_id" "[auto] $base" >/dev/null 2>&1 || \
+    jamsession_hint "could not rename the Devin session; it is still marked as automation"
+}
+
 run_agent() {
   jamsession_validate_run "$@"
   jamsession_require_binary
   [ "$JAMSESSION_ACCESS" = edit ] || \
     jamsession_die "read access is unsupported because Devin cannot guarantee no writes"
 
-  local model status before after new_ids session_id lock_pid
+  local model status before after new_ids session_id lock_pid precreated
   local -a args
+  precreated=""
   model="$(resolve_model "$JAMSESSION_MODEL" "$JAMSESSION_EFFORT")" || exit $?
   args=(-p --permission-mode dangerous --respect-workspace-trust false)
   [ -z "$model" ] || args+=(--model "$model")
   if [ "$JAMSESSION_SESSION" = new ]; then
-    before="$(cd "$JAMSESSION_CWD" && session_ids)" || jamsession_die "could not list Devin sessions before launch"
+    if [ "${JAMSESSION_DEVIN_AUTOMATION:-1}" != 0 ]; then
+      session_id="$(devin_acp_create)" && precreated=1
+    fi
+    if [ -n "$precreated" ]; then
+      args+=(--resume "$session_id")
+    else
+      before="$(cd "$JAMSESSION_CWD" && session_ids)" || jamsession_die "could not list Devin sessions before launch"
+    fi
   else
     session_id="$JAMSESSION_SESSION"
     lock_pid="$(devin_live_lock_pid "$session_id" || true)"
@@ -140,6 +199,12 @@ run_agent() {
   jamsession_hint "Devin dangerous mode may run tools beyond the workspace; use a trusted environment."
   status=0
   (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null) || status=$?
+  if [ -n "$precreated" ]; then
+    jamsession_session "$session_id"
+    devin_acp_rename "$session_id"
+    session_size "$session_id"
+    exit "$status"
+  fi
   [ "$JAMSESSION_SESSION" = new ] || { session_size "$session_id"; exit "$status"; }
   [ "$status" -eq 0 ] || exit "$status"
 
