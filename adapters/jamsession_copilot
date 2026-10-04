@@ -59,7 +59,7 @@ run_agent() {
   if [ "$JAMSESSION_EFFORT" != default ]; then
     [ "$JAMSESSION_MODEL" != auto ] || \
       jamsession_die "Copilot rejects explicit effort with the auto model; name a model or pass default effort"
-    args+=(--effort "$JAMSESSION_EFFORT")
+    args+=(--reasoning-effort "$JAMSESSION_EFFORT")
   fi
 
   if [ "$JAMSESSION_SESSION" = new ]; then

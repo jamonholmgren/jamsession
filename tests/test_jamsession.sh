@@ -762,11 +762,11 @@ run_command env FAKE_LOG="$LOG" JAMSESSION_COPILOT_BIN="$FAKE_BIN/copilot" \
   "$ROOT/adapters/jamsession_copilot" run new auto default edit prompt
 check "Copilot response passes through" contains "$stdout_file" COPILOT_RESULT
 check "Copilot edit mode allows tools" contains "$LOG" "--allow-all-tools"
-check "Copilot auto model sends no effort flag" sh -c "! grep -Fq -- '--effort' '$LOG'"
+check "Copilot auto model sends no effort flag" sh -c "! grep -Fq -- '-effort' '$LOG'"
 
 run_command env FAKE_LOG="$LOG" JAMSESSION_COPILOT_BIN="$FAKE_BIN/copilot" \
   "$ROOT/adapters/jamsession_copilot" run new copilot-model high edit prompt
-check "Copilot passes explicit effort with a named model" contains "$LOG" "--effort high"
+check "Copilot passes explicit effort with a named model" contains "$LOG" "--reasoning-effort high"
 
 DEVIN_STATE="$TEMP_ROOT/devin-session-state"
 rm -f "$LOG" "$DEVIN_STATE"
