@@ -157,9 +157,12 @@ devin_acp_rename() {
   case "$session_id" in ""|*[!a-zA-Z0-9_-]*) return 0 ;; esac
   title="$(devin_sqlite "$path" "SELECT title FROM sessions WHERE id = '$session_id';" 2>/dev/null)"
   base="$title"
-  if [ "$title" = "Session setup for a Jam Session worker. Do not reply." ]; then
-    base="$(printf '%s' "$JAMSESSION_PROMPT" | head -n 1 | cut -c 1-80)"
-  fi
+  case "$title" in
+    "Jam Session created this session."*|\
+    "Session setup for a Jam Session worker."*)
+      base="$(printf '%s' "$JAMSESSION_PROMPT" | head -n 1 | cut -c 1-80)"
+      ;;
+  esac
   case "$base" in ""|"[auto] "*) return 0 ;; esac
   devin_acp_helper rename "$JAMSESSION_PROVIDER_BIN" "$JAMSESSION_CWD" \
     "$session_id" "[auto] $base" >/dev/null 2>&1 || \

@@ -846,6 +846,7 @@ if command -v python3 >/dev/null 2>&1; then
   check "Devin ACP run resumes the pre-created session" contains "$LOG" "--resume fake-acp-session"
   check "Devin ACP pre-create marks automation" contains "$LOG.acp" '"cognition.ai/isAutomation": true'
   check "Devin ACP pre-create cancels the setup turn" contains "$LOG.acp" '"method": "session/cancel"'
+  check "Devin ACP setup prompt points at the real task" contains "$LOG.acp" 'Jam Session created this session. Your task arrives in the next message; do that task fully.'
 fi
 
 if command -v python3 >/dev/null 2>&1 && command -v sqlite3 >/dev/null 2>&1; then
@@ -859,6 +860,14 @@ if command -v python3 >/dev/null 2>&1 && command -v sqlite3 >/dev/null 2>&1; the
     "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit prompt
   check "Devin ACP run attempts the [auto] rename" contains "$LOG.acp" '"[auto] Fake task title"'
   check "Devin ACP rename loads the session first" contains "$LOG.acp" '"method": "session/load"'
+
+  sqlite3 "$DEVIN_ACP_HOME/.local/share/devin/cli/sessions.db" \
+    "UPDATE sessions SET title = 'Jam Session created this session. Your task arrives in the next message; do t...' WHERE id = 'fake-acp-session';"
+  rm -f "$LOG" "$LOG.acp"
+  run_command env HOME="$DEVIN_ACP_HOME" FAKE_LOG="$LOG" FAKE_DEVIN_ACP="$FAKE_ACP" \
+    FAKE_DEVIN_STATE="$DEVIN_STATE" JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+    "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit 'rename from this prompt'
+  check "Devin ACP rename prefers the task text over a truncated setup title" contains "$LOG.acp" '"[auto] rename from this prompt"'
 fi
 
 DEVIN_STATE_OPTOUT="$TEMP_ROOT/devin-session-state-optout"

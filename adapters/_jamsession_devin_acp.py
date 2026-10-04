@@ -20,7 +20,7 @@ import subprocess
 import sys
 import threading
 
-SETUP_PROMPT = "Session setup for a Jam Session worker. Do not reply."
+SETUP_PROMPT = "Jam Session created this session. Your task arrives in the next message; do that task fully."
 
 AUTOMATION_META = {
     "cognition.ai/isAutomation": True,
@@ -47,32 +47,48 @@ class ACP:
             self.proc = subprocess.Popen(
                 [devin_bin, "acp"],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL, env=env, text=True, bufsize=1)
+                stderr=subprocess.DEVNULL, env=env)
         except OSError as e:
             fail("could not start %r acp: %s" % (devin_bin, e))
         self.next_id = 0
+        self._buffer = b""
 
     def _send(self, message):
         try:
-            self.proc.stdin.write(json.dumps(message) + "\n")
+            self.proc.stdin.write((json.dumps(message) + "\n").encode())
             self.proc.stdin.flush()
         except (BrokenPipeError, OSError) as e:
             fail("could not write to devin acp: %s" % e)
+
+    # select() only sees kernel-buffered bytes; lines already pulled into a
+    # buffered reader would time out even after the response arrived. Read the
+    # raw descriptor so every byte is accounted for in our own buffer.
+    def _readline(self, timeout):
+        import select
+        fd = self.proc.stdout.fileno()
+        while True:
+            newline = self._buffer.find(b"\n")
+            if newline >= 0:
+                line = self._buffer[:newline]
+                self._buffer = self._buffer[newline + 1:]
+                return line
+            ready, _, _ = select.select([fd], [], [], timeout)
+            if not ready:
+                return None
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                return None
+            self._buffer += chunk
 
     def request(self, method, params, timeout=120):
         self.next_id += 1
         rid = self.next_id
         self._send({"jsonrpc": "2.0", "id": rid, "method": method,
                     "params": params})
-        self.proc.stdout.flush()
-        import select
         while True:
-            ready, _, _ = select.select([self.proc.stdout], [], [], timeout)
-            if not ready:
-                fail("timed out waiting for %s" % method)
-            line = self.proc.stdout.readline()
-            if not line:
-                fail("devin acp closed stdout during %s" % method)
+            line = self._readline(timeout)
+            if line is None:
+                fail("devin acp closed or timed out during %s" % method)
             try:
                 reply = json.loads(line)
             except json.JSONDecodeError:
