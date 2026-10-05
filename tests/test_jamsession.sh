@@ -1421,8 +1421,8 @@ check "no workflow still refers to the old name" \
   sh -c "! grep -rqi jamwrap '$ROOT/.github/workflows/'"
 check "the model recommendation skill is bundled" \
   sh -c "grep -q '^name: jamsession-model-recommendations$' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
-check "model recommendations prefer Opus 5.5" \
-  sh -c "grep -Fq 'Claude Opus 5.5 - preferred top-tier model' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
+check "model recommendations rank Opus 5.5 xhigh as best premium" \
+  sh -c "grep -Fq '* Best: Claude Opus 5.5 xhigh' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
 check "the agent-usage skill requests structured usage" \
   sh -c "grep -Fq 'jamsession usage --json' '$ROOT/skills/jamsession-get-agent-usage/SKILL.md'"
 check "the remote-agent skill depends on no separately optional skill" \
