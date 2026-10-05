@@ -19,8 +19,10 @@ Optional --resume-with settings are validated but unused by native delivery.
 Queue acceptance is not an answer or a guaranteed wake-up. See `jamsession help message`.
 
 Codex read mode uses its read-only sandbox. Edit mode uses workspace-write with
-interactive approvals disabled. Codex does not expose a non-interactive native
-session or model listing, so those operations report unavailable.
+interactive approvals disabled. Set JAMSESSION_CODEX_SANDBOX=off in jamsession.conf
+on a host where the Codex sandbox cannot start (for example Windows over SSH);
+Codex then runs unsandboxed and read access depends on the prompt alone.
+Codex does not expose a non-interactive native session or model listing, so those operations report unavailable.
 EOF
 }
 
@@ -69,7 +71,14 @@ run_agent() {
   [ "$JAMSESSION_MODEL" = default ] || command_args+=(-m "$JAMSESSION_MODEL")
   [ "$JAMSESSION_EFFORT" = default ] || command_args+=(-c "model_reasoning_effort=$JAMSESSION_EFFORT")
 
-  if [ "$JAMSESSION_ACCESS" = read ]; then
+  if [ "${JAMSESSION_CODEX_SANDBOX:-on}" = off ]; then
+    command_args+=(--dangerously-bypass-approvals-and-sandbox)
+    if [ "$JAMSESSION_ACCESS" = read ]; then
+      jamsession_hint "Codex sandbox is off (JAMSESSION_CODEX_SANDBOX=off); read access is enforced only by the prompt."
+    else
+      jamsession_hint "Codex sandbox is off (JAMSESSION_CODEX_SANDBOX=off); it may edit and run anything without asking."
+    fi
+  elif [ "$JAMSESSION_ACCESS" = read ]; then
     if [ "$JAMSESSION_SESSION" = new ]; then
       command_args+=(-s read-only)
     else

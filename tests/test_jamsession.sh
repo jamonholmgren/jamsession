@@ -622,6 +622,11 @@ check "Codex final response is normalized" equals "$stdout_file" CODEX_RESULT
 check "Codex new session ID is reported" contains "$stderr_file" "session: codex-session"
 check "Codex read mode uses native read-only sandbox" contains "$LOG" "-s read-only"
 
+run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" JAMSESSION_CODEX_SANDBOX=off \
+  "$ROOT/adapters/jamsession_codex" run new default high read prompt
+check "Codex sandbox-off config bypasses the sandbox" contains "$LOG" "--dangerously-bypass-approvals-and-sandbox"
+check "Codex sandbox-off read mode warns that the prompt enforces read access" contains "$stderr_file" "read access is enforced only by the prompt"
+
 run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
   "$ROOT/adapters/jamsession_claude" run new default high read prompt
 check "Claude response passes through" contains "$stdout_file" CLAUDE_RESULT

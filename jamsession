@@ -656,6 +656,7 @@ jamsession sources this file as Bash. Run 'jamsession init' to add paths it can
 discover without replacing existing values. Supported overrides:
 
   JAMSESSION_CODEX_BIN=/path/to/codex
+  JAMSESSION_CODEX_SANDBOX=off   (only where the Codex sandbox cannot start)
   JAMSESSION_CLAUDE_BIN=/path/to/claude
   JAMSESSION_CURSOR_BIN=/path/to/cursor-agent
   JAMSESSION_GROK_BIN=/path/to/grok

@@ -13,6 +13,8 @@ description: Start, resume, or message one coding agent session through the `jam
    authorizes Grok for a read-only task, use `edit` transport and begin the prompt
    with: `Do not modify, create, delete, rename, format, stage, or commit files;
    do not run state-changing commands.`
+   The same no-modify opening is required for Codex on a host configured with
+   `JAMSESSION_CODEX_SANDBOX=off`, where read access is not enforced.
 3. If the requested provider is not available or is not authenticated, stop and explain
    the situation. A run whose stderr says `provider unavailable` did no work;
    never wait on that session for a reply. For "Not logged in", treat the
