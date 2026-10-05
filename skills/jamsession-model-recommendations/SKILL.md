@@ -23,7 +23,8 @@ Prefer each model's native harness. Cursor Grok (also called Crok or Croc) is th
 * Cursor's Kimi K3 - useful for contrarian review, fan-out audits, and applying well-specified focused work
 * Claude Fable 5.1 - still excellent for UI design. Consider it when design quality is central until Opus 5.5's design ability is clearer; otherwise prefer Opus 5.5
 * Devin `swe-2-high` - fallback for Devin work when the Fusion models return `resource_exhausted` (weekly quota). It is billed Free and ran a full review cleanly. Briefs that pin a Fusion model should name it as the fallback
-* GPT-5.5, Claude Sonnet 5.x, 5.4, 5.3 spark - use only when a harness has no better options available; these are poor choices compared with the models above
+* Claude Sonnet 5.5 - roughly equivalent to GPT-6 Terra; a capable mid-tier choice, for example to babysit external workers or for bounded investigations and well-specified changes
+* GPT-5.5, Claude Sonnet before 5.5, 5.4, 5.3 spark - use only when a harness has no better options available; these are poor choices compared with the models above
 
 Unknown, haven't used enough:
 
