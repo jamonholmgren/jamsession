@@ -115,7 +115,7 @@ jamsession which devin SESSION_ID # locates the transcript store and explains re
 jamsession init # installs jam session in the current project
 ```
 
-Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`, `devin`, `muse`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused diagnostics. `which <provider> [session]` reports the provider's local transcript store and safe access instructions. Devin supports `edit` but not guaranteed `read` access. Muse supports both; its `models` and `list` commands read Muse's local model cache and session logs.
+Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`, `devin`, `muse`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused diagnostics. `which <provider> [session]` reports the provider's local transcript store and safe access instructions. Devin supports `edit` but not guaranteed `read` access. Muse supports both; its `models` and `list` commands read Muse's local model cache and session logs. Codex `models` reads `codex debug models`.
 
 ### Skills
 

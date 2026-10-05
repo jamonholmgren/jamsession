@@ -121,6 +121,10 @@ cat >"$FAKE_BIN/codex" <<'EOF'
 #!/bin/sh
 if [ "${1:-}" = --version ]; then printf '%s\n' CODEX_VERSION; exit 0; fi
 if [ "${1:-}" = login ]; then printf '%s\n' CODEX_AUTH_OK; exit 0; fi
+if [ "${1:-}" = debug ] && [ "${2:-}" = models ]; then
+  printf '%s\n' '{"models":[{"slug":"codex-current","display_name":"Codex Current","description":"Workhorse.","default_reasoning_level":"low","supported_reasoning_levels":[{"effort":"low"},{"effort":"high"}],"visibility":"list"},{"slug":"codex-hidden","visibility":"hide","supported_reasoning_levels":[]}]}'
+  exit 0
+fi
 if [ "${1:-}" = queue ]; then
   printf '%s\n' queue >>"$FAKE_LOG.calls"
   printf '%s\n' "$@" >"$FAKE_LOG"
@@ -932,6 +936,9 @@ JSON
 : >"$MUSE_HOME/.local/share/muse/sessions/2026/09/24/older-session/session.jsonl"
 : >"$MUSE_HOME/.local/share/muse/sessions/2026/09/25/newer-session/session.jsonl"
 : >"$MUSE_HOME/.local/share/muse/sessions/2026/09/25/newer-session/subagent/child-session/session.jsonl"
+run_command env JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" "$ROOT/adapters/jamsession_codex" models
+check "Codex models reads codex debug models" contains "$stdout_file" "codex-current - Codex Current - Workhorse. (efforts: low, high; default low)"
+check "Codex models excludes hidden models" sh -c "! grep -Fq codex-hidden '$stdout_file'"
 run_command env HOME="$MUSE_HOME" JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/adapters/jamsession_muse" models
 check "Muse lists cached visible models" contains "$stdout_file" muse-current
 check "Muse excludes hidden models" sh -c "! grep -Fq muse-hidden '$stdout_file'"

@@ -22,7 +22,8 @@ Codex read mode uses its read-only sandbox. Edit mode uses workspace-write with
 interactive approvals disabled. Set JAMSESSION_CODEX_SANDBOX=off in jamsession.conf
 on a host where the Codex sandbox cannot start (for example Windows over SSH);
 Codex then runs unsandboxed and read access depends on the prompt alone.
-Codex does not expose a non-interactive native session or model listing, so those operations report unavailable.
+`models` reads `codex debug models` and prints listed models with their efforts.
+Codex does not expose a non-interactive native session listing, so `list` reports unavailable.
 EOF
 }
 
@@ -49,6 +50,19 @@ session_size() {
   path="$(find "$root/sessions" "$root/archived_sessions" -type f -name "*-$1.jsonl" -print -quit 2>/dev/null)"
   line="$([ -z "$path" ] || grep -F '"last_token_usage":{' "$path" | tail -n 1)"
   jamsession_session_size "$(jamsession_json_number "${line##*\"last_token_usage\":\{}" total_tokens)"
+}
+
+list_models() {
+  local python_bin="${JAMSESSION_PYTHON_BIN:-python3}" catalog
+  command -v "$python_bin" >/dev/null 2>&1 || jamsession_die "Codex model listing needs python3 to read 'codex debug models'"
+  catalog="$("$JAMSESSION_PROVIDER_BIN" debug models 2>/dev/null)" || jamsession_die "could not read 'codex debug models'"
+  printf '%s' "$catalog" | "$python_bin" -c '
+import json, sys
+for m in json.load(sys.stdin).get("models", []):
+    if m.get("visibility") != "list": continue
+    efforts = ", ".join(e["effort"] for e in m.get("supported_reasoning_levels", []))
+    print("%s - %s - %s (efforts: %s; default %s)" % (m["slug"], m.get("display_name", m["slug"]), m.get("description", ""), efforts, m.get("default_reasoning_level", "default")))
+' || jamsession_die "could not parse 'codex debug models' output"
 }
 
 run_agent() {
@@ -137,7 +151,8 @@ case "${1:-help}" in
     ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
-  list|models|usage|status) jamsession_unsupported "$1" ;;
+  models) jamsession_require_binary; list_models ;;
+  list|usage|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" --version
