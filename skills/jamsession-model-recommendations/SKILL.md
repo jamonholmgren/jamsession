@@ -38,7 +38,7 @@ Good for babysitting external workers, implementation work, and contrarian revie
 
 ## Cheap
 
-Good for narrowly focused implementation, low-priority work, and conserving tokens.
+Good for narrowly focused implementation, low-priority work, and conserving tokens. Never use cheap models for diagnosis: once the data is gathered, diagnosis belongs to the premium class.
 
 * Best: Devin SWE-2 xhigh, Muse spark, GPT-6 Luna xhigh
 * Good: Antigravity, Copilot
