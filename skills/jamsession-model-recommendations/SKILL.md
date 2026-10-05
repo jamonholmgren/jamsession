@@ -33,14 +33,14 @@ Good interactive models and supervisors.
 
 Good for babysitting external workers, implementation work, and contrarian review.
 
-* Best: Claude Sonnet 5.5 high, Grok high (including Cursor Grok), GPT-6 Terra high
+* Best: Claude Sonnet 5.5 high, Grok high (including Cursor Grok), GPT-6.1 Sol low
 * Good: GPT-6 Luna max, Devin SWE-2 high
 
 ## Cheap
 
 Good for narrowly focused implementation, low-priority work, and conserving tokens. Never use cheap models for diagnosis: once the data is gathered, diagnosis belongs to the premium class.
 
-* Best: Devin SWE-2 xhigh, Muse spark, GPT-6 Luna xhigh
+* Best: Devin SWE-2 max, Muse spark, GPT-6 Luna xhigh
 * Good: Antigravity, Copilot
 * Do not use Claude Haiku
 
@@ -49,6 +49,9 @@ Weaker implementers are fine as long as review and verification eventually get t
 ## Notes
 
 * Devin `swe-2-high` is the fallback when the Devin Fusion models return `resource_exhausted` (weekly quota). Briefs that pin a Fusion model should name it as the fallback
+* There is no GPT-6 Terra, and GPT-5.6 Terra is weak; use GPT-6.1 Sol low in its place
+* Devin's top SWE-2 effort is `swe-2-max` (there is no xhigh)
+* `jamsession models <provider>` lists exact model IDs and efforts, including Codex
 * GPT-5.5, Claude Sonnet before 5.5, and other older models are poor choices; use them only when a harness has nothing better
 
 Unknown, haven't used enough:
