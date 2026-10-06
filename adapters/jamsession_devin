@@ -26,6 +26,8 @@ dangerous permission mode so tool approvals cannot stall the run. Read mode is
 unsupported: auto mode approves only read-only tools, but does not guarantee
 that the agent cannot write. Use an exact ID from `jamsession models devin`
 when specifying effort.
+Usage reads the startup subscription percentage and reset countdown through a
+temporary terminal, without submitting a prompt. It needs system Python 3.
 EOF
 }
 
@@ -231,7 +233,8 @@ case "${1:-help}" in
     "$JAMSESSION_PROVIDER_BIN" list --format csv | awk -v limit="$count" 'NR <= limit + 1'
     ;;
   models) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" models list ;;
-  usage|status) jamsession_unsupported "$1" ;;
+  usage) shift; jamsession_adapter_usage "$@" ;;
+  status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" --version

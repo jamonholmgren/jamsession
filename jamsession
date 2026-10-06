@@ -816,9 +816,13 @@ EOF
       cat <<'EOF'
 Usage: jamsession usage [provider] [--json]
 
-Shows subscription usage for every configured provider, or one provider. The
-collector is Bash and system-tool based; it adds no language-runtime dependency.
+Shows subscription usage for the seven bundled providers, or one provider.
+The collector uses Bash and system tools; some readers need system Python 3.
 Exit 0 means complete, 2 means partial, and 1 means no requested usage was read.
+Devin reads its startup subscription screen. Muse reads last-observed quota
+through its official CLI protocol and includes observation timestamps; absent
+or expired reports remain unavailable. Those readers use system Python 3,
+like Grok and Copilot. They never submit a model prompt or consume a reset.
 EOF
       ;;
     status)

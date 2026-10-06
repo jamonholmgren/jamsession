@@ -50,6 +50,14 @@ jamsession_require_binary() {
     jamsession_die "CLI not found: $JAMSESSION_PROVIDER_BIN; run 'jamsession init' or edit jamsession.conf"
 }
 
+jamsession_adapter_usage() {
+  local helper="$ADAPTER_DIR/../usage/jamsession_usage"
+  [ -x "$helper" ] || helper="$ADAPTER_DIR/../bin/jamsession_usage"
+  [ -x "$helper" ] || jamsession_die "usage collector is not installed; run jamsession update"
+  export "$JAMSESSION_BIN_VARIABLE"
+  exec "$helper" "$JAMSESSION_PROVIDER" "$@"
+}
+
 jamsession_read_prompt() {
   JAMSESSION_PROMPT="$1"
   if [ "$JAMSESSION_PROMPT" = "-" ] && [ "${JAMSESSION_PROMPT_LITERAL:-0}" -eq 0 ]; then

@@ -23,6 +23,10 @@ disables both shell execution and workspace writes. Edit mode allows unattended
 workspace changes within Muse's normal sandbox. Muse does not expose native
 headless session or model listing commands; list and models read its local
 session logs and cached model catalog.
+Usage reads last-observed subscription windows through `muse serve` and
+`usage/read`, without a model turn. Missing or expired observations are
+unavailable, not zero usage. It needs system Python 3; observation times are
+included so retained data is not presented as a live balance.
 EOF
 }
 
@@ -154,7 +158,8 @@ case "${1:-help}" in
   which) shift; which_transcript "$@" ;;
   list) shift; list_sessions "$@" ;;
   models) shift; list_models "$@" ;;
-  usage|status) jamsession_unsupported "$1" ;;
+  usage) shift; jamsession_adapter_usage "$@" ;;
+  status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" --version

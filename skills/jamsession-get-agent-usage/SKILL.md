@@ -27,6 +27,9 @@ description: Report current usage, remaining quota, rate-limit windows, and rese
    `Sept 8 (tomorrow @ 9:12pm)`. Use calendar-day differences, not elapsed
    24-hour periods. Cursor's monthly plan resets on the 21st; when its CLI does
    not expose a reset, use the next applicable 21st and calculate the day count.
+   Devin may expose only a reset countdown; retain it without inventing a
+   precise reset timestamp. For Muse, preserve `observed_at` as an “as of” note
+   rather than presenting a retained observation as a live balance.
 6. For a provider whose usage is unavailable, include one row with
    `Usage unavailable` in the Window column and em dashes elsewhere. Do not imply
    that the provider itself is unavailable or unauthenticated. Grok and Copilot
@@ -34,6 +37,10 @@ description: Report current usage, remaining quota, rate-limit windows, and rese
    Python PTY. Copilot runs in a fresh temporary folder, accepts only the
    session-local trust prompt, and uses plan mode; do not substitute
    model-reported usage, session-token counts, or a private API.
+   Devin reads its startup subscription screen without a prompt. Muse uses
+   its official CLI `usage/read` method; `usage_not_observed` means the CLI has
+   no current quota observation, not that the account is unauthenticated or
+   unused. Do not start a model turn or login/reset to manufacture a report.
 7. After the table, state how many providers returned usage out of the total.
    Mention unavailable providers in one concise sentence. If diagnostics show
    why collection failed, state that briefly; distinguish an unreadable usage

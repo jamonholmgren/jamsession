@@ -541,6 +541,9 @@ EOF
 printf '%s\n' 'plan 68% left' >"$USAGE_FIXTURES/cursor.txt"
 printf '%s\n' 'Weekly limit (Pro) 35% used Resets: Sep 8, 09:00' >"$USAGE_FIXTURES/grok.txt"
 printf '%s\n' 'Monthly AI credits 40% used' >"$USAGE_FIXTURES/copilot.txt"
+printf '%s\n' 'Subscription (Max)' '4% used' 'Resets: in 5d 8h' >"$USAGE_FIXTURES/devin.txt"
+printf '%s\n' 'Observed at: 2026-10-05T12:00:00+00:00' 'Subscription window' '12% used' 'Resets: 2100-01-01T00:00:00+00:00' \
+  'Subscription weekly' '25% used' 'Resets: 2100-01-02T00:00:00+00:00' >"$USAGE_FIXTURES/muse.txt"
 
 run_command env JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/jamsession" usage --json
 check "aggregate usage stays complete for providers with readable quota" contains "$stdout_file" '"status":"complete"'
@@ -548,10 +551,81 @@ check "Codex usage includes multiple rate-limit buckets" contains "$stdout_file"
 check "Cursor usage reports remaining plan percentage" contains "$stdout_file" '"remaining_percent":68'
 check "aggregate usage succeeds when every fixture parses" test "$status" -eq 0
 
-run_command "$ROOT/jamsession" usage devin --json
+run_command env JAMSESSION_USAGE_FIXTURE_DIR="$TEMP_ROOT/no-usage-fixtures" "$ROOT/jamsession" usage devin --json
 check "Devin usage reports unavailable instead of an invented quota" contains "$stdout_file" '"agent":"devin","status":"unavailable"'
-run_command "$ROOT/jamsession" usage muse --json
+run_command env JAMSESSION_USAGE_FIXTURE_DIR="$TEMP_ROOT/no-usage-fixtures" "$ROOT/jamsession" usage muse --json
 check "Muse usage reports unavailable instead of an invented quota" contains "$stdout_file" '"agent":"muse","status":"unavailable"'
+run_command env JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/adapters/jamsession_devin" usage --json
+check "Devin adapter usage reaches the shared collector" contains "$stdout_file" '"remaining_percent":96'
+run_command env JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/adapters/jamsession_muse" usage --json
+check "Muse adapter usage reaches the shared collector" contains "$stdout_file" '"remaining_percent":88'
+check "Muse observations retain their as-of stamp" contains "$stdout_file" '"observed_at":"2026-10-05T12:00:00+00:00"'
+
+DEVIN_USAGE_TUI="$TEMP_ROOT/devin-usage-tui"
+cat >"$DEVIN_USAGE_TUI" <<'EOF'
+#!/usr/bin/env python3
+import select, sys, time
+sys.stdout.write('\033[2J\033[8;3HMax · 84.5% remaining (resets in 4d 2h)\n')
+sys.stdout.flush()
+# Startup reading must not submit even a slash command or model prompt.
+if select.select([sys.stdin], [], [], 3)[0]:
+    sys.stdout.write('UNEXPECTED_INPUT\n')
+    sys.stdout.flush()
+time.sleep(30)
+EOF
+chmod 755 "$DEVIN_USAGE_TUI"
+run_command env JAMSESSION_DEVIN_BIN="$DEVIN_USAGE_TUI" "$ROOT/jamsession" usage devin --json
+check "Devin startup quota is read without a prompt" contains "$stdout_file" '"agent":"devin","status":"ok"'
+check "Devin remaining quota is not mistaken for used quota" contains "$stdout_file" '"remaining_percent":84.5'
+check "Devin reset countdown stays provider-reported" contains "$stdout_file" '"reset_display":"in 4d 2h"'
+
+MUSE_USAGE_HOST="$TEMP_ROOT/muse-usage-host"
+cat >"$MUSE_USAGE_HOST" <<'EOF'
+#!/usr/bin/env python3
+import json, os, sys, time
+for line in sys.stdin:
+    request = json.loads(line)
+    method = request['method']
+    with open(os.environ['FAKE_MUSE_REQUESTS'], 'a') as log:
+        log.write(method + '\n')
+    if method == 'initialize':
+        result = {'schema': {'version': 1}}
+    elif method == 'initialized':
+        initialized = True
+        continue
+    elif method == 'usage/read':
+        assert initialized
+        mode = os.environ.get('FAKE_MUSE_USAGE', 'quota')
+        if mode == 'stall': time.sleep(30)
+        if mode == 'empty': result = {}
+        else:
+            used = 'bad' if mode == 'malformed' else (0.000001 if mode == 'tiny' else 18.5)
+            reset = 1 if mode == 'expired' else 4102444800000
+            result = {'usage': {'observedAtMs': 1791201600000, 'tier': 'power',
+                'window': {'usedPercent': used, 'resetsAtMs': reset, 'windowDurationMins': 300},
+                'weekly': {'usedPercent': 32, 'resetsAtMs': reset}}}
+    else:
+        raise AssertionError('Quota reader must never start a session or model turn')
+    print(json.dumps({'jsonrpc': '2.0', 'id': request['id'], 'result': result}), flush=True)
+EOF
+chmod 755 "$MUSE_USAGE_HOST"
+MUSE_REQUESTS="$TEMP_ROOT/muse-usage-requests"
+run_command env JAMSESSION_MUSE_BIN="$MUSE_USAGE_HOST" FAKE_MUSE_REQUESTS="$MUSE_REQUESTS" "$ROOT/jamsession" usage muse --json
+check "Muse usage is read through its native protocol" contains "$stdout_file" '"agent":"muse","status":"ok"'
+check "Muse window quota is normalized" contains "$stdout_file" '"remaining_percent":81.5'
+check "Muse weekly quota is normalized" contains "$stdout_file" '"remaining_percent":68'
+check "Muse handshake precedes quota reading" equals "$MUSE_REQUESTS" $'initialize\ninitialized\nusage/read'
+run_command env JAMSESSION_MUSE_BIN="$MUSE_USAGE_HOST" FAKE_MUSE_REQUESTS="$MUSE_REQUESTS" FAKE_MUSE_USAGE=empty "$ROOT/jamsession" usage muse --json
+check "Muse empty observations are not fabricated as unused quota" contains "$stdout_file" '"code":"usage_not_observed"'
+check "Muse missing observations preserve unavailable status" test "$status" -eq 1
+run_command env JAMSESSION_MUSE_BIN="$MUSE_USAGE_HOST" FAKE_MUSE_REQUESTS="$MUSE_REQUESTS" FAKE_MUSE_USAGE=malformed "$ROOT/jamsession" usage muse --json
+check "Muse malformed quota is rejected" contains "$stdout_file" '"status":"unavailable"'
+run_command env JAMSESSION_MUSE_BIN="$MUSE_USAGE_HOST" FAKE_MUSE_REQUESTS="$MUSE_REQUESTS" FAKE_MUSE_USAGE=expired "$ROOT/jamsession" usage muse --json
+check "Muse expired observations are not reported as current quota" contains "$stdout_file" '"code":"usage_not_observed"'
+run_command env JAMSESSION_MUSE_BIN="$MUSE_USAGE_HOST" FAKE_MUSE_REQUESTS="$MUSE_REQUESTS" FAKE_MUSE_USAGE=tiny "$ROOT/jamsession" usage muse --json
+check "Muse small percentages are not misparsed from exponent notation" contains "$stdout_file" '"used_percent":0.000001'
+run_command env JAMSESSION_USAGE_TIMEOUT=1 JAMSESSION_MUSE_BIN="$MUSE_USAGE_HOST" FAKE_MUSE_REQUESTS="$MUSE_REQUESTS" FAKE_MUSE_USAGE=stall "$ROOT/jamsession" usage muse --json
+check "Muse quota read is bounded by its timeout" test "$status" -eq 1
 
 GROK_USAGE_TUI="$TEMP_ROOT/grok-usage-tui"
 cat >"$GROK_USAGE_TUI" <<'EOF'

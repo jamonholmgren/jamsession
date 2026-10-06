@@ -2,13 +2,15 @@
 
 set -u
 
-PROVIDERS="copilot codex claude cursor grok"
+PROVIDERS="copilot codex claude cursor grok devin muse"
 TIMEOUT="${JAMSESSION_USAGE_TIMEOUT:-20}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_DIR=""
 CAPTURE_FILE=""
 CAPTURE_PID=""
 PROVIDER_WINDOWS=""
+PROVIDER_ERROR_CODE="usage_unavailable"
+PROVIDER_ERROR_MESSAGE="usage could not be read"
 
 descendant_pids() {
   local pid="$1" depth="${2:-0}" child
@@ -97,9 +99,11 @@ clean_text() {
 }
 
 window_json() {
-  local bucket="$1" label="$2" used="$3" reset="$4"
-  printf '{"bucket_id":"%s","label":"%s","used_percent":%s,"remaining_percent":%s,"reset_display":"%s"}' \
+  local bucket="$1" label="$2" used="$3" reset="$4" observed="${5:-}"
+  printf '{"bucket_id":"%s","label":"%s","used_percent":%s,"remaining_percent":%s,"reset_display":"%s"' \
     "$(json_escape "$bucket")" "$(json_escape "$label")" "$used" "$(percent_left "$used")" "$(json_escape "$reset")"
+  [ -z "$observed" ] || printf ',"observed_at":"%s"' "$(json_escape "$observed")"
+  printf '}'
 }
 
 field_number() {
@@ -233,7 +237,7 @@ tui_usage() {
   fi
   command -v "$python_bin" >/dev/null 2>&1 || return 1
   [ -f "$helper" ] || return 1
-  text="$("$python_bin" "$helper" "$provider" "$binary" "$TIMEOUT")" || return 1
+  text="$("$python_bin" "$helper" "$provider" "$binary" "$TIMEOUT")" || return $?
   [ -n "$text" ] || return 1
   printf '%s' "$text"
 }
@@ -255,9 +259,10 @@ feed_tui() {
 }
 
 text_windows() {
-  local provider="$1" text="$2" line heading="" used="" reset="not exposed" windows="" first=1 label bucket seen="|"
+  local provider="$1" text="$2" line heading="" used="" reset="not exposed" windows="" first=1 label bucket seen="|" observed=""
   while IFS= read -r line; do
     line="$(clean_text "$line")"
+    case "$line" in 'Observed at: '*) observed="${line#Observed at: }"; continue ;; esac
     if [ -n "$used" ]; then
       case "$line" in
         *Resets:*) reset="${line#*Resets:}" ;;
@@ -267,7 +272,7 @@ text_windows() {
       reset="$(clean_text "$reset")"
       bucket="${heading%%|*}"; label="${heading#*|}"
       [ "$first" -eq 1 ] || windows="$windows,"
-      windows="$windows$(window_json "$bucket" "$label" "$used" "$reset")"
+      windows="$windows$(window_json "$bucket" "$label" "$used" "$reset" "$observed")"
       seen="$seen$bucket|"; first=0; heading=""; used=""; reset="not exposed"
       continue
     fi
@@ -281,6 +286,9 @@ text_windows() {
       *"Weekly limit"*) heading="weekly|Weekly limit" ;;
       *"AI credits"*) heading="monthly_credits|Monthly AI credits" ;;
       *"premium requests"*) heading="monthly_premium|Monthly premium requests" ;;
+      'Subscription ('*) heading="subscription|$line" ;;
+      'Subscription window') heading="subscription_window|Subscription window" ;;
+      'Subscription weekly') heading="subscription_weekly|Subscription weekly" ;;
       Plan) heading="monthly_plan|Monthly plan" ;;
     esac
     if [[ "$line" =~ ([0-9]+([.][0-9]+)?)%[[:space:]]+used ]]; then
@@ -307,7 +315,7 @@ text_windows() {
       continue
     fi
     [ "$first" -eq 1 ] || windows="$windows,"
-    windows="$windows$(window_json "$bucket" "$label" "$used" "$reset")"
+    windows="$windows$(window_json "$bucket" "$label" "$used" "$reset" "$observed")"
     seen="$seen$bucket|"
     first=0
     heading=""; used=""; reset="not exposed"
@@ -319,6 +327,8 @@ text_windows() {
 provider_usage() {
   local provider="$1" text
   PROVIDER_WINDOWS=""
+  PROVIDER_ERROR_CODE="usage_unavailable"
+  PROVIDER_ERROR_MESSAGE="usage could not be read"
   case "$provider" in
     codex)
       PROVIDER_WINDOWS="$(codex_usage)" || {
@@ -344,6 +354,20 @@ provider_usage() {
       text="$(tui_usage copilot "${JAMSESSION_COPILOT_BIN:-copilot}")" || return 1
       PROVIDER_WINDOWS="$(text_windows copilot "$text")" || return 1
       ;;
+    devin)
+      text="$(tui_usage devin "${JAMSESSION_DEVIN_BIN:-devin}")" || return 1
+      PROVIDER_WINDOWS="$(text_windows devin "$text")" || return 1
+      ;;
+    muse)
+      local read_status=0
+      text="$(tui_usage muse "${JAMSESSION_MUSE_BIN:-muse}")" || read_status=$?
+      if [ "$read_status" -eq 3 ]; then
+        PROVIDER_ERROR_CODE="usage_not_observed"
+        PROVIDER_ERROR_MESSAGE="Muse has no current subscription quota observation; no model call was made"
+      fi
+      [ "$read_status" -eq 0 ] || return 1
+      PROVIDER_WINDOWS="$(text_windows muse "$text")" || return 1
+      ;;
     *) return 1 ;;
   esac
 }
@@ -357,8 +381,8 @@ collect_provider() {
       "$provider" "$windows" >"$TEMP_DIR/$provider.json"
     printf 'ok' >"$TEMP_DIR/$provider.result"
   else
-    printf '{"agent":"%s","status":"unavailable","windows":[],"error":{"code":"usage_unavailable","message":"usage could not be read"}}' \
-      "$provider" >"$TEMP_DIR/$provider.json"
+    printf '{"agent":"%s","status":"unavailable","windows":[],"error":{"code":"%s","message":"%s"}}' \
+      "$provider" "$PROVIDER_ERROR_CODE" "$(json_escape "$PROVIDER_ERROR_MESSAGE")" >"$TEMP_DIR/$provider.json"
     printf 'unavailable' >"$TEMP_DIR/$provider.result"
   fi
 }
@@ -390,12 +414,14 @@ main() {
         label="$(field_string "$window" label || true)"
         remaining="$(field_number "$window" remaining_percent || true)"
         reset="$(field_string "$window" reset_display || true)"
+        observed="$(field_string "$window" observed_at || true)"
+        [ -z "$observed" ] || reset="$reset [usage as of $observed]"
         printf '%-9s %-30s %-12s %s\n' "$provider" "$label" "${remaining}%" "$reset" >>"$human_file"
         provider=""
       done
     else
       failures=$((failures + 1))
-      printf '%-9s %s\n' "$provider" unavailable >>"$human_file"
+      printf '%-9s unavailable (%s)\n' "$provider" "$(field_string "$row" message || true)" >>"$human_file"
     fi
     [ "$first" -eq 1 ] || rows="$rows,"
     rows="$rows$row"; first=0

@@ -4,6 +4,8 @@
 import codecs
 import errno
 import fcntl
+import json
+import math
 import os
 import pty
 import re
@@ -15,6 +17,8 @@ import sys
 import tempfile
 import termios
 import time
+from datetime import datetime, timezone
+from decimal import Decimal
 
 
 class Screen:
@@ -157,6 +161,12 @@ class Screen:
 
 def visible_usage(provider: str, screen: Screen) -> str | None:
     text = screen.text()
+    if provider == "devin":
+        quota = re.search(r"([^\n·]+)\s*·\s*(\d+(?:\.\d+)?)%\s+remaining\s*\(resets in ([^)\n]+)\)", text)
+        if not quota or not 0 <= float(quota.group(2)) <= 100:
+            return None
+        used = Decimal(100) - Decimal(quota.group(2))
+        return "\n".join((f"Subscription ({quota.group(1).strip()})", f"{used:f}% used", f"Resets: in {quota.group(3).strip()}"))
     if provider == "grok":
         # Grok can redraw the `l` in "limit" in an earlier terminal frame. The
         # completed screen still has the same modal and its unique tier label.
@@ -200,18 +210,109 @@ def command(provider: str, binary: str, directory: str) -> tuple[list[str], dict
     if provider == "claude-models":
         environment["TERM"] = "xterm-256color"
         return [binary, "--permission-mode", "plan"], environment
+    if provider == "devin":
+        environment["TERM"] = "xterm-256color"
+        return [binary, "--permission-mode", "auto", "--respect-workspace-trust", "false"], environment
     environment["TERM"] = "dumb"
     return [binary, "--screen-reader", "--mode", "plan", "-C", directory], environment
 
 
+def muse_usage_text(usage: dict) -> str | None:
+    """Only provider subscription observations count, never session tokens."""
+    observed = usage.get("observedAtMs")
+    if type(observed) is not int or observed <= 0:
+        raise ValueError("invalid Muse observation timestamp")
+    stamp = datetime.fromtimestamp(observed / 1000, timezone.utc).isoformat()
+    rows = [f"Observed at: {stamp}"]
+    for key, label in (("window", "Subscription window"), ("weekly", "Subscription weekly")):
+        block = usage.get(key)
+        if not isinstance(block, dict):
+            raise ValueError("invalid Muse subscription window")
+        used, reset = block.get("usedPercent"), block.get("resetsAtMs")
+        if type(used) not in (int, float) or not math.isfinite(used) or used < 0 or type(reset) is not int:
+            raise ValueError("invalid Muse subscription numbers")
+        # Last-observed data can outlive a reset; do not invent the new balance.
+        if reset <= time.time() * 1000:
+            continue
+        reset_text = datetime.fromtimestamp(reset / 1000, timezone.utc).isoformat()
+        rows.extend((label, f"{Decimal(str(used)):f}% used", f"Resets: {reset_text}"))
+    return "\n".join(rows) if len(rows) > 1 else None
+
+
+def muse_usage(binary: str, timeout: int) -> int:
+    """Use the documented MSP read method, with no session or model turn."""
+    with tempfile.TemporaryDirectory(prefix="jamsession-muse-usage-") as directory:
+        process = subprocess.Popen(
+            [binary, "serve", "--no-session-log", "--disable-write", "--disable-shell"],
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=directory,
+        )
+        def send(frame: dict) -> None:
+            process.stdin.write((json.dumps(frame) + "\n").encode())
+            process.stdin.flush()
+        try:
+            send({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"clientInfo": {"name": "jamsession", "version": "1"}}})
+            deadline = time.monotonic() + timeout
+            buffer = b""
+            while time.monotonic() < deadline:
+                ready, _, _ = select.select([process.stdout], [], [], max(0, min(0.2, deadline - time.monotonic())))
+                if not ready:
+                    continue
+                data = os.read(process.stdout.fileno(), 65536)
+                if not data:
+                    break
+                buffer += data
+                if len(buffer) > 1024 * 1024:
+                    raise ValueError("Muse frame exceeds usage reader limit")
+                while b"\n" in buffer:
+                    line, buffer = buffer.split(b"\n", 1)
+                    frame = json.loads(line)
+                    if "error" in frame and frame.get("id") in (1, 2):
+                        raise ValueError("Muse usage protocol request failed")
+                    if frame.get("id") == 1:
+                        if frame.get("result", {}).get("schema", {}).get("version") != 1:
+                            raise ValueError("unsupported Muse protocol schema")
+                        send({"jsonrpc": "2.0", "method": "initialized", "params": {}})
+                        send({"jsonrpc": "2.0", "id": 2, "method": "usage/read", "params": {}})
+                    elif frame.get("id") == 2:
+                        usage = frame.get("result", {}).get("usage")
+                        if usage is None:
+                            print("Muse has not observed subscription quota; no model call was made", file=sys.stderr)
+                            return 3
+                        if not isinstance(usage, dict):
+                            raise ValueError("invalid Muse usage result")
+                        text = muse_usage_text(usage)
+                        if not text:
+                            print("Muse has no unexpired subscription observation; no balance inferred", file=sys.stderr)
+                            return 3
+                        print(text)
+                        return 0
+            raise ValueError("Muse usage read timed out or host exited")
+        finally:
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+            process.stdin.close()
+            process.stdout.close()
+
+
 def main() -> int:
-    if len(sys.argv) != 4 or sys.argv[1] not in {"grok", "copilot", "claude-models"}:
+    if len(sys.argv) != 4 or sys.argv[1] not in {"grok", "copilot", "claude-models", "devin", "muse"}:
         return 2
     provider, binary = sys.argv[1:3]
     try:
         timeout = max(1, int(sys.argv[3]))
     except ValueError:
         return 2
+    if provider == "muse":
+        try:
+            return muse_usage(binary, timeout)
+        except (OSError, ValueError, TypeError, OverflowError, AttributeError):
+            print("Muse usage could not be read through its CLI protocol", file=sys.stderr)
+            return 1
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
     with tempfile.TemporaryDirectory(prefix="jamsession-usage-") as directory:
@@ -223,7 +324,7 @@ def main() -> int:
                 stdout=slave,
                 stderr=slave,
                 close_fds=True,
-                cwd=directory if provider == "claude-models" else None,
+                cwd=directory if provider in {"claude-models", "devin"} else None,
                 env=environment,
             )
         except OSError:
@@ -268,9 +369,9 @@ def main() -> int:
                         accepted_trust = True
                         send_usage_at = time.monotonic() + 3
                     result = visible_claude_models(screen) if provider == "claude-models" else visible_usage(provider, screen)
-                    if sent_usage and result:
+                    if result and (sent_usage or provider == "devin"):
                         break
-                if accepted_trust and not sent_usage and time.monotonic() >= send_usage_at:
+                if provider != "devin" and accepted_trust and not sent_usage and time.monotonic() >= send_usage_at:
                     os.write(master, b"/model\r" if provider == "claude-models" else b"/usage\r")
                     sent_usage = True
             if result:

@@ -129,6 +129,11 @@ jamsession skills uninstall all
 
 `jamsession-summon-agent` and `jamsession-get-agent-usage` are installed by default. Ask your agent for current usage and it will turn `jamsession usage --json` into a readable table. The rest are opt-in: model recommendations, ping-pong planning, contrarian review, agent panels, orchestration, agent worksheets, worker tasks, and SSH.
 
+Usage reports include Devin and Muse. Devin reads its startup quota screen;
+Muse reads its CLI's last-observed subscription windows, with an observation
+timestamp. Missing or expired Muse data stays unavailable. Neither reader
+spends a model prompt or uses a reset; both use system Python 3.
+
 Uninstalling `all` removes every `jamsession-*` skill directory, including custom ones. It leaves unrelated skills and `~/.agents/skills/` alone.
 
 ### Add an adapter
