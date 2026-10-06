@@ -1,6 +1,6 @@
 ---
 name: jamsession-contrarian-review
-description: Ask an independent agent to make the strongest evidence-based case that a plan, diagnosis, or implementation is wrong. Use when the user requests a contrarian, adversarial, devil's-advocate, or assumption-challenging review; do not treat invented disagreement as a finding.
+description: "Request an independent adversarial review of a plan, diagnosis or implementation; disagreement must be evidence-based."
 ---
 
 # Run A Contrarian Review With Jam Session

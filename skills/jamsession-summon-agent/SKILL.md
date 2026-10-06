@@ -1,6 +1,6 @@
 ---
 name: jamsession-summon-agent
-description: Start, resume, or message one coding agent session through the `jamsession` CLI. Use for subagent tasks and contacting existing sessions.
+description: "Start, resume or message a coding-agent session through the jamsession CLI."
 ---
 
 # Summon an Agent

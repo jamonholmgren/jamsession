@@ -1,6 +1,6 @@
 ---
 name: jamsession-use-agent-worksheet
-description: Maintain a concise, checked-in worksheet as durable task state for repository changes, delegated work, multi-session work, or investigations needing a handoff. Use when this skill is installed unless the repository already defines another task-record convention; do not create one for a short read-only answer or trivial task.
+description: "Track nontrivial or delegated work in a worksheet unless the repo defines its own task records; not brief read-only or trivial tasks."
 ---
 
 # Use an Agent Worksheet

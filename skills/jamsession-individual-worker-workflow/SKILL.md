@@ -1,6 +1,6 @@
 ---
 name: jamsession-individual-worker-workflow
-description: Guide one worker through a bounded task assigned by a coordinating agent while preserving ownership, scope, and verifiable handoff evidence. Use when an agent brief assigns a specific implementation, review, research, or validation task; do not broaden or commit without authority.
+description: "Complete a bounded delegated implementation, review, research or validation task; preserve ownership and handoff evidence."
 ---
 
 # Individual Worker Workflow

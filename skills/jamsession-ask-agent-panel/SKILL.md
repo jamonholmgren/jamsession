@@ -1,6 +1,6 @@
 ---
 name: jamsession-ask-agent-panel
-description: Ask a small panel of independent coding agents for complementary judgments, then synthesize and verify their claims. Use when the user requests an agent panel, several independent opinions, or a diverse multi-model review.
+description: "Get independent agent opinions or a requested multi-model panel, then verify and synthesize the findings."
 ---
 
 # Ask An Agent Panel With Jam Session

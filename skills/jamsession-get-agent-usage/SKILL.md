@@ -1,6 +1,6 @@
 ---
 name: jamsession-get-agent-usage
-description: Report current usage, remaining quota, rate-limit windows, and reset times for one or all Jam Session coding-agent providers. Use when the user asks for agent usage, limits, remaining capacity, quota, or reset times. Do not use for a general installation or authentication check unless usage is also requested.
+description: "Report provider usage, quotas, remaining capacity and reset times; not installation or authentication-only checks."
 ---
 
 # Get Agent Usage

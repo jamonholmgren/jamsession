@@ -1,6 +1,6 @@
 ---
 name: jamsession-work-over-ssh
-description: Perform a scoped task on an explicitly authorized remote computer through SSH while keeping all required repository operations on that host. Use when the user assigns work to a named SSH host and checkout; do not discover hosts, infer paths, or copy the repository locally.
+description: "Work entirely in the user-assigned SSH host and checkout; no host/path discovery or local repository copy."
 ---
 
 # Work Over SSH

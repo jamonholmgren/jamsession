@@ -1,6 +1,6 @@
 ---
 name: jamsession-ping-pong-planning
-description: Produce a plan through independent drafts and explicit cross-model challenge rounds using resumable Jam Session sessions. Use when the user requests ping-pong or cross-model planning; do not use for routine planning that does not benefit from a second model family.
+description: "Develop plans through requested cross-model drafts and challenge rounds; not routine single-agent planning."
 ---
 
 # Ping-Pong Plan With Jam Session

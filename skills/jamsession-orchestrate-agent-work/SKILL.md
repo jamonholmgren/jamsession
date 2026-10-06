@@ -1,6 +1,6 @@
 ---
 name: jamsession-orchestrate-agent-work
-description: Run explicitly requested multi-agent work through a context-protecting supervisor, ticket-owning managers, and bounded workers. Use when the user asks to orchestrate, delegate, fan out, or work through a task queue; do not use for an ordinary single-agent task.
+description: "Coordinate explicitly requested delegation, parallel agents or task queues with supervisors, managers and workers; not single-agent work."
 ---
 
 # Orchestrate Agent Work

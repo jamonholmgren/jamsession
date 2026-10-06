@@ -1,6 +1,6 @@
 ---
 name: jamsession-use-remote-agent-over-ssh
-description: Launch or resume a Jam Session coding-agent session on an explicitly authorized SSH host, using that host's authentication and checkout. Use for remote agent execution; do not forward credentials, discover hosts, or silently fall back to a local agent.
+description: "Start or resume an agent in an authorized SSH host's checkout; no credential forwarding, host discovery or silent local fallback."
 ---
 
 # Use A Remote Agent Over SSH
