@@ -86,6 +86,15 @@ interval rather than messaging or resuming the child for status. Use yielding,
 background, or segmented waits for long delays so user communication and
 cancellation stay responsive, and honor existing deadlines.
 
+For useful low-priority notes, use `jamsession inbox <recipient-id> write
+<sender-id> "<note>"`; no session is woken. Give each child its recipient and
+sender IDs and permission to write the project-local `.agents/jamsession/inbox/`.
+Keep that directory gitignored. One coordinator runs `jamsession inbox <my-id>
+read` at scheduled checkpoints: it prints notes, archives them after successful
+reads, and expires recognized notes older than three days, including archives.
+Use direct messages for blockers, urgent risks and terminal handoffs; the inbox
+is disposable, not a task record. Run `jamsession help inbox` for the contract.
+
 ## Keep the hierarchy working
 
 Workers report evidence to managers. Managers inspect and integrate that

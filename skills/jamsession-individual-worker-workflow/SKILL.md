@@ -14,6 +14,12 @@ acknowledgements or notifications that require no action. Continue authorized
 work without waiting for a courtesy reply. Follow an explicitly requested
 reporting cadence or substantive planning/review exchange.
 
+Useful low-priority notes go through `jamsession inbox <recipient-id> write
+<sender-id> "<note>"`, using the caller's agreed IDs and authorized project path.
+Use your exact session ID when available; otherwise an agreed stable agent ID,
+never a guessed session. Do not wake the caller or request an acknowledgement.
+These notes expire after three days; blockers and final handoffs stay direct.
+
 1. Identify the objective, allowed and forbidden files or systems, required
    inputs, access mode, validation, report destination, stopping conditions,
    and commit authority. If write ownership is missing, stop and report it.

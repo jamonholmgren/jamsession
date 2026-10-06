@@ -51,6 +51,104 @@ done
 check "every adapter ships executable" test -z "$non_executable_adapter"
 check "the adapter helper ships non-executable" test ! -x "$ROOT/adapters/_jamsession_adapter_common"
 
+INBOX_PROJECT="$TEMP_ROOT/inbox-project"
+INBOX_DIR="$INBOX_PROJECT/.agents/jamsession/inbox"
+mkdir -p "$INBOX_PROJECT/.agents" "$INBOX_PROJECT/subdir"
+run_command env JAMSESSION_CWD="$INBOX_PROJECT/subdir" "$ROOT/jamsession" inbox manager write worker-123 'Implemented slice A; review remains.'
+check "inbox writes succeed without a provider" test "$status" -eq 0
+first_note="$(cat "$stdout_file")"
+check "inbox storage belongs to the project, not the installation" test -f "$first_note"
+check "inbox notes identify their sender" contains "$first_note" 'From: worker-123'
+check "inbox notes identify their recipient" contains "$first_note" 'To: manager'
+check "inbox notes preserve literal content" contains "$first_note" 'Implemented slice A; review remains.'
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox manager-2 write worker-456 'Do not drain me for manager.'
+other_note="$(cat "$stdout_file")"
+run_command env JAMSESSION_CWD="$INBOX_PROJECT/subdir" "$ROOT/jamsession" inbox manager read
+check "inbox read prints the recipient's notes" contains "$stdout_file" 'Implemented slice A; review remains.'
+check "inbox read archives only after printing" test -f "$INBOX_DIR/archive/${first_note##*/}"
+check "inbox read removes the live copy" test ! -e "$first_note"
+check "inbox IDs with a shared prefix remain distinct" test -f "$other_note"
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox manager read
+check "a drained inbox does not repeat archived notes" test ! -s "$stdout_file"
+
+for index in 1 2 3 4 5; do
+  env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox parallel write "worker-$index" "parallel note $index" >/dev/null &
+done
+wait
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox parallel read
+check "concurrent writers publish unique complete notes" test "$(grep -c '^From: worker-' "$stdout_file")" -eq 5
+
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox other write source 'expired unread note'
+expired_note="$(cat "$stdout_file")"
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox other write source 'not yet three days old'
+recent_note="$(cat "$stdout_file")"
+unrelated="$INBOX_DIR/agent-note-personal.txt"
+printf '%s\n' 'unrelated file' >"$unrelated"
+printf '%s\n' 'nested file' >"$INBOX_DIR/archive/NOTES.md"
+ln -s "$unrelated" "$INBOX_DIR/agent-note-symlink-20200101T000000Z-ABCDEFGH.txt"
+python3 - "$expired_note" "$recent_note" "$INBOX_DIR/archive/${first_note##*/}" "$unrelated" <<'PY'
+import os, sys, time
+for path, age in zip(sys.argv[1:], (3*86400+120, 3*86400-120, 3*86400+120, 10*86400)):
+    stamp = time.time()-age
+    os.utime(path, (stamp, stamp))
+PY
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox nobody read
+check "read expires unread notes older than three days" test ! -e "$expired_note"
+check "read expires old archived notes" test ! -e "$INBOX_DIR/archive/${first_note##*/}"
+check "cleanup keeps notes younger than three days" test -f "$recent_note"
+check "cleanup keeps files outside its exact filename contract" equals "$unrelated" 'unrelated file'
+check "cleanup does not follow note symlinks" test -L "$INBOX_DIR/agent-note-symlink-20200101T000000Z-ABCDEFGH.txt"
+check "cleanup keeps unrelated archived files" test -f "$INBOX_DIR/archive/NOTES.md"
+
+INBOX_FAKE_BIN="$TEMP_ROOT/inbox-fake-bin"
+mkdir -p "$INBOX_FAKE_BIN"
+printf '#!/bin/sh\nexit 7\n' >"$INBOX_FAKE_BIN/cat"
+chmod 755 "$INBOX_FAKE_BIN/cat"
+run_command env PATH="$INBOX_FAKE_BIN:$PATH" JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox manager-2 read
+check "a failed cat is a failed drain" test "$status" -ne 0
+check "a failed cat keeps the original note" test -f "$other_note"
+check "a failed cat does not archive the note" test ! -e "$INBOX_DIR/archive/${other_note##*/}"
+printf '%s\n' collision >"$INBOX_DIR/archive/${other_note##*/}"
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox manager-2 read
+check "an archive collision fails safely" test "$status" -ne 0
+check "an archive collision never overwrites the saved file" equals "$INBOX_DIR/archive/${other_note##*/}" collision
+check "an archive collision leaves the unread note" test -f "$other_note"
+
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox arrival write worker 'first arrival'
+cat >"$INBOX_FAKE_BIN/cat" <<'EOF'
+#!/bin/sh
+/bin/cat "$@" || exit $?
+"$INBOX_TEST_CLI" inbox arrival write late-worker 'arrived during drain' >/dev/null
+EOF
+run_command env PATH="$INBOX_FAKE_BIN:$PATH" INBOX_TEST_CLI="$ROOT/jamsession" \
+  JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox arrival read
+check "read finishes its initial snapshot" test "$status" -eq 0
+check "a newly published note is not erased by the drain" test "$(find "$INBOX_DIR" -maxdepth 1 -name 'agent-note-arrival-*.txt' | wc -l | tr -d ' ')" -eq 1
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox arrival read
+check "notes arriving during read are available at the next checkpoint" contains "$stdout_file" 'arrived during drain'
+
+INBOX_LINK_PROJECT="$TEMP_ROOT/inbox-link-project"
+mkdir -p "$INBOX_LINK_PROJECT/.agents/jamsession" "$TEMP_ROOT/outside-inbox"
+ln -s "$TEMP_ROOT/outside-inbox" "$INBOX_LINK_PROJECT/.agents/jamsession/inbox"
+run_command env JAMSESSION_CWD="$INBOX_LINK_PROJECT" "$ROOT/jamsession" inbox manager read
+check "inbox refuses a symlink root" test "$status" -eq 2
+rm "$INBOX_LINK_PROJECT/.agents/jamsession/inbox"
+mkdir "$INBOX_LINK_PROJECT/.agents/jamsession/inbox"
+ln -s "$TEMP_ROOT/outside-inbox" "$INBOX_LINK_PROJECT/.agents/jamsession/inbox/archive"
+run_command env JAMSESSION_CWD="$INBOX_LINK_PROJECT" "$ROOT/jamsession" inbox manager read
+check "inbox refuses a symlink archive" test "$status" -eq 2
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox ../escape write source note
+check "inbox rejects recipient path traversal" test "$status" -eq 2
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox manager write ../escape note
+check "inbox rejects unsafe sender IDs" test "$status" -eq 2
+run_command env JAMSESSION_CWD="$INBOX_PROJECT" "$ROOT/jamsession" inbox manager write note
+check "inbox requires sender identity" test "$status" -eq 2
+INBOX_HOME="$TEMP_ROOT/inbox-global-home"
+mkdir -p "$INBOX_HOME/.agents"
+run_command env HOME="$INBOX_HOME" JAMSESSION_CWD="$INBOX_HOME" "$ROOT/jamsession" inbox manager read
+check "inbox never treats global home .agents as a project" test "$status" -eq 2
+check "the global home inbox was not created" test ! -e "$INBOX_HOME/.agents/jamsession/inbox"
+
 run_command "$ROOT/jamsession" adapters
 check "bundled providers are discovered" contains "$stdout_file" codex
 check "adapter helper is not exposed as a provider" sh -c "! grep -Fq _jamsession '$stdout_file'"
@@ -1143,6 +1241,12 @@ check "installer installs the summon-agent skill" test -f "$INSTALL_HOME/.agents
 check "installer installs summon-agent metadata" test -f "$INSTALL_HOME/.agents/skills/jamsession-summon-agent/agents/openai.yaml"
 check "installer installs the agent-usage skill" test -f "$INSTALL_HOME/.agents/skills/jamsession-get-agent-usage/SKILL.md"
 check "installer installs agent-usage metadata" test -f "$INSTALL_HOME/.agents/skills/jamsession-get-agent-usage/agents/openai.yaml"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_CWD="$INBOX_PROJECT" \
+  "$INSTALL_HOME/.local/bin/jamsession" inbox installed-reader write installed-sender 'installed inbox note'
+check "the installed CLI writes project-local inbox notes" test "$status" -eq 0
+run_command env HOME="$INSTALL_HOME" JAMSESSION_CWD="$INBOX_PROJECT" \
+  "$INSTALL_HOME/.local/bin/jamsession" inbox installed-reader read
+check "the installed CLI drains attributed inbox notes" contains "$stdout_file" 'From: installed-sender'
 
 run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \

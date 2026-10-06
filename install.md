@@ -77,6 +77,18 @@ wake-up. Other bundled providers can resume once with explicitly appended
 `--resume-with <model> <effort> <read|edit>`, only after the owning process exits.
 Native delivery errors never trigger resume. Run `jamsession help message`.
 
+For low-priority notes on the same shared project filesystem:
+
+```sh
+jamsession inbox <recipient-id> write <sender-id> "<note>"
+jamsession inbox <my-id> read
+```
+
+The project-local `.agents/jamsession/inbox/` should be gitignored. Reads print
+then archive notes and expire recognized files older than three days. No session
+is woken. Use direct messages for blockers and terminal handoffs; see
+`jamsession help inbox`.
+
 For a file reply, agree on a unique completion marker written last, then wait:
 
 ```sh

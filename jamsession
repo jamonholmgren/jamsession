@@ -35,6 +35,7 @@ jamsession — one small interface for coding-agent CLIs
 Usage:
   jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
   jamsession message <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]
+  jamsession inbox <recipient-id> <read|write <sender-id> <note>>
   jamsession watch <file> <text> [<provider> <session>] [--timeout <seconds>]
   jamsession list <provider> [count]
   jamsession which <provider> [session]
@@ -645,6 +646,80 @@ watch_file() {
   return "$result"
 }
 
+inbox_note_file() {
+  local pattern='^agent-note-([a-zA-Z0-9][a-zA-Z0-9_-]*)-[0-9]{8}T[0-9]{6}Z-[a-zA-Z0-9]{8}\.txt$'
+  [ -f "$1" ] && [ ! -L "$1" ] && [[ "${1##*/}" =~ $pattern ]]
+}
+
+inbox_cleanup() (
+  local root="$1" file
+  set -o pipefail
+  find "$root" "$root/archive" -maxdepth 1 -type f -name 'agent-note-*.txt' -mmin +4320 -print0 |
+    while IFS= read -r -d '' file; do
+      inbox_note_file "$file" || continue
+      rm -f -- "$file" || exit 1
+      printf 'expired inbox note: %s\n' "$file" >&2
+    done
+)
+
+inbox_command() {
+  [ $# -ge 2 ] || die "inbox needs <recipient-id> read or <recipient-id> write <sender-id> <note>"
+  local recipient="$1" operation="$2" project root file archived user_home="$HOME"
+  local id_pattern='^[a-zA-Z0-9][a-zA-Z0-9_-]*$'
+  [[ "$recipient" =~ $id_pattern ]] || die "inbox ID must contain only letters, numbers, underscores and hyphens"
+  case "$operation" in
+    read) [ $# -eq 2 ] || die "inbox read takes only the recipient ID" ;;
+    write)
+      [ $# -eq 4 ] || die "inbox write needs <recipient-id> write <sender-id> <note>"
+      [[ "$3" =~ $id_pattern ]] || die "inbox sender ID must contain only letters, numbers, underscores and hyphens"
+      [ -n "$4" ] || die "inbox note must not be empty"
+      ;;
+    *) die "inbox action must be read or write" ;;
+  esac
+  project="$(cd -- "${JAMSESSION_CWD:-$PWD}" && pwd -P)" || return 1
+  if [ -d "$HOME" ]; then user_home="$(cd -- "$HOME" && pwd -P)" || return 1; fi
+  # Find the project without requiring Git or falling back to global ~/.agents.
+  while [ "$project" != / ] && [ "$project" != "$user_home" ]; do
+    if [ -e "$project/.git" ] || [ -d "$project/.agents" ]; then break; fi
+    project="${project%/*}"
+    [ -n "$project" ] || project=/
+  done
+  [ "$project" != / ] && [ "$project" != "$user_home" ] || die "inbox requires a project with .git or .agents"
+  root="$project/.agents/jamsession/inbox"
+  for file in "$project/.agents" "$project/.agents/jamsession" "$root" "$root/archive"; do
+    [ ! -L "$file" ] || die "inbox refuses symlink directory: $file"
+    [ ! -e "$file" ] || [ -d "$file" ] || die "inbox path is not a directory: $file"
+  done
+  if [ "$operation" = write ]; then
+    (
+      umask 077
+      mkdir -p -- "$root" || exit 1
+      temporary="$(mktemp "$root/.agent-note-XXXXXXXX")" || exit 1
+      trap 'rm -f -- "$temporary"' EXIT
+      trap 'exit 130' HUP INT TERM
+      stamp="$(date -u +%Y%m%dT%H%M%SZ)" || exit 1
+      file="$root/agent-note-$recipient-$stamp-${temporary##*-}.txt"
+      printf 'From: %s\nTo: %s\nSent: %s\n\n%s\n' "$3" "$recipient" "$stamp" "$4" >"$temporary" || exit 1
+      mv -n -- "$temporary" "$file" || exit 1
+      [ ! -e "$temporary" ] || { printf 'inbox note collision\n' >&2; exit 1; }
+      printf '%s\n' "$file"
+    )
+    return $?
+  fi
+  [ -d "$root" ] || return 0
+  mkdir -p -- "$root/archive" || return 1
+  for file in "$root"/agent-note-*.txt; do
+    inbox_note_file "$file" || continue
+    [ "${BASH_REMATCH[1]}" = "$recipient" ] || continue
+    archived="$root/archive/${file##*/}"
+    [ ! -e "$archived" ] && [ ! -L "$archived" ] || die "inbox archive collision: $archived"
+    # Do not archive unread notes when stdout fails. Producers never edit notes.
+    cat -- "$file" && mv -n -- "$file" "$archived" || return 1
+    [ ! -e "$file" ] || die "inbox archive collision: $archived"
+  done
+  inbox_cleanup "$root"
+}
+
 help_topic() {
   case "${1:-}" in
     "") usage ;;
@@ -743,6 +818,28 @@ Use `new` to create a session or pass an exact provider-native session ID to
 resume. Use `default` to let the provider choose its model or effort. `read`
 must be enforced by the adapter; `edit` permits unattended workspace changes.
 Pass `-` as the prompt to read stdin.
+EOF
+      ;;
+    inbox)
+      cat <<'EOF'
+Usage: jamsession inbox <recipient-id> write <sender-id> <note>
+       jamsession inbox <recipient-id> read
+
+Low-priority asynchronous notes only; no provider is invoked or session woken.
+Use exact session IDs, or agreed stable agent IDs when session IDs are unavailable.
+Every note includes its sender, recipient and UTC timestamp. IDs may contain
+letters, numbers, underscores and hyphens; notes are literal text, never executed.
+
+Storage: <project>/.agents/jamsession/inbox/ (nearest .git or .agents ancestor).
+Keep it gitignored. Posting and draining need write permission for this path.
+Writes publish unique immutable agent-note-<id>-<timestamp>-<unique>.txt files.
+Read prints only that recipient's notes, then moves each to archive/ after cat
+succeeds. It also permanently deletes recognized notes older than three days
+from inbox and archive, including other recipients' expired notes. Unrelated
+files and symlinks are left alone; symlink inbox directories are refused.
+One coordinator must serialize reads; writers may run concurrently.
+Read at scheduled checkpoints, not continuously. Use message for blockers,
+urgent risks and terminal handoffs; retain durable decisions in the worksheet.
 EOF
       ;;
     message)
@@ -867,6 +964,10 @@ command_name="$1"
 shift
 
 case "$command_name" in
+  inbox)
+    inbox_command "$@"
+    exit $?
+    ;;
   message)
     validate_message_args "$@"
     provider="$1"; shift
