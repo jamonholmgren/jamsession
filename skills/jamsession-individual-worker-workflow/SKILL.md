@@ -5,6 +5,15 @@ description: "Complete a bounded delegated implementation, review, research or v
 
 # Individual Worker Workflow
 
+Work quietly between agreed checkpoints. Message the caller only for a blocker
+needing input, a finding that changes their next action, a requested checkpoint
+or review verdict, or the final handoff. Batch non-urgent findings; report urgent
+shared risks promptly. Do not send routine progress narration, reassurance,
+"still working" updates, or courtesy acknowledgements, and do not reply to
+acknowledgements or notifications that require no action. Continue authorized
+work without waiting for a courtesy reply. Follow an explicitly requested
+reporting cadence or substantive planning/review exchange.
+
 1. Identify the objective, allowed and forbidden files or systems, required
    inputs, access mode, validation, report destination, stopping conditions,
    and commit authority. If write ownership is missing, stop and report it.

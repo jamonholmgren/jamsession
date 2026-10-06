@@ -78,6 +78,21 @@ evidence, then return completed tickets or precise blockers to the supervisor.
 The supervisor communicates decisions and questions with the user and feeds the
 next ready ticket to an available manager.
 
+Send inter-agent messages only at material events: assignments or scope changes,
+findings that change another agent's next action, blockers needing input, agreed
+checkpoints, review verdicts, and final handoffs. Work quietly between those events. Do not
+send routine progress narration, reassurance, acknowledgements, or "still working"
+messages, and do not reply to such messages unless they require action. A result
+or notification does not need a courtesy reply. Relay actionable questions and
+outcomes up the hierarchy, not every worker update.
+
+Put this communication contract in delegated briefs. Batch non-urgent findings
+into the next checkpoint or handoff; report blockers and urgent shared risks
+promptly. Use process completion, logs, or an agreed file watch for waiting, not
+model turns or messages asking whether work is still running. Explicitly
+requested reporting cadence and planning/review exchanges remain valid; keep
+each exchange substantive rather than adding status chatter around it.
+
 Contact existing managers and workers with `jamsession message <provider>
 <session> "<text>"` when their adapter supports it, including when they are
 already running. Give each request an identifier and an explicit return

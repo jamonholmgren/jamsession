@@ -5,6 +5,14 @@ description: "Start, resume or message a coding-agent session through the jamses
 
 # Summon an Agent
 
+Use inter-agent messages for assignments or changes, actionable findings,
+blockers, agreed checkpoints, review verdicts, and final handoffs—not routine
+progress, reassurance, or courtesy acknowledgements. Include this rule in agent
+briefs. Do not reply to an acknowledgement or informational notification unless
+it requires action, or ask an agent to reply merely to confirm receipt. Wait for
+completion or agreed evidence instead of repeatedly asking for status. Respect
+explicitly requested reporting cadence and substantive planning/review exchanges.
+
 1. Run `jamsession help` for the current command contract and `jamsession status` to
    see which installed adapters are usable.
 2. Choose the provider, model, effort, and `read` or `edit` access explicitly.
@@ -49,8 +57,9 @@ description: "Start, resume or message a coding-agent session through the jamses
    lock check are best-effort, not universal ownership guarantees. Never resume
    your own live session. A delivery acknowledgement is not an answer.
 
-   Include your exact return provider and session ID, a request identifier,
-   and instructions to reply with `jamsession message <return-provider>
+   When requesting an answer or handoff, include your exact return provider and
+   session ID, a request identifier, and instructions to reply with
+   `jamsession message <return-provider>
    <return-session> "<request-id>: <answer>"`. Do not guess your own ID. If your
    session cannot receive messages, agree on an exact absolute reply-file path
    before sending and include it in the message. The recipient must have
