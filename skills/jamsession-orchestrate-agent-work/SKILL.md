@@ -71,6 +71,21 @@ ownership.
 Use `jamsession-summon-agent` to start or resume managers and workers. Use
 `jamsession-use-remote-agent-over-ssh` when they must run on an authorized remote host.
 
+## Wait without hovering
+
+Supervisors, managers, and babysitters should give their children time to work.
+Prefer a harness completion notification or yielding wait that can wake on a
+result, blocker, or user input. Otherwise, for shell-managed jobs, use `sleep n`
+before checking again: choose n seconds from the expected time to completion or
+the next meaningful checkpoint, not a tight polling interval. Do useful
+independent work instead when available.
+
+After waiting, inspect the owned process/job handle or agreed log/report; elapsed
+time alone is not completion. If nothing material changed, wait another realistic
+interval rather than messaging or resuming the child for status. Use yielding,
+background, or segmented waits for long delays so user communication and
+cancellation stay responsive, and honor existing deadlines.
+
 ## Keep the hierarchy working
 
 Workers report evidence to managers. Managers inspect and integrate that
