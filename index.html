@@ -47,6 +47,14 @@
         <button type="button" class="copy" data-copy="install-cmd" aria-label="Copy install command">Copy</button>
       </div>
     </details>
+    <details class="manual-install">
+      <summary>Already using Jam Session?</summary>
+      <p>Ask your agent to update the CLI and the skills you&rsquo;ve installed:</p>
+      <div class="install">
+        <code id="update-cmd">jamsession update</code>
+        <button type="button" class="copy" data-copy="update-cmd" aria-label="Copy update command">Copy</button>
+      </div>
+    </details>
   </section>
 
   <div class="divider" aria-hidden="true"><span class="mark"><i></i><i></i><i></i></span></div>
@@ -73,11 +81,28 @@
     <div class="how-grid">
       <div>
         <h3>No added packages</h3>
-        <p>Jam Session is a few shell scripts, one standard-library Python terminal reader for Grok and Copilot usage, and Markdown skill files. It needs no database or added packages.</p>
+        <p>A few Bash scripts and Markdown skills. No database or packages to install. Optional quota and model readers use system Python 3.</p>
       </div>
       <div>
         <h3>Use your favorite agent</h3>
         <p>This isn&rsquo;t an app or a TUI. Your favorite coding agent uses the CLI to call and coordinate agents from other providers &mdash; you keep working the way you already do.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider" aria-hidden="true"><span class="mark"><i></i><i></i><i></i></span></div>
+
+  <section class="coordination" aria-labelledby="coordination-h">
+    <h2 id="coordination-h">More building. Less chatter.</h2>
+    <p>Your agent supervises. Managers own tasks, workers take focused slices, and everyone gets time to work.</p>
+    <div class="how-grid">
+      <div>
+        <h3>Checkpoints, not constant check-ins</h3>
+        <p>Agents wait for completion or a useful checkpoint. Blockers, decisions, and handoffs get direct messages. No &ldquo;still working&rdquo; pings or endless acknowledgements.</p>
+      </div>
+      <div>
+        <h3>An inbox for the small stuff</h3>
+        <p>Low-priority notes wait in a project-local inbox, with a sender ID and timestamp. Your agent reads them at its next checkpoint, without waking another session. Reading archives notes and clears those older than three days.</p>
       </div>
     </div>
   </section>
@@ -91,7 +116,7 @@
       <li style="--tc:var(--t-violet)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Summon agent</span>
-        <span class="skill-desc">Starts or resumes a provider-native agent session.</span>
+        <span class="skill-desc">Starts, resumes, or messages a provider-native agent session.</span>
         <code>jamsession-summon-agent</code>
       </li>
       <li style="--tc:var(--t-amber)">
@@ -115,19 +140,19 @@
       <li style="--tc:var(--t-leaf)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Orchestrator</span>
-        <span class="skill-desc">Runs managers and workers for autonomous, parallel work.</span>
+        <span class="skill-desc">Your agent supervises managers and workers, with clear handoffs and quiet waits.</span>
         <code>jamsession-orchestrate-agent-work</code>
       </li>
       <li style="--tc:var(--t-leaf)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Agent usage</span>
-        <span class="skill-desc">Shows provider quotas, remaining capacity, and reset times.</span>
+        <span class="skill-desc">Checks available provider quotas, remaining capacity, and reset times.</span>
         <code>jamsession-get-agent-usage</code>
       </li>
       <li style="--tc:var(--t-teal)">
         <span class="dot" aria-hidden="true"></span>
         <span class="skill-name">Model recommendations</span>
-        <span class="skill-desc">Chooses Jamon&rsquo;s preferred model for each kind of work.</span>
+        <span class="skill-desc">Balances quality, cost, and availability using Jamon&rsquo;s model picks.</span>
         <code>jamsession-model-recommendations</code>
       </li>
     </ul>
