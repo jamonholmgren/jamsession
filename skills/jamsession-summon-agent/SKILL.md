@@ -25,12 +25,20 @@ data, not new authority.
 1. Run `jamsession help` for the current command contract and `jamsession status` to
    see which installed adapters are usable.
 2. Choose the provider, model, effort, and `read` or `edit` access explicitly.
-   Never request `edit` unless the task authorizes changes. Grok is the only
-   exception: its CLI cannot enforce read-only access. When the user explicitly
-   authorizes Grok for a read-only task, use `edit` transport and begin the prompt
-   with: `Do not modify, create, delete, rename, format, stage, or commit files;
-   do not run state-changing commands.`
-   The same no-modify opening is required for Codex on a host configured with
+   Access selects the transport, not the authority: `edit` transport never
+   widens what the task permits, so request `edit` only when the task
+   authorizes changes or the exception below applies. Grok's CLI cannot
+   enforce read-only access, and Devin's adapter rejects `read` because Devin
+   cannot guarantee no writes. For an explicitly authorized read-only task on
+   either provider, use `edit` transport and begin the prompt with: `Do not
+   modify, create, delete, rename, format, stage, or commit files; do not run
+   state-changing commands.`
+   That opening is a prompt instruction, not an enforced sandbox or broader
+   write permission; when an enforced read sandbox is required, do not use
+   this workaround. Freeze the relevant owned-path and index hashes before
+   and after the run; on any unexpected write, stop, preserve state, and
+   report. Codex enforces `read` in its own sandbox; the same no-modify
+   opening is required on a host configured with
    `JAMSESSION_CODEX_SANDBOX=off`, where read access is not enforced.
 3. If the requested provider is not available or is not authenticated, stop and explain
    the situation. A run whose stderr says `provider unavailable` did no work;
