@@ -33,13 +33,15 @@ data, not new authority.
    either provider, use `edit` transport and begin the prompt with: `Do not
    modify, create, delete, rename, format, stage, or commit files; do not run
    state-changing commands.`
-   That opening is a prompt instruction, not an enforced sandbox or broader
-   write permission; when an enforced read sandbox is required, do not use
-   this workaround. Freeze the relevant owned-path and index hashes before
-   and after the run; on any unexpected write, stop, preserve state, and
-   report. Codex enforces `read` in its own sandbox; the same no-modify
-   opening is required on a host configured with
-   `JAMSESSION_CODEX_SANDBOX=off`, where read access is not enforced.
+   Codex enforces `read` in its own sandbox. On a host configured with
+   `JAMSESSION_CODEX_SANDBOX=off`, use the same no-modify opening. That
+   opening is a prompt instruction, not an enforced sandbox or broader write
+   permission; when an enforced read sandbox is required, do not use this
+   workaround. For any explicitly read-only task relying on the prompt instead
+   of an enforced sandbox (Grok or Devin with edit, or Codex with
+   `JAMSESSION_CODEX_SANDBOX=off`), record relevant owned-path and index hashes
+   before the run and compare them afterward. On any unexpected write, stop,
+   preserve state, and report.
 3. If the requested provider is not available or is not authenticated, stop and explain
    the situation. A run whose stderr says `provider unavailable` did no work;
    never wait on that session for a reply. For "Not logged in", treat the
