@@ -5,6 +5,9 @@ description: "Get independent agent opinions or a requested multi-model panel, t
 
 # Ask An Agent Panel With Jam Session
 
+Before starting, resuming or messaging panelists, use `jamsession-summon-agent`
+for provider consent and caller-visible launch context.
+
 1. Identify one question or review target. Give every panelist the same facts,
    intended outcome, constraints, and requested answer format.
 2. Run `jamsession status` and choose three (or the user-specified amount) of

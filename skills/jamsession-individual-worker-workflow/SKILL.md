@@ -5,6 +5,9 @@ description: "Complete a bounded delegated implementation, review, research or v
 
 # Individual Worker Workflow
 
+Use `jamsession-summon-agent` for provider consent and caller-visible launch
+context before sending repository code or context to another session.
+
 Work quietly between agreed checkpoints. Message the caller only for a blocker
 needing input, a finding that changes their next action, a requested checkpoint
 or review verdict, or the final handoff. Batch non-urgent findings; report urgent

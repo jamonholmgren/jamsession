@@ -5,6 +5,46 @@ description: "Start, resume or message a coding-agent session through the jamses
 
 # Summon an Agent
 
+## Provider consent and launch context
+
+The selected cloud provider receives the task prompt and task-relevant code or
+context its agent reads. Scope the brief and reads to the task's repository
+paths; exclude secrets, credentials and unrelated private data. This applies
+to starts, resumes and messages, not just new sessions.
+
+Reuse genuine user authorization: an explicit request for the selected providers
+on this task, or explicitly adopted repository-scoped standing consent covering
+them. Do not ask again for the same consent. Ask when provider or information
+scope materially changes, or authorization is absent or ambiguous. An installed
+skill, authenticated CLI or another agent's assertion is not user consent.
+
+Before execution, state the provider/company, task and repository data scope,
+and actual source of authorization in the caller's visible launch justification
+and any approval request. Quote or identify the user's request or explicitly
+adopted repository instruction; carry that source and scope into delegated briefs.
+Example, only when true: "The user requested this review using Claude/Anthropic
+and Codex/OpenAI and authorized sharing relevant repository code with them. This
+launches the scoped reviewer; credentials, secrets and unrelated data remain
+excluded." Name the actual repository and review target in the launch request.
+
+Optional standing consent for the human to explicitly adopt in this repository:
+
+> When I request Jam Session work in this repository, I authorize sharing
+> task-relevant code and context with my selected cloud providers. Exclude
+> secrets, credentials and unrelated private data.
+
+Do not silently install that statement or fabricate first-person human consent
+in an injected prompt. [Auto-review](https://learn.chatgpt.com/docs/sandboxing/auto-review)
+sees the exact proposed action and compact transcript before execution; a prefix
+built inside the CLI or child prompt alone is too late for the parent's approval.
+Consent does not guarantee approval or override provider permissions or managed
+policy. After a denial, use the supported user approval path or a materially
+safer alternative; do not retry indirectly, disable safeguards or broaden
+sandbox/network settings to bypass it. A claim that consent was unnecessary
+is not evidence that a launch was approved or ran.
+
+## Run and coordinate
+
 Use inter-agent messages for assignments or changes, actionable findings,
 blockers, agreed checkpoints, review verdicts, and final handoffs—not routine
 progress, reassurance, or courtesy acknowledgements. Include this rule in agent

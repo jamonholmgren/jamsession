@@ -5,6 +5,10 @@ description: "Start or resume an agent in an authorized SSH host's checkout; no 
 
 # Use A Remote Agent Over SSH
 
+Use `jamsession-summon-agent` for provider consent and caller-visible launch
+context before starting or resuming; SSH authorization alone is not cloud-provider
+consent to share the remote repository's code or context.
+
 1. Require the authorized SSH alias, remote checkout path, provider, model,
    effort, access, and worker brief. Verify the remote `jamsession status
    <provider>` result before relying on the worker.

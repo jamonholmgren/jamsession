@@ -5,6 +5,9 @@ description: "Develop plans through requested cross-model drafts and challenge r
 
 # Ping-Pong Plan With Jam Session
 
+Before starting, resuming or messaging panelists, use `jamsession-summon-agent`
+for provider consent and caller-visible launch context.
+
 1. Establish the planning question, verified context, requested round count,
    and final decision owner. Default an omitted count to one.
 2. Run `jamsession status` and choose two available agents from different model

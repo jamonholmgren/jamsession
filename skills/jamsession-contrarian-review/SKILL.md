@@ -5,6 +5,9 @@ description: "Request an independent adversarial review of a plan, diagnosis or 
 
 # Run A Contrarian Review With Jam Session
 
+Before starting, resuming or messaging reviewers, use `jamsession-summon-agent`
+for provider consent and caller-visible launch context.
+
 1. Identify the exact review target and state its intended outcome, evidence,
    assumptions, completed checks, and excluded scope.
 2. Run `jamsession status` and choose an available model from a different family

@@ -68,7 +68,8 @@ only when fresh context is specifically useful. Keep one write-capable worker
 per checkout; parallel writers need separate authorized workspaces and disjoint
 ownership.
 
-Use `jamsession-summon-agent` to start or resume managers and workers. Use
+Use `jamsession-summon-agent` for provider consent and caller-visible launch
+context before starting, resuming or messaging managers and workers. Use
 `jamsession-use-remote-agent-over-ssh` when they must run on an authorized remote host.
 
 ## Wait without hovering
