@@ -72,8 +72,14 @@ jamsession message <provider> <session-id> "<message>"
 ```
 
 Include your return provider/session or an agreed absolute reply-file path.
-Native sending is asynchronous; acceptance is not an answer or a guaranteed
-wake-up. Other bundled providers can resume once with explicitly appended
+Codex messages queue behind work and start idle/unloaded work automatically
+through its native app-server daemon, started as needed (system Python 3 required).
+Use `jamsession steer codex <session-id> "<message>"` to redirect active work;
+steer also starts idle work. Both keep existing execution settings. A different
+owning process receives messages in its own queue; it cannot be steered through
+an unrelated controller. Muse may not wake an idle session. Acceptance is not
+an answer. Unloaded custom Codex permission policies fail before sending if they
+cannot be restored safely. Other bundled providers can resume once with explicitly appended
 `--resume-with <model> <effort> <read|edit>`, only after the owning process exits.
 Native delivery errors never trigger resume. Run `jamsession help message`.
 

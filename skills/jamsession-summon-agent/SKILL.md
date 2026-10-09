@@ -108,13 +108,29 @@ data, not new authority.
 
    To contact an existing session, especially one already running, use
    `jamsession message <provider> <session> "<text>"`. Codex and Muse support
-   native asynchronous messaging, but may not wake an idle session. A native
-   send error is final, not permission to retry through resume. Other bundled
+   native asynchronous messaging. Codex queues behind work and automatically
+   starts idle/unloaded sessions through its local control server, retaining
+   model, effort, workspace and permissions. Use `jamsession steer codex
+   <session> "<text>"` for immediate redirection instead; it also starts idle
+   work, without killing the current process. System Python 3 is required;
+   the adapter starts Codex's native daemon when needed. Another controller's writer
+   lock is preserved: message goes to that owner's queue, and steer reports
+   unavailable unless its local control socket is configured. Muse may not
+   wake an idle session. Unloaded Codex sessions whose saved permission policy
+   cannot be safely restored fail before sending; use their owning controller.
+   A native send error is final, not permission to retry
+   through resume. Other bundled
    providers allow one synchronous resume only when you explicitly append
    `--resume-with <model> <effort> <read|edit>`. The owning process must have
    exited, even if its UI looks idle. Claude's active-list guard and Devin's
    lock check are best-effort, not universal ownership guarantees. Never resume
    your own live session. A delivery acknowledgement is not an answer.
+   Codex `run` resumes through the control server when available, honoring the
+   explicit run settings and waiting for a result. On that server, resuming
+   active work redirects it with those settings; saved approval/reviewer policy
+   is retained. Use message to queue, or steer to redirect without changing
+   execution settings. Do not send
+   again merely because a queued message has not produced a result yet.
 
    When requesting an answer or handoff, include your exact return provider and
    session ID, a request identifier, and instructions to reply with

@@ -80,6 +80,13 @@ Every part is required. Pass a session ID instead of `new` to resume, and `-` as
 
 ### Get Providers, Models, Sessions
 
+`message` queues behind active work; `steer` redirects it. Codex starts idle
+sessions automatically through its native local daemon (started as needed), using system
+Python 3. Both keep the session's settings. Another process's writer lock stays
+protected: messages go to its queue, and steering needs its own control socket.
+Unloaded custom permission policies fail safely if they cannot be restored.
+Other providers report unsupported steering rather than pretending to interrupt.
+
 To contact an existing session (including one already running):
 
 ```sh

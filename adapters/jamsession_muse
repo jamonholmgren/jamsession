@@ -159,7 +159,7 @@ case "${1:-help}" in
   list) shift; list_sessions "$@" ;;
   models) shift; list_models "$@" ;;
   usage) shift; jamsession_adapter_usage "$@" ;;
-  status) jamsession_unsupported "$1" ;;
+  steer|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" --version

@@ -95,7 +95,7 @@ case "${1:-help}" in
     "$JAMSESSION_PROVIDER_BIN" sessions list --limit "$count"
     ;;
   models) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" models ;;
-  usage|status) jamsession_unsupported "$1" ;;
+  steer|usage|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" --version

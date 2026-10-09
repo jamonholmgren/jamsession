@@ -234,7 +234,7 @@ case "${1:-help}" in
     ;;
   models) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" models list ;;
   usage) shift; jamsession_adapter_usage "$@" ;;
-  status) jamsession_unsupported "$1" ;;
+  steer|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" --version

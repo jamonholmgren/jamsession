@@ -184,7 +184,7 @@ case "${1:-help}" in
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
   models) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" --list-models ;;
-  list|usage|status) jamsession_unsupported "$1" ;;
+  list|steer|usage|status) jamsession_unsupported "$1" ;;
   doctor) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" status ;;
   help|-h|--help) help_text ;;
   *) jamsession_die "unknown command '$1'" ;;

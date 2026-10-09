@@ -8,11 +8,13 @@ set -u
 unset JAMSESSION_HOME JAMSESSION_ADAPTER_DIR JAMSESSION_CONFIG JAMSESSION_SKILL_DIR \
   JAMSESSION_PACK_DIR JAMSESSION_SOURCE_URL JAMSESSION_INSTALL_URL JAMSESSION_CWD \
   JAMSESSION_CODEX_BIN JAMSESSION_CLAUDE_BIN JAMSESSION_CURSOR_BIN \
-  JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN JAMSESSION_MUSE_BIN
+  JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN JAMSESSION_MUSE_BIN \
+  JAMSESSION_CODEX_CONTROL_SOCKET JAMSESSION_PYTHON_BIN
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/jamsession-test.XXXXXX")"
-trap 'rm -rf "$TEMP_ROOT"' EXIT HUP INT TERM
+control_fixture_pid=""
+trap '[ -z "$control_fixture_pid" ] || kill "$control_fixture_pid" 2>/dev/null; rm -rf "$TEMP_ROOT"' EXIT HUP INT TERM
 JAMSESSION_CONFIG="$TEMP_ROOT/jamsession.conf"
 export JAMSESSION_CONFIG
 : >"$JAMSESSION_CONFIG"
@@ -377,6 +379,15 @@ chmod 755 "$FAKE_BIN"/*
 
 LOG="$TEMP_ROOT/args"
 
+JAMSESSION_CODEX_CONTROL_SOCKET="$TEMP_ROOT/control.sock"
+export JAMSESSION_CODEX_CONTROL_SOCKET
+python3 "$ROOT/tests/test_codex_control.py" --serve "$JAMSESSION_CODEX_CONTROL_SOCKET" >"$TEMP_ROOT/control-ready" &
+control_fixture_pid=$!
+for _ in {1..100}; do
+  [ ! -S "$JAMSESSION_CODEX_CONTROL_SOCKET" ] || break
+  sleep 0.02
+done
+check "native Codex ownership fixture is ready" test -S "$JAMSESSION_CODEX_CONTROL_SOCKET"
 run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
   "$ROOT/jamsession" message codex target-session 'Question with "quotes" and $literal'
 check "Codex messages use native queue" contains "$LOG" queue
@@ -1232,6 +1243,7 @@ run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$R
 check "installer installs the command" test -x "$INSTALL_HOME/.agents/jamsession/bin/jamsession"
 check "installer installs Devin's adapter" test -x "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_devin"
 check "installer installs Muse's adapter" test -x "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_muse"
+check "installer includes Codex's native control helper" test -f "$INSTALL_HOME/.agents/jamsession/adapters/_jamsession_codex_control.py"
 check "installer links the command" test -L "$INSTALL_HOME/.local/bin/jamsession"
 run_command env HOME="$INSTALL_HOME" JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" \
   "$INSTALL_HOME/.local/bin/jamsession" usage codex --json
@@ -1621,6 +1633,8 @@ check "retired skill identifiers are absent from active source" \
   sh -c "! grep -R -E 'jamsession-(agent-worker-task|run-remote-agents)' '$ROOT/skills' '$ROOT/jamsession' '$ROOT/README.md' '$ROOT/index.html'"
 check "the website summarizes orchestrator support skills" \
   grep -Fq 'supporting skills for worksheets, worker discipline, and SSH' "$ROOT/index.html"
+
+check "Codex native control delivery and resume contracts" python3 "$ROOT/tests/test_codex_control.py"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

@@ -35,6 +35,7 @@ jamsession — one small interface for coding-agent CLIs
 Usage:
   jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
   jamsession message <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]
+  jamsession steer <provider> <session> <text>
   jamsession inbox <recipient-id> <read|write <sender-id> <note>>
   jamsession watch <file> <text> [<provider> <session>] [--timeout <seconds>]
   jamsession list <provider> [count]
@@ -375,7 +376,7 @@ uninstall_command() {
 compact_usage() {
   cat >&2 <<'EOF'
 Usage: jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
-       jamsession <list|which|models|message> <provider> [arguments]
+       jamsession <list|which|models|message|steer> <provider> [arguments]
        jamsession watch <file> <text> [<provider> <session>] [options]
        jamsession <usage|status|doctor> [provider]
        jamsession <providers|init|make-adapter|skills|update|help>
@@ -511,6 +512,7 @@ Commands:
   jamsession_$PROVIDER list [count]
   jamsession_$PROVIDER which [session]
   jamsession_$PROVIDER message <session> <text> [--resume-with <model> <effort> <read|edit>]
+  jamsession_$PROVIDER steer <session> <text>
   jamsession_$PROVIDER models
   jamsession_$PROVIDER usage
   jamsession_$PROVIDER status
@@ -525,6 +527,10 @@ native delivery, report unavailable unless --resume-with explicitly supplies
 all execution settings for one synchronous resume. Require the existing owner
 to have exited; preserve provider busy locks and access errors. Never infer
 unsupported messaging from a native failure code or retry through resume.
+Queue behind active work and start idle work through the native owner when
+supported. Steer means redirect, not cancel/kill; report unavailable if the
+provider cannot safely steer. Never start a competing writer or change settings
+to deliver a message. An accepted queue item is not the recipient's answer.
 The scaffold reports unavailable until you implement this contract.
 See the bundled adapters in ~/.agents/jamsession/adapters/ for small examples.
 HELP
@@ -535,7 +541,7 @@ case "${1:-help}" in
     [ $# -eq 6 ] || die "run needs <new|session> <model> <effort> <read|edit> <prompt>"
     unsupported run
     ;;
-  list|which|models|message|usage|status|doctor) unsupported "$1" ;;
+  list|which|models|message|steer|usage|status|doctor) unsupported "$1" ;;
   help|-h|--help) help_text ;;
   *) die "unknown command '$1'" ;;
 esac
@@ -818,6 +824,10 @@ Use `new` to create a session or pass an exact provider-native session ID to
 resume. Use `default` to let the provider choose its model or effort. `read`
 must be enforced by the adapter; `edit` permits unattended workspace changes.
 Pass `-` as the prompt to read stdin.
+Codex resumes through its existing local control server when available, or its
+guarded native CLI otherwise. A control resume redirects active work and applies
+its explicit run settings; it retains the saved approval/reviewer policy. Use
+message to queue behind active work without changing its settings.
 EOF
       ;;
     inbox)
@@ -842,13 +852,26 @@ Read at scheduled checkpoints, not continuously. Use message for blockers,
 urgent risks and terminal handoffs; retain durable decisions in the worksheet.
 EOF
       ;;
-    message)
+    message|steer)
       cat <<'EOF'
 Usage: jamsession message <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]
 Alias: jamsession <provider> <session> message <text> [--resume-with <model> <effort> <read|edit>]
+       jamsession steer <provider> <session> <text>
 
 Send to an existing session using the provider's native messaging mechanism.
-Codex queues with `codex queue`; Muse sends with `muse session-message send`.
+Codex uses its local app-server control socket: message queues behind active
+work and starts an idle/unloaded session; steer redirects active work or starts
+an idle session. Neither changes the session's model, effort or permissions.
+This needs system Python 3 and Codex's native app-server daemon, started when
+needed without changing permissions. JAMSESSION_CODEX_CONTROL_SOCKET can select an
+explicit local controller socket owned by the same OS user.
+If another process holds Codex's native writer lock, message uses codex queue
+instead of taking over. That owning process must consume its queue; steer
+reports unavailable rather than killing it or starting a competing writer.
+Unloaded sessions restore saved settings first. Policies that cannot be restored
+exactly (such as custom deny rules) fail before sending; use their owning controller.
+Other providers must implement steer themselves; it never means cancel/kill.
+Muse sends with `muse session-message send`.
 Other bundled providers report unavailable unless --resume-with explicitly
 supplies model, effort, and access for one synchronous resume. Pass `-` as text
 to read stdin. `new` is not a message target.
@@ -858,7 +881,7 @@ The recipient can reply with another `jamsession message`. If your session
 cannot receive messages, agree on an exact reply-file path instead. Inspect
 that file or use `jamsession which` to locate the recipient's transcript.
 Native messaging retains the session's model/effort/access, even when fallback
-settings are supplied. It is not guaranteed to wake an idle session; Muse may
+settings are supplied. Muse is not guaranteed to wake an idle session and may
 report external_agent_ingress_closed. Native errors never trigger a resume.
 
 Resume fallback requires that no process owns the target, even an idle
@@ -968,10 +991,13 @@ case "$command_name" in
     inbox_command "$@"
     exit $?
     ;;
-  message)
+  message|steer)
+    if [ "$command_name" = steer ] && [ $# -ne 3 ]; then
+      die "steer needs <provider> <session> <text>"
+    fi
     validate_message_args "$@"
     provider="$1"; shift
-    exec "$(require_adapter "$provider")" message "$@"
+    exec "$(require_adapter "$provider")" "$command_name" "$@"
     ;;
   watch)
     watch_file "$@"
@@ -1068,10 +1094,12 @@ case "$command_name" in
     printf 'jamsession %s\n' "$JAMSESSION_VERSION"
     ;;
   *)
-    if { [ $# -eq 3 ] || [ $# -eq 7 ]; } && [ "$2" = message ]; then
+    if { [ $# -eq 3 ] || [ $# -eq 7 ]; } && { [ "$2" = message ] || [ "$2" = steer ]; }; then
+      delivery_intent="$2"
+      [ "$delivery_intent" != steer ] || [ $# -eq 3 ] || die "steer needs <provider> <session> <text>"
       session="$1"; shift 2
       validate_message_args "$command_name" "$session" "$@"
-      exec "$(require_adapter "$command_name")" message "$session" "$@"
+      exec "$(require_adapter "$command_name")" "$delivery_intent" "$session" "$@"
     fi
     die "unknown command '$command_name'"
     ;;

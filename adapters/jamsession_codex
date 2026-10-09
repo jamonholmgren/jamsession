@@ -12,11 +12,19 @@ help_text() {
 jamsession_codex
 
 Run:    jamsession_codex run <new|session> <model> <effort> <read|edit> <prompt>
-Other:  jamsession_codex <list|which|models|message|usage|status|doctor|help>
+Other:  jamsession_codex <list|which|models|message|steer|usage|status|doctor|help>
 
-Message: jamsession_codex message <session> <text> queues asynchronously.
+Message: jamsession_codex message <session> <text> queues behind work or starts an idle session.
+Steer:   jamsession_codex steer <session> <text> redirects active work or starts an idle session.
 Optional --resume-with settings are validated but unused by native delivery.
-Queue acceptance is not an answer or a guaranteed wake-up. See `jamsession help message`.
+Native control needs system Python 3 and starts Codex's own local daemon if needed.
+No Jam Session daemon or permission changes are introduced. Another owning process
+receives messages through codex queue; its queue consumer controls delivery. It
+cannot be steered through this adapter unless its control socket is available.
+Resume uses that control server when available and waits for the final answer.
+It redirects active work on that server and applies explicit run settings.
+Use message to queue instead. The saved approval/reviewer policy is retained.
+See `jamsession help message` for delivery states and ownership limits.
 
 Codex read mode uses its read-only sandbox. Edit mode uses workspace-write with
 interactive approvals disabled. Set JAMSESSION_CODEX_SANDBOX=off in jamsession.conf
@@ -68,6 +76,24 @@ for m in json.load(sys.stdin).get("models", []):
 run_agent() {
   jamsession_validate_run "$@"
   jamsession_require_binary
+
+  [ "$JAMSESSION_SESSION" != "${CODEX_THREAD_ID:-}" ] || \
+    jamsession_die "cannot synchronously resume your own live session; use message or steer"
+  local control_socket="${JAMSESSION_CODEX_CONTROL_SOCKET:-${CODEX_HOME:-$HOME/.codex}/app-server-control/app-server-control.sock}"
+  if [ "$JAMSESSION_SESSION" != new ] && [ -S "$control_socket" ]; then
+    local python_bin="${JAMSESSION_PYTHON_BIN:-python3}" control_status=0
+    command -v "$python_bin" >/dev/null 2>&1 || jamsession_die "Codex control resume needs system Python 3"
+    export JAMSESSION_CODEX_CONTROL_SOCKET JAMSESSION_CODEX_SANDBOX JAMSESSION_CWD
+    printf '%s' "$JAMSESSION_PROMPT" | "$python_bin" "$ADAPTER_DIR/_jamsession_codex_control.py" \
+      "$JAMSESSION_PROVIDER_BIN" run "$JAMSESSION_SESSION" "$JAMSESSION_MODEL" \
+      "$JAMSESSION_EFFORT" "$JAMSESSION_ACCESS" || control_status=$?
+    if [ "$control_status" -ne 3 ]; then
+      jamsession_session "$JAMSESSION_SESSION"
+      session_size "$JAMSESSION_SESSION"
+      return "$control_status"
+    fi
+    printf 'delivery: control server unavailable; using guarded native CLI resume\n' >&2
+  fi
 
   local temp_events temp_last temp_error status session_id line
   local -a command_args
@@ -142,13 +168,29 @@ run_agent() {
   exit "$status"
 }
 
-case "${1:-help}" in
-  message)
-    shift; jamsession_validate_message "$@"; jamsession_require_binary
-    jamsession_native_message_settings
+deliver_message() {
+  local intent="$1" python_bin="${JAMSESSION_PYTHON_BIN:-python3}" status=0
+  shift
+  [ "$intent" != steer ] || [ $# -eq 2 ] || jamsession_die "steer needs <session> <text>"
+  jamsession_validate_message "$@"
+  jamsession_require_binary
+  jamsession_native_message_settings
+  command -v "$python_bin" >/dev/null 2>&1 || jamsession_die "Codex messaging needs system Python 3"
+  export JAMSESSION_CODEX_CONTROL_SOCKET
+  printf '%s' "$JAMSESSION_PROMPT" | "$python_bin" "$ADAPTER_DIR/_jamsession_codex_control.py" \
+    "$JAMSESSION_PROVIDER_BIN" "$intent" "$JAMSESSION_MESSAGE_SESSION" || status=$?
+  if [ "$status" -eq 4 ]; then
+    [ "$intent" = message ] || jamsession_unsupported "steer: the session belongs to another controller"
+    printf 'delivery: queued to the existing owner; its native queue consumer must process it\n' >&2
     (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" queue \
       --thread "$JAMSESSION_MESSAGE_SESSION" --message "$JAMSESSION_PROMPT")
-    ;;
+    return $?
+  fi
+  return "$status"
+}
+
+case "${1:-help}" in
+  message|steer) intent="$1"; shift; deliver_message "$intent" "$@" ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
   models) jamsession_require_binary; list_models ;;

@@ -81,7 +81,7 @@ case "${1:-help}" in
   message) shift; jamsession_validate_message "$@"; jamsession_resume_message ;;
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
-  list|models|usage|status) jamsession_unsupported "$1" ;;
+  list|models|steer|usage|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" --version
