@@ -1635,6 +1635,7 @@ check "the website summarizes orchestrator support skills" \
   grep -Fq 'supporting skills for worksheets, worker discipline, and SSH' "$ROOT/index.html"
 
 check "Codex native control delivery and resume contracts" python3 "$ROOT/tests/test_codex_control.py"
+check "parallel adapter sessions keep independent OS-backed IDs" python3 "$ROOT/tests/test_adapter_sessions.py"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

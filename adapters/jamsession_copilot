@@ -63,7 +63,7 @@ run_agent() {
   fi
 
   if [ "$JAMSESSION_SESSION" = new ]; then
-    session_id="$(jamsession_uuid)"
+    session_id="$(jamsession_uuid)" || exit $?
   else
     session_id="$JAMSESSION_SESSION"
   fi

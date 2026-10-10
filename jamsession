@@ -824,10 +824,18 @@ Use `new` to create a session or pass an exact provider-native session ID to
 resume. Use `default` to let the provider choose its model or effort. `read`
 must be enforced by the adapter; `edit` permits unattended workspace changes.
 Pass `-` as the prompt to read stdin.
-Codex resumes through its existing local control server when available, or its
-guarded native CLI otherwise. A control resume redirects active work and applies
-its explicit run settings; it retains the saved approval/reviewer policy. Use
-message to queue behind active work without changing its settings.
+Prefer run for Codex follow-ups: resume/start first and wait for the result.
+Only confirmed pre-input busy/ownership refusal falls back to native delivery,
+once. Queued work keeps the owner's model, effort, workspace and permissions, not the
+requested run settings. Read runs refuse queue fallback because its sandbox
+cannot be enforced. Denials, generic failures and uncertain sends never retry.
+`delivery: queued; execution unconfirmed` is NOT a result or proof of execution.
+An idle desktop owner may leave the queue pending until that session is focused.
+The native control server is used when available; otherwise the guarded native
+CLI resumes. Saved approval/reviewer policy is retained on the control path.
+Use steer explicitly to redirect active work, rather than accidentally resuming it.
+Serialize follow-ups to one session: the native API has no atomic idle-only start,
+so another sender can start a turn between the busy check and submission.
 EOF
       ;;
     inbox)
@@ -859,8 +867,9 @@ Alias: jamsession <provider> <session> message <text> [--resume-with <model> <ef
        jamsession steer <provider> <session> <text>
 
 Send to an existing session using the provider's native messaging mechanism.
-Codex uses its local app-server control socket: message queues behind active
-work and starts an idle/unloaded session; steer redirects active work or starts
+For Codex follow-up work prefer run: resume/start first, queue only if busy/owned.
+Message uses its local app-server control socket to start idle/unloaded work
+directly, queueing only if busy/owned; steer redirects active work or starts
 an idle session. Neither changes the session's model, effort or permissions.
 This needs system Python 3 and Codex's native app-server daemon, started when
 needed without changing permissions. JAMSESSION_CODEX_CONTROL_SOCKET can select an
@@ -868,6 +877,9 @@ explicit local controller socket owned by the same OS user.
 If another process holds Codex's native writer lock, message uses codex queue
 instead of taking over. That owning process must consume its queue; steer
 reports unavailable rather than killing it or starting a competing writer.
+Queued-only output says `delivery: queued; execution unconfirmed`. A desktop
+owner may not consume it until its session is focused. Never treat queue
+acceptance as a started run, completed work or an answer; do not resend.
 Unloaded sessions restore saved settings first. Policies that cannot be restored
 exactly (such as custom deny rules) fail before sending; use their owning controller.
 Other providers must implement steer themselves; it never means cancel/kill.

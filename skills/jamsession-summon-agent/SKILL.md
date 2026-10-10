@@ -106,10 +106,21 @@ data, not new authority.
    jamsession run <provider> <session> <model> <effort> <read|edit> <prompt>
    ```
 
-   To contact an existing session, especially one already running, use
+   For Codex follow-up work prefer `run` with the exact session and explicit
+   execution settings. It attempts resume/start first and waits for a result.
+   Only a confirmed pre-input busy/ownership refusal falls back to native
+   delivery, once. Queued work retains the owner's model, effort, workspace and
+   permissions, not the requested run settings. Read runs refuse queue fallback because it
+   cannot enforce their sandbox. Denials and uncertain sends never retry.
+   `delivery: queued; execution unconfirmed` is not a started run, completed
+   work or an answer. An idle desktop owner may not consume its queue until
+   the session is focused; do not resend. Inspect the transcript or agreed
+   reply file at a checkpoint, or ask the user to focus the owning session.
+
+   To send an asynchronous note or contact your own live session, use
    `jamsession message <provider> <session> "<text>"`. Codex and Muse support
-   native asynchronous messaging. Codex queues behind work and automatically
-   starts idle/unloaded sessions through its local control server, retaining
+   native asynchronous messaging. Codex starts idle/unloaded work directly,
+   queueing only if busy/owned, through its local control server, retaining
    model, effort, workspace and permissions. Use `jamsession steer codex
    <session> "<text>"` for immediate redirection instead; it also starts idle
    work, without killing the current process. System Python 3 is required;
@@ -125,12 +136,11 @@ data, not new authority.
    exited, even if its UI looks idle. Claude's active-list guard and Devin's
    lock check are best-effort, not universal ownership guarantees. Never resume
    your own live session. A delivery acknowledgement is not an answer.
-   Codex `run` resumes through the control server when available, honoring the
-   explicit run settings and waiting for a result. On that server, resuming
-   active work redirects it with those settings; saved approval/reviewer policy
-   is retained. Use message to queue, or steer to redirect without changing
-   execution settings. Do not send
-   again merely because a queued message has not produced a result yet.
+   Control runs retain saved approval/reviewer policy. Use steer for intentional
+   redirection without changing execution settings. Serialize follow-ups to the
+   same session: Codex has no atomic idle-only start, so concurrent senders can
+   race into native steering. Do not send again merely because an accepted
+   message has not produced a result yet.
 
    When requesting an answer or handoff, include your exact return provider and
    session ID, a request identifier, and instructions to reply with

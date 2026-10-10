@@ -61,7 +61,7 @@ run_agent() {
   esac
 
   if [ "$JAMSESSION_SESSION" = new ]; then
-    session_id="$(jamsession_uuid)"
+    session_id="$(jamsession_uuid)" || exit $?
     args+=(--session-id "$session_id")
   else
     session_id="$JAMSESSION_SESSION"

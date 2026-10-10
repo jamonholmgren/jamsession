@@ -89,11 +89,16 @@ class Peer(socketserver.BaseRequestHandler):
                     else:
                         response["result"] = {"queuedSubmission": {"id": "q1", "input": params["input"]}}
                 elif method == "turn/start":
-                    response["result"] = {"turn": {"id": "t1", "status": "inProgress"}}
+                    if self.server.scenario == "lost_ack":
+                        return
+                    elif self.server.scenario == "denied":
+                        response["error"] = {"code": -32600, "message": "denied by managed policy"}
+                    else:
+                        response["result"] = {"turn": {"id": "t1", "status": "inProgress"}}
                 else:
                     response["error"] = {"code": -32601, "message": "unexpected method"}
                 self.send(response)
-                if method == "turn/start":
+                if method == "turn/start" and "error" not in response:
                     self.send({"method": "item/completed", "params": {
                         "threadId": "fixture", "turnId": "t1", "item": {
                             "type": "agentMessage", "phase": "final_answer", "text": "CONTROL_RESULT",
@@ -158,6 +163,10 @@ class ControlTests(unittest.TestCase):
                           " print(json.dumps({'status':'running' if Path(os.environ['FAKE_DAEMON_MARKER']).exists() else 'stopped','socketPath':os.environ['FAKE_DAEMON_SOCKET']}));sys.exit(0)\n"
                           "if sys.argv[1:4]==['app-server','daemon','start']:\n"
                           " Path(os.environ['FAKE_DAEMON_MARKER']).touch();sys.exit(0)\n"
+                          "if sys.argv[1]=='exec':\n"
+                          " mode=os.environ.get('FAKE_RESUME_MODE','denied')\n"
+                          " if mode=='after_input': print(json.dumps({'type':'thread.started','thread_id':'fixture'}))\n"
+                          " print('Error: thread/resume: thread/resume failed: thread fixture already has an active writer (code -32600)' if mode in ('busy','after_input') else 'Error: denied by managed policy',file=sys.stderr);sys.exit(1)\n"
                           "print('CODEX_QUEUED')\nsys.exit(int(os.environ.get('FAKE_EXIT','0')))\n")
         binary.chmod(0o755)
         self.env = dict(os.environ, HOME=str(self.path), CODEX_HOME=str(self.path / ".codex"),
@@ -183,9 +192,10 @@ class ControlTests(unittest.TestCase):
         text = 'literal $text "quotes"\n' + "x" * 70000 + "\n\n"
         result = self.cli("message", "codex", "fixture", text)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.methods(), ["thread/read", "thread/queue/add"])
+        self.assertEqual(self.methods(), ["thread/read", "turn/start"])
         self.assertEqual(self.peer.calls[-1]["params"]["input"][0]["text"], text)
-        self.assertEqual(set(self.peer.calls[-1]["params"]), {"threadId", "input", "clientUserMessageId"})
+        self.assertEqual(set(self.peer.calls[-1]["params"]), {"threadId", "input"})
+        self.assertIn("delivery: started", result.stderr)
         self.assertFalse((self.path / "cli-calls").exists())
 
     def test_steer_uses_native_turn_input_not_queue_or_kill(self):
@@ -217,13 +227,13 @@ class ControlTests(unittest.TestCase):
         self.peer.scenario = "denied"
         result = self.cli("message", "codex", "fixture", "hello")
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(self.methods(), ["thread/read", "thread/queue/add"])
+        self.assertEqual(self.methods(), ["thread/read", "turn/start"])
         self.assertFalse((self.path / "cli-calls").exists())
 
     def test_uncertain_acceptance_is_not_retried(self):
         self.peer.scenario = "lost_ack"
         self.assertNotEqual(self.cli("message", "codex", "fixture", "hello").returncode, 0)
-        self.assertEqual(self.methods(), ["thread/read", "thread/queue/add"])
+        self.assertEqual(self.methods(), ["thread/read", "turn/start"])
         self.assertFalse((self.path / "cli-calls").exists())
 
     def test_control_resume_honors_read_and_returns_its_own_turn_result(self):
@@ -237,7 +247,6 @@ class ControlTests(unittest.TestCase):
         self.assertFalse((self.path / "cli-calls").exists())
 
     def test_resume_applies_explicit_settings_without_disabling_approval_policy(self):
-        self.peer.scenario = "active"
         result = self.cli("run", "codex", "fixture", "model", "high", "read", "continue")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.methods(), ["thread/read", "thread/resume", "turn/start"])
@@ -264,7 +273,7 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(calls, [["app-server", "daemon", "version"],
                                  ["app-server", "daemon", "start"],
                                  ["app-server", "daemon", "version"]])
-        self.assertEqual(self.methods(), ["thread/read", "thread/queue/add"])
+        self.assertEqual(self.methods(), ["thread/read", "turn/start"])
 
     def test_non_socket_endpoint_is_rejected_before_sending(self):
         self.env["JAMSESSION_CODEX_CONTROL_SOCKET"] = self.env["JAMSESSION_CODEX_BIN"]
@@ -281,7 +290,7 @@ class ControlTests(unittest.TestCase):
         self.peer.scenario = "cold"
         result = self.cli("message", "codex", "fixture", "start work")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.methods(), ["thread/read", "thread/resume", "thread/queue/add"])
+        self.assertEqual(self.methods(), ["thread/read", "thread/resume", "turn/start"])
         restore = self.peer.calls[-2]["params"]
         self.assertEqual(restore["sandbox"], "read-only")
         self.assertEqual(restore["approvalPolicy"], "on-request")
@@ -340,9 +349,76 @@ class ControlTests(unittest.TestCase):
         path.write_text("\n".join(rows) + "\n")
         result = self.cli("message", "codex", "fixture", "hello")
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(self.methods(), ["thread/read", "thread/resume", "thread/settings/update", "thread/queue/add"])
+        self.assertEqual(self.methods(), ["thread/read", "thread/resume", "thread/settings/update", "turn/start"])
         self.assertEqual(self.peer.calls[-3]["params"]["model"], "saved-model")
         self.assertEqual(self.peer.calls[-2]["params"]["disabledPluginIds"], ["user-disabled-plugin"])
+
+    def test_busy_run_queues_once_without_steering_or_changing_settings(self):
+        self.peer.scenario = "active"
+        result = self.cli("run", "codex", "fixture", "model", "high", "edit", "continue")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.methods(), ["thread/read", "thread/read", "thread/queue/add"])
+        self.assertIn("delivery: queued; execution unconfirmed", result.stderr)
+        self.assertIn("requested run settings do not apply", result.stderr)
+        self.assertNotIn("CONTROL_RESULT", result.stdout)
+        self.assertEqual(set(self.peer.calls[-1]["params"]), {"threadId", "input", "clientUserMessageId"})
+
+    def test_foreign_owner_run_falls_back_once_and_warns_about_desktop_focus(self):
+        self.peer.scenario = "busy"
+        result = self.cli("run", "codex", "fixture", "model", "high", "edit", "continue")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in (self.path / "cli-calls").read_text().splitlines()]
+        self.assertEqual(calls, [["queue", "--thread", "fixture", "--message", "continue"]])
+        self.assertIn("execution unconfirmed", result.stderr)
+        self.assertIn("focused", result.stderr)
+        (self.path / "cli-calls").unlink()
+        self.env["FAKE_EXIT"] = "7"
+        rejected = self.cli("run", "codex", "fixture", "model", "high", "edit", "continue")
+        self.assertEqual(rejected.returncode, 7, rejected.stderr)
+        self.assertNotIn("delivery: queued; execution unconfirmed", rejected.stderr)
+        self.assertEqual(len((self.path / "cli-calls").read_text().splitlines()), 1)
+
+    def test_busy_read_run_never_weakens_access_by_queueing(self):
+        for scenario in ("active", "busy"):
+            self.peer.scenario = scenario
+            self.peer.calls.clear()
+            result = self.cli("run", "codex", "fixture", "model", "high", "read", "continue")
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("cannot enforce read access", result.stderr)
+            self.assertNotIn("thread/queue/add", self.methods())
+            self.assertFalse((self.path / "cli-calls").exists())
+
+    def test_run_denial_or_lost_ack_never_becomes_a_queue(self):
+        for scenario in ("denied", "lost_ack"):
+            self.peer.scenario = scenario
+            self.peer.calls.clear()
+            result = self.cli("run", "codex", "fixture", "model", "high", "edit", "continue")
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertEqual(self.methods(), ["thread/read", "thread/resume", "turn/start"])
+            self.assertFalse((self.path / "cli-calls").exists())
+
+    def test_cli_resume_queues_only_after_exact_pre_input_ownership_refusal(self):
+        self.env["JAMSESSION_CODEX_CONTROL_SOCKET"] = str(self.path / "no-controller")
+        self.env["FAKE_RESUME_MODE"] = "busy"
+        result = self.cli("run", "codex", "fixture", "model", "high", "edit", "continue")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        calls = [json.loads(line) for line in (self.path / "cli-calls").read_text().splitlines()]
+        self.assertEqual(calls[0][:2], ["exec", "resume"])
+        self.assertEqual(calls[1], ["queue", "--thread", "fixture", "--message", "continue"])
+        self.assertEqual(len(calls), 2)
+        self.assertIn("execution unconfirmed", result.stderr)
+        self.assertEqual(self.peer.calls, [])
+
+    def test_cli_denial_or_prior_output_never_retries_in_the_queue(self):
+        self.env["JAMSESSION_CODEX_CONTROL_SOCKET"] = str(self.path / "no-controller")
+        for mode in ("denied", "after_input"):
+            self.env["FAKE_RESUME_MODE"] = mode
+            (self.path / "cli-calls").unlink(missing_ok=True)
+            result = self.cli("run", "codex", "fixture", "model", "high", "edit", "continue")
+            self.assertEqual(result.returncode, 1, result.stderr)
+            calls = [json.loads(line) for line in (self.path / "cli-calls").read_text().splitlines()]
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0][:2], ["exec", "resume"])
 
 
 if __name__ == "__main__":

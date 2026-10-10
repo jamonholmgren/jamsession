@@ -65,14 +65,20 @@ jamsession which <provider> [session-id]
 It prints the local transcript store, its format, and read-only access guidance.
 Some providers store one file per session; others use a shared SQLite database.
 
-To message an existing Codex or Muse session, including one already running:
+For Codex follow-up work, use `jamsession run codex <session-id> <model> <effort>
+<read|edit> "<prompt>"`. It resumes first and waits for a result. Only a confirmed
+pre-input busy/ownership refusal falls back to native delivery, once. Queued
+work keeps the owner's settings; `read` runs refuse queue fallback. Denials and
+uncertain sends never retry.
+
+To send an asynchronous note to Codex or Muse, or contact your own live session:
 
 ```sh
 jamsession message <provider> <session-id> "<message>"
 ```
 
 Include your return provider/session or an agreed absolute reply-file path.
-Codex messages queue behind work and start idle/unloaded work automatically
+Codex messages start idle/unloaded work directly and queue only if busy/owned
 through its native app-server daemon, started as needed (system Python 3 required).
 Use `jamsession steer codex <session-id> "<message>"` to redirect active work;
 steer also starts idle work. Both keep existing execution settings. A different
@@ -82,6 +88,8 @@ an answer. Unloaded custom Codex permission policies fail before sending if they
 cannot be restored safely. Other bundled providers can resume once with explicitly appended
 `--resume-with <model> <effort> <read|edit>`, only after the owning process exits.
 Native delivery errors never trigger resume. Run `jamsession help message`.
+`delivery: queued; execution unconfirmed` means the work may not have started.
+An idle desktop owner may leave it pending until its session is focused. Do not resend.
 
 For low-priority notes on the same shared project filesystem:
 

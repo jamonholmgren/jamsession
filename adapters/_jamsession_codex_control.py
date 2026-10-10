@@ -21,6 +21,10 @@ class ControlUnavailable(ControlError):
     pass
 
 
+class SessionBusy(ControlError):
+    """A pre-input busy refusal, safe to fall back to the native queue."""
+
+
 class RpcError(ControlError):
     def __init__(self, error):
         super().__init__(error.get("message", "Codex rejected the request"))
@@ -253,15 +257,17 @@ def saved_resume_params(thread):
     return params, settings
 
 
-def join_thread(client, session, subscribe=False):
+def join_thread(client, session, subscribe=False, require_idle=False):
     thread = client.call("thread/read", {"threadId": session, "includeTurns": False})["thread"]
     if thread["id"] != session:
         raise ControlError("Codex returned another session")
+    if require_idle and thread["status"]["type"] == "active":
+        raise SessionBusy("session is busy; no prompt was sent")
     if thread["status"]["type"] != "notLoaded":
         if subscribe:
             # Rejoining a thread already owned by this server retains its settings.
             client.call("thread/resume", {"threadId": session, "excludeTurns": True})
-        return
+        return thread
     params, settings = saved_resume_params(thread)
     result = client.call("thread/resume", params)
     for key in ("model", "cwd", "approvalPolicy", "approvalsReviewer"):
@@ -291,12 +297,15 @@ def join_thread(client, session, subscribe=False):
         updates["disabledPluginIds"] = settings["disabled_plugin_ids"]
     if len(updates) > 1:
         client.call("thread/settings/update", updates)
+    return result["thread"]
 
 
 def resume_run(binary, session, prompt, model, effort, access):
     client = Control(control_socket(binary))
     try:
-        join_thread(client, session, subscribe=True)
+        thread = join_thread(client, session, subscribe=True, require_idle=True)
+        if thread["status"]["type"] == "active":
+            raise SessionBusy("session became busy; no prompt was sent")
         cwd = os.path.abspath(os.environ.get("JAMSESSION_CWD", os.getcwd()))
         if os.environ.get("JAMSESSION_CODEX_SANDBOX", "on") == "off":
             sandbox = {"type": "dangerFullAccess"}
@@ -313,7 +322,7 @@ def resume_run(binary, session, prompt, model, effort, access):
         if effort != "default":
             params["effort"] = effort
         turn = client.call("turn/start", params)["turn"]
-        print("delivery: turn started", file=sys.stderr)
+        print("delivery: started; waiting for the turn result", file=sys.stderr)
         final_text = ""
         while True:
             client.deadline = time.monotonic() + 3600
@@ -344,16 +353,13 @@ def deliver(binary, intent, session, prompt):
     client = Control(control_socket(binary))
     try:
         try:
-            join_thread(client, session)
-        except RpcError as error:
-            if error.code == -32600 and "already has an active writer" in str(error):
-                print("delivery: another process owns this session", file=sys.stderr)
-                return 4
-            raise
+            thread = join_thread(client, session, require_idle=intent == "message")
+        except SessionBusy:
+            thread = {"status": {"type": "active"}}
         user_input = [{"type": "text", "text": prompt}]
-        if intent == "steer":
+        if intent == "steer" or thread["status"]["type"] != "active":
             turn = client.call("turn/start", {"threadId": session, "input": user_input})["turn"]
-            print("delivery: turn accepted", file=sys.stderr)
+            print("delivery: started" if intent == "message" else "delivery: steer accepted", file=sys.stderr)
             print("turn: " + turn["id"], file=sys.stderr)
             return 0
         queued = client.call("thread/queue/add", {
@@ -361,7 +367,7 @@ def deliver(binary, intent, session, prompt):
             "clientUserMessageId": str(uuid.uuid4()),
         })["queuedSubmission"]
         print("Queued message " + queued["id"] + " for thread " + session + ".", flush=True)
-        print("delivery: native queue accepted; Codex starts it automatically when idle", file=sys.stderr)
+        print("delivery: queued; execution unconfirmed (session busy)", file=sys.stderr)
         return 0
     finally:
         client.close()
@@ -386,6 +392,16 @@ def main():
     except ControlUnavailable as error:
         print("jamsession_codex: " + str(error), file=sys.stderr)
         return 3
+    except SessionBusy as error:
+        print("delivery: " + str(error), file=sys.stderr)
+        return 4
+    except RpcError as error:
+        if error.code == -32600 and "already has an active writer" in str(error):
+            print("delivery: another process owns this session; no prompt was sent", file=sys.stderr)
+            return 4
+        print("jamsession_codex: " + str(error), file=sys.stderr)
+        print("No fallback or retry was attempted; inspect the target before resending.", file=sys.stderr)
+        return 2
     except (ControlError, OSError, ValueError, KeyError) as error:
         print("jamsession_codex: " + str(error), file=sys.stderr)
         print("No fallback or retry was attempted; inspect the target before resending.", file=sys.stderr)

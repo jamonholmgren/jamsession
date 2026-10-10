@@ -80,14 +80,24 @@ Every part is required. Pass a session ID instead of `new` to resume, and `-` as
 
 ### Get Providers, Models, Sessions
 
-`message` queues behind active work; `steer` redirects it. Codex starts idle
-sessions automatically through its native local daemon (started as needed), using system
-Python 3. Both keep the session's settings. Another process's writer lock stays
-protected: messages go to its queue, and steering needs its own control socket.
+For Codex follow-ups, use `run`: it resumes first and waits for the answer.
+Only a confirmed busy/ownership refusal falls back to native delivery, once.
+Queued work keeps the owner's settings; `read` runs refuse queue fallback.
+`message` also starts idle work directly and queues only if busy/owned;
+`steer` explicitly redirects active work. Native control needs system Python 3.
+Another process's writer lock stays protected. Its queue may wait until you focus
+the desktop session. `delivery: queued; execution unconfirmed` is not an answer
+or proof that work started. Do not resend an accepted message.
 Unloaded custom permission policies fail safely if they cannot be restored.
 Other providers report unsupported steering rather than pretending to interrupt.
 
-To contact an existing session (including one already running):
+Follow up on an existing Codex session:
+
+```sh
+jamsession run codex SESSION_ID MODEL EFFORT edit "Continue the assigned task."
+```
+
+To send an asynchronous note, or contact your own live session:
 
 ```sh
 jamsession message codex SESSION_ID "Which checkout can I use? Reply to ..."

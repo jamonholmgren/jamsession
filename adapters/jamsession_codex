@@ -14,16 +14,23 @@ jamsession_codex
 Run:    jamsession_codex run <new|session> <model> <effort> <read|edit> <prompt>
 Other:  jamsession_codex <list|which|models|message|steer|usage|status|doctor|help>
 
-Message: jamsession_codex message <session> <text> queues behind work or starts an idle session.
+Prefer run <session> <model> <effort> <read|edit> <prompt> for follow-up work.
+Run starts/resumes first and waits for a result. Only a confirmed pre-input busy
+or ownership refusal falls back to a queue, once. Queued work keeps the owner's
+settings, not the requested run settings. Read runs refuse this fallback because
+the queue cannot enforce their sandbox. Denials and uncertain sends never retry.
+Message: jamsession_codex message <session> <text> starts idle work; queues only if busy/owned.
 Steer:   jamsession_codex steer <session> <text> redirects active work or starts an idle session.
 Optional --resume-with settings are validated but unused by native delivery.
 Native control needs system Python 3 and starts Codex's own local daemon if needed.
 No Jam Session daemon or permission changes are introduced. Another owning process
 receives messages through codex queue; its queue consumer controls delivery. It
 cannot be steered through this adapter unless its control socket is available.
-Resume uses that control server when available and waits for the final answer.
-It redirects active work on that server and applies explicit run settings.
-Use message to queue instead. The saved approval/reviewer policy is retained.
+An idle desktop owner may leave its queue pending until the session is focused.
+`delivery: queued; execution unconfirmed` is not a started run or a final answer.
+Use steer for intentional redirection. Serialize follow-ups to the same session:
+Codex has no atomic idle-only start, so concurrent senders can race into steering.
+The saved approval/reviewer policy is retained.
 See `jamsession help message` for delivery states and ownership limits.
 
 Codex read mode uses its read-only sandbox. Edit mode uses workspace-write with
@@ -87,6 +94,10 @@ run_agent() {
     printf '%s' "$JAMSESSION_PROMPT" | "$python_bin" "$ADAPTER_DIR/_jamsession_codex_control.py" \
       "$JAMSESSION_PROVIDER_BIN" run "$JAMSESSION_SESSION" "$JAMSESSION_MODEL" \
       "$JAMSESSION_EFFORT" "$JAMSESSION_ACCESS" || control_status=$?
+    if [ "$control_status" -eq 4 ]; then
+      queue_busy_run
+      return $?
+    fi
     if [ "$control_status" -ne 3 ]; then
       jamsession_session "$JAMSESSION_SESSION"
       session_size "$JAMSESSION_SESSION"
@@ -144,6 +155,12 @@ run_agent() {
 
   status=0
   (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${command_args[@]}" </dev/null >"$temp_events" 2>"$temp_error") || status=$?
+  if [ "$status" -ne 0 ] && [ "$JAMSESSION_SESSION" != new ] && \
+    [ ! -s "$temp_events" ] && [ ! -s "$temp_last" ] && \
+    grep -Fxq "Error: thread/resume: thread/resume failed: thread $JAMSESSION_SESSION already has an active writer (code -32600)" "$temp_error"; then
+    queue_busy_run cli
+    exit $?
+  fi
   [ ! -s "$temp_error" ] || cat "$temp_error" >&2
 
   session_id=""
@@ -168,6 +185,33 @@ run_agent() {
   exit "$status"
 }
 
+queue_busy_run() {
+  local busy_status=0
+  [ "$JAMSESSION_ACCESS" != read ] || \
+    jamsession_die "session is busy/owned; cannot enforce read access through its queue; no message queued"
+  printf 'delivery: run refused as busy/owned; falling back to native delivery\n' >&2
+  printf 'warning: queued work keeps the owner\047s model, effort, workspace and permissions; requested run settings do not apply\n' >&2
+  if [ "${1:-control}" = cli ]; then
+    native_queue "$JAMSESSION_SESSION" "$JAMSESSION_PROMPT" || busy_status=$?
+  else
+    deliver_message message "$JAMSESSION_SESSION" "$JAMSESSION_PROMPT" || busy_status=$?
+  fi
+  jamsession_session "$JAMSESSION_SESSION"
+  session_size "$JAMSESSION_SESSION"
+  return "$busy_status"
+}
+
+native_queue() {
+  local queue_status=0
+  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" queue \
+    --thread "$1" --message "$2") || queue_status=$?
+  if [ "$queue_status" -eq 0 ]; then
+    printf 'delivery: queued; execution unconfirmed (another process owns the session)\n' >&2
+    printf 'warning: an idle desktop owner may not consume this until its session is focused; do not resend\n' >&2
+  fi
+  return "$queue_status"
+}
+
 deliver_message() {
   local intent="$1" python_bin="${JAMSESSION_PYTHON_BIN:-python3}" status=0
   shift
@@ -181,9 +225,7 @@ deliver_message() {
     "$JAMSESSION_PROVIDER_BIN" "$intent" "$JAMSESSION_MESSAGE_SESSION" || status=$?
   if [ "$status" -eq 4 ]; then
     [ "$intent" = message ] || jamsession_unsupported "steer: the session belongs to another controller"
-    printf 'delivery: queued to the existing owner; its native queue consumer must process it\n' >&2
-    (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" queue \
-      --thread "$JAMSESSION_MESSAGE_SESSION" --message "$JAMSESSION_PROMPT")
+    native_queue "$JAMSESSION_MESSAGE_SESSION" "$JAMSESSION_PROMPT"
     return $?
   fi
   return "$status"
