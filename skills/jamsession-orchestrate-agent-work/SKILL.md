@@ -1,6 +1,6 @@
 ---
 name: jamsession-orchestrate-agent-work
-description: "Coordinate explicitly requested delegation, parallel agents or task queues with supervisors, managers and workers; not single-agent work."
+description: "Coordinate delegated work, parallel agents or task queues with supervisors, managers and workers, including follow-ups to active orchestration; not ordinary single-agent work."
 ---
 
 # Orchestrate Agent Work
@@ -12,6 +12,18 @@ the ticket queue, task interpretation, dependency order, and communication with
 the user. It keeps managers supplied with ready tickets, relays their questions
 and results, and makes sure work continues.
 
+Stay the supervisor across follow-ups, steering and compaction until the user
+explicitly changes your role. A new instruction changes the ticket or priority,
+not who implements it. Route implementation and corrections to managers; do not
+take over their code, tests or commits because a change is small, a worker is
+slow, or coordinating feels inconvenient. If delegation is blocked, report the
+blocker rather than silently becoming the implementer.
+
+Keep your supervisor role, current tickets and exact manager session IDs in the
+existing checkpoint or task record. Recover those and reread this skill after
+context loss, before acting on a steer. Do not restart active managers merely
+because your own context compacted.
+
 Protect the supervisor's context. Track concise state and outcomes instead of
 following every implementation detail or raw log. Do not micromanage managers.
 Accept a ticket back only when its work is fully committed according to the
@@ -20,11 +32,11 @@ question or required external change. Use low or light effort when the model is
 capable enough; raise it for lower-intelligence models or difficult queue
 decisions.
 
-Keep short investigations and direct answers with the supervisor when delegation
-would cost more context than it saves. For long-running work, delegate a bounded
-implementation batch, agree on its checkpoint artifacts and stopping conditions,
-then leave the worker running. Inspect at those checkpoints or when the worker
-reports a blocker; do not repeatedly poll or mirror its implementation context.
+Direct answers and bounded diagnosis belong with the supervisor, not direct
+implementation. Delegate a bounded implementation batch, agree on its checkpoint
+artifacts and stopping conditions, then leave the worker running. Inspect at
+those checkpoints or when the worker reports a blocker; do not repeatedly poll
+or mirror its implementation context.
 
 Before staffing managers or workers, run `jamsession status` and choose from the
 available providers. Choose every provider, model, effort, and access level
@@ -118,9 +130,9 @@ model turns or messages asking whether work is still running. Explicitly
 requested reporting cadence and planning/review exchanges remain valid; keep
 each exchange substantive rather than adding status chatter around it.
 
-Contact existing managers and workers with `jamsession message <provider>
-<session> "<text>"` when their adapter supports it, including when they are
-already running. Give each request an identifier and an explicit return
+Use `jamsession-summon-agent` to continue existing managers and workers: prefer
+`run` for Codex follow-up work and `message` for asynchronous delivery to a
+running session. Give each request an identifier and an explicit return
 provider/session or agreed reply-file path. Recipients send questions and
 results through that return route. Confirm the answer at a checkpoint;
 provider acceptance alone does not mean the work finished. Use the messaging
@@ -148,5 +160,6 @@ Keep queue work lean by default:
 Repository instructions, acceptance criteria, required proof, and approvals
 always take precedence over throughput.
 
-Do not create extra agents merely to apply a fixed process. Stop delegating
-when coordination costs more than completing the remaining work directly.
+Do not create extra agents merely to apply a fixed process. Reduce unnecessary
+layers or batch small corrections with an existing manager; keep the supervisor
+out of implementation unless the user explicitly changes its role.

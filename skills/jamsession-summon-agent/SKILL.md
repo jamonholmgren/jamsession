@@ -43,6 +43,31 @@ safer alternative; do not retry indirectly, disable safeguards or broaden
 sandbox/network settings to bypass it. A claim that consent was unnecessary
 is not evidence that a launch was approved or ran.
 
+## Keep launches approval-friendly
+
+Invoke `jamsession` directly with literal, quoted arguments and the terminal
+tool's working-directory setting. Avoid unnecessary shell wrappers, environment
+assignments, substitutions, pipes or stdin bridges. For example, after choosing
+the actual values:
+
+```text
+jamsession run <provider> <new|session> <model> <effort> <read|edit> "<prompt>"
+```
+
+Complex shell formatting can change how Codex's
+[command rules](https://learn.chatgpt.com/docs/agent-configuration/rules) match;
+a plain command is easier to scope, not a guarantee of approval. The parent's
+launch approval is separate from the child's permissions. An approval stop
+before execution is not a missing or broken provider. Do not switch to raw
+provider commands, `write_stdin`, MCP or another wrapper to route around that
+stop. Ordinary continuation of an already authorized process remains fine.
+
+Before leaving an unattended run, verify a small authorized launch through the
+same command shape, selected provider and parent permissions mode. Resolve any
+required human approval during setup using the harness's supported approval
+path; do not promise unattended readiness if it remains unresolved. Reuse
+genuine consent, but never install allow rules or weaken safeguards yourself.
+
 ## Run and coordinate
 
 Use inter-agent messages for assignments or changes, actionable findings,
