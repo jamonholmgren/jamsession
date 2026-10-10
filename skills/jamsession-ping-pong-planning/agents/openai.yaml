@@ -1,4 +1,4 @@
 interface:
   display_name: "Ping-Pong Planning"
-  short_description: "Build a plan through two independent agent views"
-  default_prompt: "Use $jamsession-ping-pong-planning to produce a challenged implementation plan."
+  short_description: "PPP: cross-model analysis, planning, and review"
+  default_prompt: "Use $jamsession-ping-pong-planning (PPP) to analyze, plan, or review this problem through independent drafts and challenge rounds."
