@@ -1,3 +1,7 @@
 usage/__pycache__/
 adapters/__pycache__/
 .agents/jamsession/inbox/
+
+# Local experiment evidence is never part of the public package.
+/AGENT-COMPARISON-RESULTS.md
+/.agents/scratch/

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Run an Agent Comparison"
+  short_description: "Compare agents with frozen trials and blind scoring"
+  default_prompt: "Use $jamsession-run-agent-comparison to run or evaluate the authorized agent trials and preserve their evidence-backed results."

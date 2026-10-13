@@ -1,0 +1,10 @@
+references/experiment-design.md
+references/scoring.md
+references/panel-protocol.md
+assets/coordinator-prompt.md
+assets/candidate-planning-prompt.md
+assets/rubric-author-prompt.md
+assets/grader-prompt.md
+assets/panel-review-prompt.md
+assets/results-template.md
+assets/experiment-manifest.json

@@ -49,6 +49,7 @@ When I have a task and want agents to talk to each other, I'll use the proper sk
 * **Contrarian Review:** Can be combined with the panel or ping-ponging. Introduce a contrarian (adverse) reviewer. I like to use Grok for this, and Fable / Astra as main "adults talking", while this annoying kid Grok tries hard to poke holes in it.
 * **Orchestrator:** This is essentially what runs my well-known [Night Shift](https://jamon.dev/night-shift) autonomous work system. Your agent runs workers (or sometimes even managers, who then manage workers) to do autonomous loop work. It can keep checked-in task state with **Agent Worksheet**, and uses the **Individual Worker Workflow**, **Work Over SSH**, and **Use Remote Agent Over SSH** skills, which aren't necessarily intended for you to use directly.
 * **Model Recommendations:** If you're using the same providers that I do, this is useful for knowing what I (Jamon) prefer to use for what types of work. Loading it up means you can focus on your work, and the agent will decide what other agents work best for what situations.
+* **Agent Comparison:** Use the [comparison kit](skills/jamsession-run-agent-comparison/SKILL.md) to design, run or evaluate controlled trials with reusable prompts, a manifest and blind scoring guidance. Keep quality, process, availability and cost separate. The caller or project chooses the results home; sharing results is a separate decision, and loading the skill does not authorize new runs.
 * Your agent will already know to use the **Summon agent** skill to load up and resume the other agent sessions, so it underlies all the others.
 
 ## How to use Jam Session as an agent
@@ -172,6 +173,9 @@ jamsession skills uninstall all
 ```
 
 `jamsession-summon-agent` and `jamsession-get-agent-usage` are installed by default. Ask your agent for current usage and it will turn `jamsession usage --json` into a readable table. The rest are opt-in: model recommendations, ping-pong planning, contrarian review, agent panels, orchestration, agent worksheets, worker tasks, and SSH.
+
+The optional `jamsession-run-agent-comparison` skill owns the comparison workflow;
+the caller owns the results. Loading it does not authorize new runs.
 
 Usage reports include Devin and Muse. Devin reads its startup quota screen;
 Muse reads its CLI's last-observed subscription windows, falling back to its

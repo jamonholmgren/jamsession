@@ -89,6 +89,7 @@ bundled_skills() {
     jamsession-contrarian-review \
     jamsession-ask-agent-panel \
     jamsession-orchestrate-agent-work \
+    jamsession-run-agent-comparison \
     jamsession-use-agent-worksheet \
     jamsession-individual-worker-workflow \
     jamsession-work-over-ssh \
@@ -112,6 +113,86 @@ list_skills() {
   done < <(bundled_skills)
 }
 
+resource_abort() { die "$1"; }
+
+# resources.txt is optional for legacy packages. When present, every entry is
+# required and must stay within the package's references/ or assets/ trees.
+resource_path_safe() {
+  case "$1" in references/*|assets/*) ;; *) return 1 ;; esac
+  case "$1" in *[!a-zA-Z0-9_./-]*|*/|*//*|*/../*|*/./*|*/..|*/.) return 1 ;; esac
+}
+
+resource_no_symlinks() {
+  resource_base=$1
+  resource_tail=$2
+  [ ! -L "$resource_base" ] || resource_abort "symlink package path: $resource_base"
+  [ ! -e "$resource_base" ] || [ -d "$resource_base" ] || resource_abort "package parent is not a directory: $resource_base"
+  while [ -n "$resource_tail" ]; do
+    resource_part=${resource_tail%%/*}
+    resource_base="$resource_base/$resource_part"
+    [ ! -L "$resource_base" ] || resource_abort "symlink package path: $resource_base"
+    case "$resource_tail" in
+      */*)
+        [ ! -e "$resource_base" ] || [ -d "$resource_base" ] || resource_abort "package parent is not a directory: $resource_base"
+        resource_tail=${resource_tail#*/} ;;
+      *)
+        [ ! -e "$resource_base" ] || [ -f "$resource_base" ] || resource_abort "package destination is not a file: $resource_base"
+        break ;;
+    esac
+  done
+}
+
+stage_skill_resources() {
+  resource_source=$1
+  resource_stage=$2
+  resource_target=$3
+  resource_skill=$4
+  mkdir -p "$resource_stage" || resource_abort "could not stage resources"
+  resource_no_symlinks "$resource_target" resources.txt
+  [ ! -e "$resource_target/resources.txt" ] || [ -f "$resource_target/resources.txt" ] || resource_abort "resource manifest destination is not a file"
+  case "$resource_source" in
+    file://*) resource_no_symlinks "${resource_source#file://}" resources.txt ;;
+  esac
+  resource_status=0
+  resource_http=$(curl -fsSL -w '%{http_code}' "$resource_source/resources.txt" \
+    -o "$resource_stage/resources.txt" 2>"$resource_stage/resource-download-error") || resource_status=$?
+  if [ "$resource_status" -ne 0 ]; then
+    resource_absent=false
+    [ "$resource_http" != 404 ] || resource_absent=true
+    case "$resource_source" in
+      file://*)
+        if [ "$resource_status" -eq 37 ] && [ ! -e "${resource_source#file://}/resources.txt" ]; then resource_absent=true; fi ;;
+    esac
+    if [ "$resource_absent" = true ]; then
+      if grep -Eq '\]\((\./)?(references|assets)/|^\[[^]]+\]:[[:space:]]*(\./)?(references|assets)/' "$resource_skill"; then
+        resource_abort "skill links bundled resources but resources.txt is missing: $resource_source"
+      fi
+      rm -f "$resource_stage/resources.txt" "$resource_stage/resource-download-error"
+      return 0
+    fi
+    resource_abort "could not download resource manifest: $resource_source"
+  fi
+  rm -f "$resource_stage/resource-download-error"
+  [ -s "$resource_stage/resources.txt" ] || resource_abort "empty resource manifest: $resource_source"
+  resource_seen='|'
+  while IFS= read -r resource_entry || [ -n "$resource_entry" ]; do
+    resource_path_safe "$resource_entry" || resource_abort "unsafe resource path: $resource_entry"
+    case "$resource_seen" in *"|$resource_entry|"*) resource_abort "duplicate resource: $resource_entry" ;; esac
+    resource_seen="$resource_seen$resource_entry|"
+    resource_no_symlinks "$resource_target" "$resource_entry"
+    resource_no_symlinks "$resource_target" "$resource_entry.jamsession-new"
+    [ ! -e "$resource_target/$resource_entry" ] || [ -f "$resource_target/$resource_entry" ] || resource_abort "resource destination is not a file: $resource_entry"
+    [ ! -e "$resource_target/$resource_entry.jamsession-new" ] || [ -f "$resource_target/$resource_entry.jamsession-new" ] || resource_abort "resource staging destination is not a file: $resource_entry"
+    case "$resource_source" in
+      file://*) resource_no_symlinks "${resource_source#file://}" "$resource_entry" ;;
+    esac
+    mkdir -p "$resource_stage/$(dirname "$resource_entry")" || resource_abort "could not stage resource: $resource_entry"
+    curl -fsSL "$resource_source/$resource_entry" -o "$resource_stage/$resource_entry" || \
+      resource_abort "could not download required resource: $resource_entry"
+    [ -s "$resource_stage/$resource_entry" ] || resource_abort "empty required resource: $resource_entry"
+  done < "$resource_stage/resources.txt"
+}
+
 install_one_skill() {
   local skill="$1" target temp metadata source_root
   known_skill "$skill" || die "unknown bundled skill '$skill'"
@@ -127,10 +208,22 @@ install_one_skill() {
     die "could not download metadata for skill '$skill'"
   [ -s "$temp" ] || die "downloaded skill '$skill' is empty"
   [ -s "$metadata" ] || die "downloaded metadata for skill '$skill' is empty"
-  chmod 644 "$temp" "$metadata"
-  mkdir -p "$target/agents"
-  mv "$temp" "$target/SKILL.md"
-  mv "$metadata" "$target/agents/openai.yaml"
+  stage_skill_resources "$source_root/skills/$skill" "$JAMSESSION_TEMP_DIR/resources" "$target" "$temp"
+  resource_no_symlinks "$target" SKILL.md
+  resource_no_symlinks "$target" agents/openai.yaml
+  chmod 644 "$temp" "$metadata" || die "could not install skill file for '$skill'"
+  mkdir -p "$target/agents" || die "could not install skill file for '$skill'"
+  mv "$temp" "$target/SKILL.md" || die "could not install skill file for '$skill'"
+  mv "$metadata" "$target/agents/openai.yaml" || die "could not install skill file for '$skill'"
+  if [ -f "$JAMSESSION_TEMP_DIR/resources/resources.txt" ]; then
+    while IFS= read -r resource_entry || [ -n "$resource_entry" ]; do
+      mkdir -p "$target/$(dirname "$resource_entry")" || die "could not install skill file for '$skill'"
+      chmod 644 "$JAMSESSION_TEMP_DIR/resources/$resource_entry" || die "could not install skill file for '$skill'"
+      mv "$JAMSESSION_TEMP_DIR/resources/$resource_entry" "$target/$resource_entry" || die "could not install skill file for '$skill'"
+    done < "$JAMSESSION_TEMP_DIR/resources/resources.txt"
+    chmod 644 "$JAMSESSION_TEMP_DIR/resources/resources.txt" || die "could not install skill file for '$skill'"
+    mv "$JAMSESSION_TEMP_DIR/resources/resources.txt" "$target/resources.txt" || die "could not install skill file for '$skill'"
+  fi
   clean_temp_dir
   printf 'Installed %s\n' "$target/SKILL.md"
 }

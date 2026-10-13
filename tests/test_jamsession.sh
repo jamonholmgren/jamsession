@@ -1443,6 +1443,192 @@ run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jams
 check "agent-worksheet skill installs on request" test -f "$INSTALL_HOME/.agents/skills/jamsession-use-agent-worksheet/SKILL.md"
 check "agent-worksheet skill installs its metadata" test -f "$INSTALL_HOME/.agents/skills/jamsession-use-agent-worksheet/agents/openai.yaml"
 
+# --- Skill resource bundles: isolated local downloads, no provider calls ---
+RESOURCE_SOURCE="$TEMP_ROOT/resource-source"
+RESOURCE_SKILL=jamsession-work-over-ssh
+RESOURCE_PACKAGE="$RESOURCE_SOURCE/skills/$RESOURCE_SKILL"
+RESOURCE_TARGET="$INSTALL_HOME/.agents/skills/$RESOURCE_SKILL"
+mkdir -p "$RESOURCE_SOURCE"
+cp "$ROOT/jamsession" "$RESOURCE_SOURCE/"
+cp -R "$ROOT/adapters" "$ROOT/usage" "$ROOT/skills" "$RESOURCE_SOURCE/"
+mkdir -p "$RESOURCE_PACKAGE/references" "$RESOURCE_PACKAGE/assets"
+printf '%s\n' references/guide.md assets/template.json >"$RESOURCE_PACKAGE/resources.txt"
+printf '%s\n' 'resource v1' >"$RESOURCE_PACKAGE/references/guide.md"
+printf '%s\n' '{"template":1}' >"$RESOURCE_PACKAGE/assets/template.json"
+resource_install() {
+  env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
+    JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$RESOURCE_SOURCE" \
+    "$ROOT/jamsession" skills install "$RESOURCE_SKILL"
+}
+run_command resource_install
+check "skill install stages resource bundle" test "$status" -eq 0
+check "skill install copies references" equals "$RESOURCE_TARGET/references/guide.md" 'resource v1'
+check "skill install copies assets" equals "$RESOURCE_TARGET/assets/template.json" '{"template":1}'
+check "skill install records resource manifest" cmp -s "$RESOURCE_PACKAGE/resources.txt" "$RESOURCE_TARGET/resources.txt"
+printf '%s\n' 'resource v2' >"$RESOURCE_PACKAGE/references/guide.md"
+run_command resource_install
+check "skill reinstall refreshes resources" equals "$RESOURCE_TARGET/references/guide.md" 'resource v2'
+printf '%s\n' 'resource v3' >"$RESOURCE_PACKAGE/references/guide.md"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$RESOURCE_SOURCE" sh "$ROOT/install.sh"
+check "standalone installer refreshes installed optional resources" equals "$RESOURCE_TARGET/references/guide.md" 'resource v3'
+printf '%s\n' 'resource v4' >"$RESOURCE_PACKAGE/references/guide.md"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
+  JAMSESSION_SOURCE_URL="file://$RESOURCE_SOURCE" JAMSESSION_INSTALL_URL="file://$ROOT/install.sh" \
+  "$ROOT/jamsession" update
+check "CLI update refreshes installed skill resources" equals "$RESOURCE_TARGET/references/guide.md" 'resource v4'
+printf '%s\n' 'resource v3' >"$RESOURCE_PACKAGE/references/guide.md"
+run_command resource_install
+mkdir -p "$INSTALL_HOME/.agents/skills/custom-skill"
+printf '%s\n' custom >"$INSTALL_HOME/.agents/skills/custom-skill/SKILL.md"
+cp "$RESOURCE_TARGET/SKILL.md" "$TEMP_ROOT/resource-old-skill"
+cp "$INSTALL_HOME/.agents/jamsession/bin/jamsession" "$TEMP_ROOT/resource-old-cli"
+# Different source bytes make preservation assertions capable of detecting replacement.
+printf '%s\n' '# newer source marker' >>"$RESOURCE_SOURCE/jamsession"
+printf '%s\n' 'Newer skill source marker.' >>"$RESOURCE_PACKAGE/SKILL.md"
+for unsafe in '../escape.md' '/absolute.md' 'references/../escape.md' 'references//bad.md' 'references/./bad.md' 'assets/' ''; do
+  printf '%s\n' "$unsafe" >"$RESOURCE_PACKAGE/resources.txt"
+  run_command resource_install
+  check "skill install rejects unsafe manifest [$unsafe]" test "$status" -ne 0
+  check "unsafe manifest preserves old skill [$unsafe]" cmp -s "$TEMP_ROOT/resource-old-skill" "$RESOURCE_TARGET/SKILL.md"
+  check "unsafe manifest preserves old resource [$unsafe]" equals "$RESOURCE_TARGET/references/guide.md" 'resource v3'
+done
+printf '%s\n' '../escape.md' >"$RESOURCE_PACKAGE/resources.txt"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$RESOURCE_SOURCE" sh "$ROOT/install.sh"
+check "installer rejects unsafe resource manifest" test "$status" -ne 0
+check "unsafe installer bundle preserves prior CLI" cmp -s "$TEMP_ROOT/resource-old-cli" "$INSTALL_HOME/.agents/jamsession/bin/jamsession"
+printf '%s\n' references/guide.md assets/missing.json >"$RESOURCE_PACKAGE/resources.txt"
+printf '%s\n' 'must not replace old resource' >"$RESOURCE_PACKAGE/references/guide.md"
+run_command resource_install
+check "missing required resource fails skill installation" test "$status" -ne 0
+check "missing resource preserves prior resource" equals "$RESOURCE_TARGET/references/guide.md" 'resource v3'
+run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$RESOURCE_SOURCE" sh "$ROOT/install.sh"
+check "missing required resource fails entire installer staging" test "$status" -ne 0
+check "missing installer resource preserves prior CLI" cmp -s "$TEMP_ROOT/resource-old-cli" "$INSTALL_HOME/.agents/jamsession/bin/jamsession"
+check "missing installer resource preserves prior guide" equals "$RESOURCE_TARGET/references/guide.md" 'resource v3'
+check "missing installer resource preserves prior skill" cmp -s "$TEMP_ROOT/resource-old-skill" "$RESOURCE_TARGET/SKILL.md"
+printf '%s\n' references/guide.md >"$RESOURCE_PACKAGE/resources.txt"
+rm "$RESOURCE_PACKAGE/references/guide.md"
+ln -s "$TEMP_ROOT/resource-old-skill" "$RESOURCE_PACKAGE/references/guide.md"
+run_command resource_install
+check "local resource source symlink is rejected" test "$status" -ne 0
+rm "$RESOURCE_PACKAGE/references/guide.md"
+printf '%s\n' safe >"$RESOURCE_PACKAGE/references/guide.md"
+mv "$RESOURCE_TARGET/references" "$RESOURCE_TARGET/references-held"
+ln -s "$RESOURCE_TARGET/references-held" "$RESOURCE_TARGET/references"
+run_command resource_install
+check "resource destination directory symlink is rejected" test "$status" -ne 0
+check "destination symlink target remains unchanged" equals "$RESOURCE_TARGET/references-held/guide.md" 'resource v3'
+run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$RESOURCE_SOURCE" sh "$ROOT/install.sh"
+check "installer rejects destination resource symlink before replacement" test "$status" -ne 0
+check "destination symlink rejection preserves installed CLI" cmp -s "$TEMP_ROOT/resource-old-cli" "$INSTALL_HOME/.agents/jamsession/bin/jamsession"
+rm "$RESOURCE_TARGET/references"
+mv "$RESOURCE_TARGET/references-held" "$RESOURCE_TARGET/references"
+# Non-directory parents must fail during staging, before changing the old skill.
+mv "$RESOURCE_TARGET/references" "$RESOURCE_TARGET/references-held"
+printf '%s\n' not-a-directory >"$RESOURCE_TARGET/references"
+run_command resource_install
+check "CLI rejects non-directory resource parent during staging" test "$status" -ne 0
+check "bad resource parent preserves old skill" cmp -s "$TEMP_ROOT/resource-old-skill" "$RESOURCE_TARGET/SKILL.md"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$RESOURCE_SOURCE" sh "$ROOT/install.sh"
+check "installer rejects non-directory resource parent" test "$status" -ne 0
+check "bad resource parent preserves installed CLI" cmp -s "$TEMP_ROOT/resource-old-cli" "$INSTALL_HOME/.agents/jamsession/bin/jamsession"
+rm "$RESOURCE_TARGET/references"
+mv "$RESOURCE_TARGET/references-held" "$RESOURCE_TARGET/references"
+
+# Commit-time filesystem errors must return failure, never print success.
+RESOURCE_FAIL_BIN="$TEMP_ROOT/resource-fail-bin"
+mkdir -p "$RESOURCE_FAIL_BIN"
+for failing_command in mkdir chmod mv; do
+  if [ "$failing_command" = mkdir ]; then
+    cat >"$RESOURCE_FAIL_BIN/mkdir" <<'SH'
+#!/bin/sh
+case "$*" in *'/skills/jamsession-work-over-ssh/agents'*) exit 17 ;; esac
+exec /bin/mkdir "$@"
+SH
+  else
+    printf '#!/bin/sh\nexit 17\n' >"$RESOURCE_FAIL_BIN/$failing_command"
+  fi
+  chmod 755 "$RESOURCE_FAIL_BIN/$failing_command"
+  PATH="$RESOURCE_FAIL_BIN:$PATH" run_command resource_install
+  check "CLI reports $failing_command installation failure" test "$status" -ne 0
+  check "CLI does not claim success after $failing_command failure" sh -c '! grep -q "^Installed " "$1"' sh "$stdout_file"
+  check "$failing_command failure before replacement preserves old skill" cmp -s "$TEMP_ROOT/resource-old-skill" "$RESOURCE_TARGET/SKILL.md"
+  rm "$RESOURCE_FAIL_BIN/$failing_command"
+done
+
+rm "$RESOURCE_PACKAGE/resources.txt"
+run_command resource_install
+check "legacy package without manifest still installs" test "$status" -eq 0
+check "legacy reinstall leaves unrelated package files alone" equals "$RESOURCE_TARGET/references/guide.md" 'resource v3'
+check "resource installs preserve custom skills" equals "$INSTALL_HOME/.agents/skills/custom-skill/SKILL.md" custom
+
+# Install the real kit and verify its resource manifest matches its local links.
+COMPARISON_SKILL=jamsession-run-agent-comparison
+COMPARISON_SOURCE="$ROOT/skills/$COMPARISON_SKILL"
+COMPARISON_ROOT="$TEMP_ROOT/comparison-skills"
+COMPARISON_LINK="$TEMP_ROOT/comparison-skills-link"
+mkdir -p "$COMPARISON_ROOT"
+ln -s "$COMPARISON_ROOT" "$COMPARISON_LINK"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_SKILL_DIR="$COMPARISON_LINK" JAMSESSION_SOURCE_URL="file://$ROOT" \
+  "$ROOT/jamsession" skills install "$COMPARISON_SKILL"
+check "CLI installs actual comparison kit through symlinked skills root" test "$status" -eq 0
+check "actual comparison resources match links and installed bytes" python3 - "$COMPARISON_SOURCE" "$COMPARISON_ROOT/$COMPARISON_SKILL" <<'PY'
+from pathlib import Path
+import re, sys
+source, installed = map(Path, sys.argv[1:])
+manifest = source.joinpath('resources.txt').read_text().splitlines()
+links = re.findall(r'\]\((?:\./)?((?:references|assets)/[^)#\s]+)(?:#[^)]*)?\)', source.joinpath('SKILL.md').read_text())
+assert len(manifest) == len(set(manifest))
+assert set(links) == set(manifest), (links, manifest)
+actual = {str(p.relative_to(source)) for folder in ('references', 'assets') for p in source.joinpath(folder).rglob('*') if p.is_file()}
+assert actual == set(manifest), (actual, manifest)
+for name in ['SKILL.md'] + [p for p in manifest if p.endswith('.md')]:
+    for link in re.findall(r'\]\(([^)]+)\)', source.joinpath(name).read_text()):
+        if '://' in link or link.startswith(('#', 'mailto:')):
+            continue
+        target = source.joinpath(name).parent.joinpath(link.split('#')[0]).resolve()
+        assert target.is_relative_to(source.resolve()) and target.is_file(), (name, link)
+for name in ['SKILL.md', 'agents/openai.yaml', 'resources.txt'] + manifest:
+    assert source.joinpath(name).read_bytes() == installed.joinpath(name).read_bytes(), name
+PY
+printf '%s\n' stale >"$COMPARISON_ROOT/$COMPARISON_SKILL/assets/coordinator-prompt.md"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_SKILL_DIR="$COMPARISON_LINK" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$ROOT/install.sh"
+check "installer refreshes comparison kit through symlinked skills root" test "$status" -eq 0
+check "installer restores actual comparison asset" cmp -s "$COMPARISON_SOURCE/assets/coordinator-prompt.md" "$COMPARISON_ROOT/$COMPARISON_SKILL/assets/coordinator-prompt.md"
+mv "$COMPARISON_ROOT/$COMPARISON_SKILL" "$COMPARISON_ROOT/held-package"
+ln -s "$COMPARISON_ROOT/held-package" "$COMPARISON_ROOT/$COMPARISON_SKILL"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_SKILL_DIR="$COMPARISON_LINK" JAMSESSION_SOURCE_URL="file://$ROOT" \
+  "$ROOT/jamsession" skills install "$COMPARISON_SKILL"
+check "individual package symlink remains rejected" test "$status" -ne 0
+rm "$COMPARISON_ROOT/$COMPARISON_SKILL"
+mv "$COMPARISON_ROOT/held-package" "$COMPARISON_ROOT/$COMPARISON_SKILL"
+# Losing the manifest of a resource-linked skill must not turn it into a legacy package.
+cp -R "$COMPARISON_SOURCE" "$RESOURCE_SOURCE/skills/kit-without-manifest"
+rm "$RESOURCE_SOURCE/skills/kit-without-manifest/resources.txt"
+mv "$RESOURCE_SOURCE/skills/$COMPARISON_SKILL" "$RESOURCE_SOURCE/skills/kit-original"
+mv "$RESOURCE_SOURCE/skills/kit-without-manifest" "$RESOURCE_SOURCE/skills/$COMPARISON_SKILL"
+printf '%s\n' '# newer source marker' >>"$RESOURCE_SOURCE/skills/$COMPARISON_SKILL/SKILL.md"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_SKILL_DIR="$COMPARISON_LINK" JAMSESSION_SOURCE_URL="file://$RESOURCE_SOURCE" \
+  "$ROOT/jamsession" skills install "$COMPARISON_SKILL"
+check "resource-linked skill rejects missing manifest" test "$status" -ne 0
+check "missing linked manifest preserves old skill" cmp -s "$COMPARISON_SOURCE/SKILL.md" "$COMPARISON_ROOT/$COMPARISON_SKILL/SKILL.md"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_SKILL_DIR="$COMPARISON_LINK" JAMSESSION_SOURCE_URL="file://$RESOURCE_SOURCE" sh "$ROOT/install.sh"
+check "installer rejects missing manifest for linked resources" test "$status" -ne 0
+check "missing linked manifest preserves old bundle" cmp -s "$COMPARISON_SOURCE/SKILL.md" "$COMPARISON_ROOT/$COMPARISON_SKILL/SKILL.md"
+
+# Simulate an HTTP404 specifically for the manifest while other fetches succeed.
+cat >"$RESOURCE_FAIL_BIN/curl" <<'SH'
+#!/bin/sh
+case "$*" in */resources.txt*) printf 404; exit 22 ;; esac
+exec /usr/bin/curl "$@"
+SH
+chmod 755 "$RESOURCE_FAIL_BIN/curl"
+run_command env PATH="$RESOURCE_FAIL_BIN:$PATH" HOME="$INSTALL_HOME" JAMSESSION_SKILL_DIR="$COMPARISON_LINK" JAMSESSION_SOURCE_URL="file://$ROOT" \
+  "$ROOT/jamsession" skills install "$COMPARISON_SKILL"
+check "HTTP404 cannot silently omit a linked resource kit" test "$status" -ne 0
+check "HTTP404 linked manifest preserves old skill" cmp -s "$COMPARISON_SOURCE/SKILL.md" "$COMPARISON_ROOT/$COMPARISON_SKILL/SKILL.md"
+rm "$RESOURCE_FAIL_BIN/curl"
+
 # --- Second run: recognized files refresh, everything else survives ---
 INSTALLED="$INSTALL_HOME/.agents/jamsession"
 INSTALLED_SKILLS="$INSTALL_HOME/.agents/skills"

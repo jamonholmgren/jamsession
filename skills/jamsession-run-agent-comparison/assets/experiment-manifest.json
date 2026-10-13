@@ -1,0 +1,144 @@
+{
+  "schema_version": 1,
+  "ready_to_launch": false,
+  "experiment_id": null,
+  "revision": null,
+  "authorization": {
+    "record": null,
+    "mode": "source-only-planning",
+    "candidate_calls": null,
+    "review_calls": null,
+    "sharing_authorized": false,
+    "product_integration_authorized": false
+  },
+  "tasks": [
+    {
+      "id": null,
+      "kind": null,
+      "prompt_path": null,
+      "prompt_sha256": null,
+      "provenance": null,
+      "candidate_prompt_path": null,
+      "candidate_prompt_sha256": null,
+      "grader_prompt_path": null,
+      "grader_prompt_sha256": null
+    }
+  ],
+  "source": {
+    "location": null,
+    "revision": null,
+    "readable_manifest_path": null,
+    "readable_manifest_sha256": null,
+    "allowed_paths": [],
+    "excluded_paths": [],
+    "before_after_audit": null,
+    "protection_and_limits": null,
+    "private_evidence_location_outside_snapshot": null
+  },
+  "scoring": {
+    "rubric_path": null,
+    "rubric_sha256": null,
+    "private_expert_criteria_path": null,
+    "private_expert_criteria_sha256": null,
+    "frozen_before_candidates": false,
+    "category_maximums": [
+      35,
+      25,
+      15,
+      10,
+      10,
+      5
+    ],
+    "reviewer_conditions": [],
+    "required_independent_premium_families": 2,
+    "adjudicator": null,
+    "material_score_gap": 10,
+    "quality_aggregation": "Mean of two complete valid raw category sums; only predeclared source-backed blind adjudication may override",
+    "essential_score_cap": "none",
+    "additional_defect_penalty": false,
+    "defect_ledger_path": null,
+    "task_mean_weights": {},
+    "tier_interpretation_if_requested": "not-requested",
+    "adjudicator_blinding": "Independent decision-maker with no private map, dispatch identity or revealing traces",
+    "override_policy": {
+      "permitted_grounds": [
+        "source-verified factual/category application error",
+        "demonstrable arithmetic or extraction error",
+        "review disqualified by identity contamination, missing required access or incomplete coverage"
+      ],
+      "required_record": "Affected category, source evidence, prior points and correction",
+      "replacement_review_rule": "Only within frozen call authorization; otherwise qualified or pending coverage",
+      "forbidden_grounds": [
+        "model reputation",
+        "preferred ranking",
+        "cost"
+      ]
+    },
+    "pre_unblinding_score_and_defect_lock_path": null
+  },
+  "conditions": [
+    {
+      "id": null,
+      "model": null,
+      "harness": null,
+      "requested_effort": null,
+      "native_capability_evidence": null,
+      "effective_settings_receipt_policy": "Record exposed actual metadata; otherwise unverified"
+    }
+  ],
+  "trials": {
+    "fresh_sessions_per_condition_per_task": 5,
+    "cohort": null,
+    "cell_ids": [],
+    "scheduling": null,
+    "three_trial_budget_override": "not-requested"
+  },
+  "limits": {
+    "per_cell_deadline_seconds": null,
+    "total_authorized_calls": null,
+    "max_concurrency": null,
+    "spend_or_usage_limit_if_authorized": "not-authorized",
+    "stop_conditions": null
+  },
+  "access": {
+    "candidate_read_scope": "Frozen source allowlist and own task envelope only",
+    "candidate_write_scope": "Assigned plan path only, or final stdout",
+    "assigned_output_paths": {},
+    "runtime_commands_allowed": [],
+    "forbidden": [
+      "source edits",
+      "apps/editors",
+      "tests",
+      "diagnostic/build/import scripts",
+      "installs",
+      "external research",
+      "Git/history",
+      "other plans and historical references",
+      "private rubric/checklist",
+      "reviews and author maps",
+      "delegation"
+    ],
+    "proposed_verification_status": "UNRUN"
+  },
+  "outputs": {
+    "caller_owned_home": null,
+    "receipt_directory": null,
+    "blind_artifact_directory": null,
+    "private_identity_map": null,
+    "report_path": null,
+    "retention_policy": null,
+    "private_redaction_log": null
+  },
+  "recovery": {
+    "authorized_retry_conditions": "none",
+    "max_additional_attempts": 0,
+    "public_final_recovery_without_inference": "not-authorized",
+    "check_owned_handle_before_retry": true,
+    "preserve_original_attempt": true,
+    "automatic_quota_reset": false
+  },
+  "implementation_if_authorized": "not-authorized",
+  "panel_protocol_if_authorized": "not-requested",
+  "launcher_path_and_sha256": null,
+  "amendments": []
+}
