@@ -44,6 +44,9 @@ description: "Report provider usage, quotas, remaining capacity and reset times;
    `usage_not_observed` means neither source provided quota, not that the account
    is unauthenticated or unused. Do not start a model turn or login/reset to
    manufacture a report.
+   Antigravity (`agy`/`gemini`) reads the native print-mode `/usage` command
+   without a model turn. Keep its Gemini and Claude/GPT quota windows separate;
+   neither represents quota in another provider's native harness.
 7. After the table, state how many providers returned usage out of the total.
    Mention unavailable providers in one concise sentence. If diagnostics show
    why collection failed, state that briefly; distinguish an unreadable usage

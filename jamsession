@@ -26,7 +26,8 @@ if [ -f "$JAMSESSION_CONFIG" ]; then
   source "$JAMSESSION_CONFIG"
 fi
 export JAMSESSION_CODEX_BIN JAMSESSION_CLAUDE_BIN JAMSESSION_CURSOR_BIN \
-  JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN JAMSESSION_MUSE_BIN
+  JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN JAMSESSION_MUSE_BIN \
+  JAMSESSION_ANTIGRAVITY_BIN
 
 usage() {
   cat <<'EOF'
@@ -57,6 +58,7 @@ IDs, session sizes, hints, warnings, and diagnostics go to stderr. Past 250K
 tokens, the size line suggests handing off to a fresh session.
 
 `providers` lists the installed provider adapters. `adapters` is an exact alias.
+`antigravity` runs Google's agy CLI; `agy` and `gemini` are aliases for it.
 EOF
 }
 
@@ -407,7 +409,9 @@ valid_provider() {
 
 adapter_path() {
   valid_provider "$1" || die "invalid provider '$1'"
-  printf '%s/jamsession_%s\n' "$JAMSESSION_ADAPTER_DIR" "$1"
+  local provider="$1"
+  case "$provider" in agy|gemini) provider=antigravity ;; esac
+  printf '%s/jamsession_%s\n' "$JAMSESSION_ADAPTER_DIR" "$provider"
 }
 
 require_adapter() {
@@ -449,7 +453,8 @@ EOF
     'grok:grok:JAMSESSION_GROK_BIN' \
     'copilot:copilot:JAMSESSION_COPILOT_BIN' \
     'devin:devin:JAMSESSION_DEVIN_BIN' \
-    'muse:muse:JAMSESSION_MUSE_BIN'; do
+    'muse:muse:JAMSESSION_MUSE_BIN' \
+    'antigravity:agy:JAMSESSION_ANTIGRAVITY_BIN'; do
     provider="${pair%%:*}"
     command="${pair#*:}"; command="${command%%:*}"
     variable="${pair##*:}"
@@ -744,6 +749,7 @@ discover without replacing existing values. Supported overrides:
   JAMSESSION_COPILOT_BIN=/path/to/copilot
   JAMSESSION_DEVIN_BIN=/path/to/devin
   JAMSESSION_MUSE_BIN=/path/to/muse
+  JAMSESSION_ANTIGRAVITY_BIN=/path/to/agy
 
 Custom adapters belong in: $JAMSESSION_ADAPTER_DIR
 EOF
@@ -948,7 +954,7 @@ EOF
       cat <<'EOF'
 Usage: jamsession usage [provider] [--json]
 
-Shows subscription usage for the seven bundled providers, or one provider.
+Shows subscription usage for the eight bundled providers, or one provider.
 The collector uses Bash and system tools; some readers need system Python 3.
 Exit 0 means complete, 2 means partial, and 1 means no requested usage was read.
 Devin reads its startup subscription screen. Muse reads last-observed quota
@@ -956,6 +962,8 @@ through its official CLI protocol, falling back to its local /usage screen.
 It preserves provider as-of times; missing reports remain unavailable.
 Those readers use system Python 3,
 like Grok and Copilot. They never submit a model prompt or consume a reset.
+Antigravity (aliases agy/gemini) reads native `agy -p /usage`, reporting
+Gemini and Claude/GPT quota separately. It also uses system Python 3.
 EOF
       ;;
     status)

@@ -1,0 +1,255 @@
+#!/usr/bin/env bash
+
+set -u
+
+ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_jamsession_adapter_common
+source "$ADAPTER_DIR/_jamsession_adapter_common"
+jamsession_adapter_setup antigravity agy JAMSESSION_ANTIGRAVITY_BIN
+
+help_text() {
+  cat <<'EOF'
+jamsession_antigravity
+
+Run:    jamsession_antigravity run <new|session> <model> <effort> <read|edit> <prompt>
+Other:  jamsession_antigravity <list|which|models|message|usage|status|doctor|help>
+
+Message: message <session> <text> --resume-with <model> <effort> <read|edit>
+resumes once, not queued. Stop the owning process first; ownership cannot be
+verified. See `jamsession help message` and `jamsession help watch`.
+
+Antigravity edit mode uses accept-edits and dangerously-skip-permissions so the
+non-interactive session executes tool commands without prompt stalls. This
+adapter rejects read mode because the CLI cannot mechanically guarantee no
+writes in headless mode. Gemini aliases (gemini, flash, gemini-3.8-flash)
+select gemini-3.8-flash-<effort> from the live `agy models` catalog. An existing
+effort suffix is replaced, never doubled. xhigh/max translate to high with a
+warning. default model selects Gemini 3.8 Flash; default effort preserves an
+explicit suffix, otherwise selects high. Exact other model IDs remain usable.
+Usage reads native `agy -p /usage`, without a model turn. Session IDs are
+Antigravity conversation UUIDs. `agy` and `gemini` are provider aliases.
+EOF
+}
+
+list_sessions() {
+  [ $# -le 1 ] || jamsession_die "list takes an optional count"
+  local count="${1:-5}" db="$HOME/.gemini/antigravity-cli/conversation_summaries.db" cwd
+  jamsession_positive_count "$count"
+  cwd="$(printf '%s' "$JAMSESSION_CWD" | sed "s/'/''/g")"
+  if [ -f "$db" ] && command -v sqlite3 >/dev/null 2>&1; then
+    local sessions
+    sessions="$(sqlite3 "file:$db?immutable=1" "SELECT conversation_id FROM conversation_summaries WHERE instr(workspace_uris, '$cwd') > 0 AND parent_conversation_id = '' ORDER BY last_modified_time DESC LIMIT $count;" 2>/dev/null)"
+    if [ -z "$sessions" ]; then
+      sessions="$(sqlite3 "file:$db?immutable=1" "SELECT conversation_id FROM conversation_summaries WHERE parent_conversation_id = '' ORDER BY last_modified_time DESC LIMIT $count;" 2>/dev/null)"
+    fi
+    if [ -n "$sessions" ]; then
+      printf '%s\n' "$sessions"
+      return 0
+    fi
+  fi
+  local root="$HOME/.gemini/antigravity-cli/conversations" dir
+  if [ -d "$root" ]; then
+    local -a dirs=()
+    while IFS= read -r -d '' dir; do dirs+=("$dir"); done \
+      < <(find "$root" -mindepth 1 -maxdepth 1 -type f -name '*.db' -print0 2>/dev/null)
+    [ "${#dirs[@]}" -gt 0 ] || jamsession_unsupported list
+    ls -td "${dirs[@]}" | head -n "$count" | while IFS= read -r dir; do
+      dir="${dir%/}"
+      dir="${dir##*/}"; printf '%s\n' "${dir%.db}"
+    done
+  else
+    jamsession_unsupported list
+  fi
+}
+
+list_models() {
+  [ $# -eq 0 ] || jamsession_die "models takes no arguments"
+  jamsession_require_binary
+  "$JAMSESSION_PROVIDER_BIN" models
+}
+
+which_transcript() {
+  jamsession_validate_which "$@"
+  local root="$HOME/.gemini/antigravity-cli" path=""
+  if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
+    path="$(find "$HOME/.gemini/antigravity-cli/brain" "$HOME/.gemini/antigravity/brain" -type f -path "*/$JAMSESSION_WHICH_SESSION/*transcript.jsonl" -print -quit 2>/dev/null)"
+    if [ -n "$path" ]; then
+      printf 'path: %s\nformat: JSONL\nread: less %q\n' "$path" "$path"
+      return
+    fi
+    path="$root/conversations/$JAMSESSION_WHICH_SESSION.db"
+    [ -f "$path" ] || jamsession_die "session '$JAMSESSION_WHICH_SESSION' was not found under $root"
+    printf 'path: %s\nformat: SQLite with internal binary step payloads\n' "$path"
+    printf 'inspect schema: sqlite3 %q .schema\n' "file:$path?immutable=1"
+    printf 'note: no stable plain-text transcript export in this CLI; inspect in the owning UI, without starting another writer. Do not modify the database or remove locks.\n'
+  else
+    printf 'path: %s/conversations\nformat: per-session SQLite; optional JSONL under %s/brain\nread: jamsession list antigravity; jamsession which antigravity SESSION_ID\n' "$root" "$root"
+  fi
+}
+
+resolve_model() {
+  local model="$JAMSESSION_MODEL" effort="$JAMSESSION_EFFORT" base catalog suffix=""
+  case "$effort" in
+    default|low|medium|high|xhigh|max) ;;
+    *) jamsession_die "effort must be low, medium, high, xhigh, max, or default" ;;
+  esac
+  case "$model" in
+    default|gemini|flash) model=gemini-3.8-flash ;;
+  esac
+  base="$model"
+  case "$model" in
+    gemini-*-low|gemini-*-medium|gemini-*-high) suffix="${model##*-}"; base="${model%-*}" ;;
+  esac
+  case "$base" in
+    gemini-*)
+      case "$effort" in
+        xhigh|max)
+          printf 'warning: Antigravity Gemini supports up to high effort; using high instead of %s\n' "$effort" >&2
+          effort=high
+          ;;
+      esac
+      [ "$effort" != default ] || effort="${suffix:-high}"
+      model="$base-$effort"
+      if [ -n "$suffix" ] && [ "$suffix" != "$effort" ]; then
+        printf 'warning: explicit effort replaces model suffix: %s -> %s\n' "$JAMSESSION_MODEL" "$model" >&2
+      fi
+      ;;
+  esac
+  catalog="$("$JAMSESSION_PROVIDER_BIN" models)" || jamsession_die "could not read the Antigravity model catalog"
+  if ! printf '%s\n' "$catalog" | awk '{print $1}' | grep -Fxq -- "$model"; then
+    printf 'Available Antigravity models:\n%s\n' "$catalog" >&2
+    jamsession_die "model '$model' is not available; run jamsession models antigravity"
+  fi
+  JAMSESSION_MODEL="$model"
+  JAMSESSION_EFFORT="$effort"
+}
+
+extract_json_response() {
+  local json_file="$1"
+  if command -v "${JAMSESSION_PYTHON_BIN:-python3}" >/dev/null 2>&1; then
+    "${JAMSESSION_PYTHON_BIN:-python3}" -c '
+import json, sys
+try:
+    with open(sys.argv[1], "r", encoding="utf-8") as f:
+        data = json.load(f)
+    resp = data.get("response", "")
+    sys.stdout.write(resp)
+except Exception:
+    sys.exit(1)
+' "$json_file"
+  else
+    jamsession_json_string "$(cat "$json_file")" response || true
+  fi
+}
+
+run_agent() {
+  jamsession_validate_run "$@"
+  jamsession_require_binary
+  [ "$JAMSESSION_ACCESS" = edit ] || jamsession_die "read access is unsupported because Antigravity CLI cannot guarantee no writes in headless mode"
+  if [ "$JAMSESSION_SESSION" != new ]; then
+    jamsession_validate_which "$JAMSESSION_SESSION"
+  fi
+  resolve_model
+
+  local session_id status provider_output provider_error json_content total_tokens result_status
+  local -a args
+  args=(-p "$JAMSESSION_PROMPT" --mode accept-edits --dangerously-skip-permissions --output-format json)
+  args+=(--model "$JAMSESSION_MODEL")
+  case "$JAMSESSION_EFFORT" in
+    default) ;;
+    *) args+=(--effort "$JAMSESSION_EFFORT") ;;
+  esac
+
+  if [ "$JAMSESSION_SESSION" != new ]; then
+    args+=(--conversation "$JAMSESSION_SESSION")
+  fi
+
+  jamsession_hint "Antigravity dangerously-skip-permissions auto-approves tool actions without confirmation."
+  jamsession_make_temp_dir
+  provider_output="$JAMSESSION_TEMP_DIR/antigravity.stdout"
+  provider_error="$JAMSESSION_TEMP_DIR/antigravity.stderr"
+  status=0
+  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null >"$provider_output" 2>"$provider_error") || status=$?
+  [ ! -s "$provider_error" ] || cat "$provider_error" >&2
+
+  session_id=""
+  json_content=""
+  if [ -s "$provider_output" ]; then
+    json_content="$(cat "$provider_output")"
+    session_id="$(jamsession_json_string "$json_content" conversation_id || true)"
+  fi
+  [ -n "$session_id" ] || [ "$JAMSESSION_SESSION" = new ] || session_id="$JAMSESSION_SESSION"
+
+  if [ -n "$session_id" ]; then
+    jamsession_session "$session_id"
+  elif [ "$status" -eq 0 ]; then
+    printf 'jamsession_antigravity: provider returned no session identifier\n' >&2
+    status=1
+  fi
+
+  result_status="$(jamsession_json_string "$json_content" status || true)"
+  if [ "$status" -eq 0 ] && [ "$result_status" = "SUCCESS" ]; then
+    extract_json_response "$provider_output" || status=1
+  else
+    [ "$status" -ne 0 ] || status=1
+    if [ -s "$provider_output" ]; then
+      local error_msg=""
+      if command -v "${JAMSESSION_PYTHON_BIN:-python3}" >/dev/null 2>&1; then
+        error_msg="$("${JAMSESSION_PYTHON_BIN:-python3}" -c 'import json, sys; data = json.load(open(sys.argv[1])); print(data.get("error", ""))' "$provider_output" 2>/dev/null || true)"
+      fi
+      if [ -n "$error_msg" ]; then
+        printf '%s\n' "$error_msg" >&2
+      else
+        cat "$provider_output" >&2
+      fi
+    fi
+  fi
+
+  total_tokens="$(jamsession_json_number "$json_content" total_tokens || true)"
+  if [ -n "$total_tokens" ]; then
+    jamsession_session_size "$total_tokens"
+  else
+    jamsession_session_size ""
+  fi
+
+  exit "$status"
+}
+
+case "${1:-help}" in
+  message)
+    shift; jamsession_validate_message "$@"; jamsession_resume_message
+    ;;
+  run) shift; run_agent "$@" ;;
+  which) shift; which_transcript "$@" ;;
+  list) shift; list_sessions "$@" ;;
+  models) shift; list_models "$@" ;;
+  usage) shift; jamsession_adapter_usage "$@" ;;
+  status)
+    [ $# -eq 1 ] || jamsession_die "status takes no arguments"
+    cli="$ADAPTER_DIR/../jamsession"
+    [ -x "$cli" ] || cli="$ADAPTER_DIR/../bin/jamsession"
+    exec "$cli" status antigravity
+    ;;
+  steer) jamsession_unsupported steer ;;
+  doctor)
+    [ $# -eq 1 ] || jamsession_die "doctor takes no arguments"
+    jamsession_require_binary
+    "$JAMSESSION_PROVIDER_BIN" --version
+    doctor_output="$("$JAMSESSION_PROVIDER_BIN" models 2>&1)" || {
+      printf '%s\n' "$doctor_output" >&2
+      exit 1
+    }
+    case "$doctor_output" in
+      *'not authenticated'*|*'Not authenticated'*|*'authentication failed'*|*'login required'*)
+        printf 'authentication: unavailable\n' >&2
+        exit 1
+        ;;
+      *)
+        printf '%s\n' "$doctor_output" | grep -q '^gemini-' || jamsession_die "model catalog unavailable; authentication could not be verified"
+        printf 'authentication: ready (model catalog fetched)\n'
+        ;;
+    esac
+    ;;
+  help|-h|--help) help_text ;;
+  *) jamsession_die "unknown command '$1'" ;;
+esac

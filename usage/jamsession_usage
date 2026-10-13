@@ -2,7 +2,7 @@
 
 set -u
 
-PROVIDERS="copilot codex claude cursor grok devin muse"
+PROVIDERS="copilot codex claude cursor grok devin muse antigravity"
 TIMEOUT="${JAMSESSION_USAGE_TIMEOUT:-20}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_DIR=""
@@ -289,6 +289,7 @@ text_windows() {
       'Subscription ('*) heading="subscription|$line" ;;
       'Subscription window') heading="subscription_window|Subscription window" ;;
       'Subscription weekly') heading="subscription_weekly|Subscription weekly" ;;
+      'Model quota: '*) heading="${line#Model quota: }|${line#Model quota: }" ;;
       Plan) heading="monthly_plan|Monthly plan" ;;
     esac
     if [[ "$line" =~ ([0-9]+([.][0-9]+)?)%[[:space:]]+used ]]; then
@@ -368,6 +369,10 @@ provider_usage() {
       [ "$read_status" -eq 0 ] || return 1
       PROVIDER_WINDOWS="$(text_windows muse "$text")" || return 1
       ;;
+    antigravity)
+      text="$(tui_usage antigravity "${JAMSESSION_ANTIGRAVITY_BIN:-agy}")" || return 1
+      PROVIDER_WINDOWS="$(text_windows antigravity "$text")" || return 1
+      ;;
     *) return 1 ;;
   esac
 }
@@ -392,7 +397,11 @@ main() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --json) json=1 ;;
-      copilot|codex|claude|cursor|grok|devin|muse) [ -z "$requested" ] || fail "choose at most one provider"; requested="$1" ;;
+      copilot|codex|claude|cursor|grok|devin|muse|antigravity|agy|gemini)
+        [ -z "$requested" ] || fail "choose at most one provider"
+        requested="$1"
+        case "$requested" in agy|gemini) requested=antigravity ;; esac
+        ;;
       *) fail "unknown argument '$1'" ;;
     esac
     shift

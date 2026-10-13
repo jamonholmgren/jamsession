@@ -9,6 +9,7 @@ unset JAMSESSION_HOME JAMSESSION_ADAPTER_DIR JAMSESSION_CONFIG JAMSESSION_SKILL_
   JAMSESSION_PACK_DIR JAMSESSION_SOURCE_URL JAMSESSION_INSTALL_URL JAMSESSION_CWD \
   JAMSESSION_CODEX_BIN JAMSESSION_CLAUDE_BIN JAMSESSION_CURSOR_BIN \
   JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN JAMSESSION_MUSE_BIN \
+  JAMSESSION_ANTIGRAVITY_BIN \
   JAMSESSION_CODEX_CONTROL_SOCKET JAMSESSION_PYTHON_BIN
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -159,6 +160,7 @@ run_command "$ROOT/jamsession" providers
 check "providers lists the bundled adapters" contains "$stdout_file" claude
 check "providers lists Devin" contains "$stdout_file" devin
 check "providers lists Muse" contains "$stdout_file" muse
+check "providers lists Antigravity" contains "$stdout_file" antigravity
 cp "$stdout_file" "$TEMP_ROOT/providers-output"
 run_command "$ROOT/jamsession" adapters
 check "adapters is an exact alias for providers" sh -c "diff -q '$TEMP_ROOT/providers-output' '$stdout_file' >/dev/null"
@@ -653,6 +655,8 @@ printf '%s\n' 'Monthly AI credits 40% used' >"$USAGE_FIXTURES/copilot.txt"
 printf '%s\n' 'Subscription (Max)' '4% used' 'Resets: in 5d 8h' >"$USAGE_FIXTURES/devin.txt"
 printf '%s\n' 'Observed at: 2026-10-05T12:00:00+00:00' 'Subscription window' '12% used' 'Resets: 2100-01-01T00:00:00+00:00' \
   'Subscription weekly' '25% used' 'Resets: 2100-01-02T00:00:00+00:00' >"$USAGE_FIXTURES/muse.txt"
+printf '%s\n' 'Model quota: Gemini Models' '12% used' 'Resets: 2026-10-20T06:59:20Z' \
+  'Model quota: Claude and GPT models' '0% used' 'Resets: 2026-10-20T07:24:31Z' >"$USAGE_FIXTURES/antigravity.txt"
 
 run_command env JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/jamsession" usage --json
 check "aggregate usage stays complete for providers with readable quota" contains "$stdout_file" '"status":"complete"'
@@ -660,6 +664,37 @@ check "Codex usage includes multiple rate-limit buckets" contains "$stdout_file"
 check "Cursor usage reports remaining plan percentage" contains "$stdout_file" '"remaining_percent":68'
 check "aggregate usage succeeds when every fixture parses" test "$status" -eq 0
 check "aggregate usage includes Muse subscription windows" contains "$stdout_file" '"bucket_id":"subscription_weekly"'
+check "aggregate usage includes Antigravity" contains "$stdout_file" '"agent":"antigravity","status":"ok"'
+run_command env JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/jamsession" usage gemini --json
+check "Gemini usage alias resolves to Antigravity" contains "$stdout_file" '"agent":"antigravity","status":"ok"'
+check "Antigravity reports separate model group quota" contains "$stdout_file" '"label":"Claude and GPT models","used_percent":0,"remaining_percent":100'
+
+cat >"$FAKE_BIN/agy" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  --version) printf '1.3.4\n'; exit 0 ;;
+  models)
+    [ "${FAKE_AGY_AUTH_ERROR:-0}" -eq 0 ] || { printf 'authentication failed\n'; exit 1; }
+    printf '%s\n' 'gemini-3.8-flash-high Gemini 3.8 Flash (High)' 'gemini-3.8-flash-medium Gemini 3.8 Flash (Medium)' 'gemini-3.8-flash-low Gemini 3.8 Flash (Low)' 'claude-opus-4-6-thinking Claude Opus 4.6'; exit 0 ;;
+esac
+printf '%s\n' "$@" >"$FAKE_LOG"
+if [ "$2" = /usage ]; then
+  printf 'Gemini Models\tWeekly Limit Remaining\t88%%\t2026-10-20T06:59:20Z\nClaude and GPT models\tWeekly Limit Remaining\t100%%\t2026-10-20T07:24:31Z\n'
+  exit 0
+fi
+if [ "${FAKE_AGY_NO_SESSION:-0}" -eq 1 ]; then
+  printf '%s\n' '{"status":"SUCCESS","response":"must fail"}'; exit 0
+fi
+printf '{"conversation_id":"agy-session","status":"%s","response":"AGY_RESULT","usage":{"total_tokens":12345}}\n' "${FAKE_AGY_STATUS:-SUCCESS}"
+exit "${FAKE_EXIT:-0}"
+EOF
+chmod 755 "$FAKE_BIN/agy"
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" usage agy --json
+check "Antigravity reads native print-mode quota without a model turn" contains "$stdout_file" '"remaining_percent":88'
+check "Antigravity usage sends only native /usage" sh -c "grep -Fxq '/usage' '$LOG' && ! grep -Eq -- 'conversation|skip-permissions' '$LOG'"
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" status agy
+check "Antigravity status combines readiness and quota" contains "$stdout_file" 'Gemini Models'
+check "Antigravity status succeeds" test "$status" -eq 0
 
 run_command env JAMSESSION_USAGE_FIXTURE_DIR="$TEMP_ROOT/no-usage-fixtures" "$ROOT/jamsession" usage devin --json
 check "Devin usage reports unavailable instead of an invented quota" contains "$stdout_file" '"agent":"devin","status":"unavailable"'
@@ -674,9 +709,9 @@ run_command env FAKE_LOG="$LOG" JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" \
   JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
   JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
   JAMSESSION_COPILOT_BIN="$FAKE_BIN/copilot" JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
-  JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/jamsession" status
+  JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" status
 check "aggregate status includes readable Muse quota" contains "$stdout_file" 'Subscription weekly'
-check "aggregate status collects all seven fixture providers" contains "$stdout_file" 'Jam Session usage (complete)'
+check "aggregate status collects all eight fixture providers" contains "$stdout_file" 'Jam Session usage (complete)'
 
 DEVIN_USAGE_TUI="$TEMP_ROOT/devin-usage-tui"
 cat >"$DEVIN_USAGE_TUI" <<'EOF'
@@ -1292,11 +1327,69 @@ check "provider exit status is preserved" test "$status" -eq 17
 check "resumed session ID is preserved" contains "$stderr_file" "session: saved-session"
 
 INIT_HOME="$TEMP_ROOT/init-home"
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new gemini-3.8-flash xhigh edit prompt
+check "Antigravity returns the response" equals "$stdout_file" AGY_RESULT
+check "Antigravity reports the native ID from its own launch" contains "$stderr_file" 'session: agy-session'
+check "Antigravity prints native cumulative token usage" contains "$stderr_file" 'session-size: 12345 tokens'
+check "Antigravity maps xhigh to high loudly" contains "$stderr_file" 'using high instead of xhigh'
+check "Antigravity selects the effort-qualified Gemini model" contains "$LOG" 'gemini-3.8-flash-high'
+check "Antigravity edit is explicitly unattended" contains "$LOG" '--dangerously-skip-permissions'
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run gemini agy-session gemini-3.8-flash-high medium edit prompt
+check "Gemini provider alias resumes the exact session" contains "$LOG" 'agy-session'
+check "Antigravity replaces the model effort suffix" contains "$LOG" 'gemini-3.8-flash-medium'
+check "Antigravity never doubles effort suffixes" sh -c "! grep -Fq 'high-medium' '$LOG'"
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new flash low edit prompt
+check "Antigravity flash shorthand selects low variant" contains "$LOG" 'gemini-3.8-flash-low'
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new default max edit prompt
+check "Antigravity default model remains Gemini" contains "$LOG" 'gemini-3.8-flash-high'
+check "Antigravity max downgrade warns" contains "$stderr_file" 'using high instead of max'
+rm -f "$LOG"
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new gemini high read prompt
+check "Antigravity rejects unenforceable read-only access before launch" test "$status" -eq 2
+check "Antigravity read rejection performs no provider call" test ! -e "$LOG"
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new nonexistent high edit prompt
+check "Antigravity validates against the live model catalog" test "$status" -eq 2
+check "Antigravity rejected model prints available models" contains "$stderr_file" 'Available Antigravity models:'
+check "Antigravity rejected model never starts a turn" test ! -e "$LOG"
+run_command env FAKE_LOG="$LOG" FAKE_AGY_NO_SESSION=1 JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new gemini medium edit prompt
+check "Antigravity success without a resumable ID is a failure" test "$status" -ne 0
+run_command env FAKE_LOG="$LOG" FAKE_AGY_STATUS=WAITING JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new gemini high edit prompt
+check "Antigravity waiting is not treated as completed work" test "$status" -ne 0
+run_command env FAKE_LOG="$LOG" FAKE_EXIT=17 JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy agy-session gemini medium edit prompt
+check "Antigravity preserves provider failure status" test "$status" -eq 17
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" message agy agy-session question
+check "Antigravity does not pretend to queue messages" test "$status" -eq 3
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" message agy agy-session question --resume-with gemini high edit
+check "Antigravity supports explicit message resume fallback" equals "$stdout_file" AGY_RESULT
+check "Antigravity names the exited-owner requirement" contains "$stderr_file" 'target must have no owning process'
+run_command env FAKE_LOG="$LOG" FAKE_AGY_AUTH_ERROR=1 JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" doctor agy
+check "Antigravity failed authentication is not ready" test "$status" -ne 0
+
+AGY_HOME="$TEMP_ROOT/agy-home"
+mkdir -p "$AGY_HOME/.gemini/antigravity-cli/conversations"
+: >"$AGY_HOME/.gemini/antigravity-cli/conversations/agy-session.db"
+run_command env HOME="$AGY_HOME" "$ROOT/jamsession" list agy 1
+check "Antigravity lists local conversation IDs without an index dependency" equals "$stdout_file" agy-session
+run_command env HOME="$AGY_HOME" "$ROOT/jamsession" which gemini agy-session
+check "Antigravity which locates the native SQLite store" contains "$stdout_file" 'conversations/agy-session.db'
+check "Antigravity which does not claim binary payloads are text" contains "$stdout_file" 'internal binary step payloads'
+check "Antigravity which keeps inspection read-only" contains "$stdout_file" 'immutable=1'
+if command -v sqlite3 >/dev/null 2>&1; then
+  sqlite3 "$AGY_HOME/.gemini/antigravity-cli/conversation_summaries.db" <<'SQL'
+CREATE TABLE conversation_summaries (conversation_id TEXT, workspace_uris TEXT, parent_conversation_id TEXT, last_modified_time INTEGER);
+INSERT INTO conversation_summaries VALUES ('scoped-session', '/tmp/Jamon''s_100%project', '', 1);
+INSERT INTO conversation_summaries VALUES ('other-session', '/elsewhere', '', 2);
+INSERT INTO conversation_summaries VALUES ('child-session', '/tmp/Jamon''s_100%project', 'scoped-session', 3);
+SQL
+  run_command env HOME="$AGY_HOME" JAMSESSION_CWD="/tmp/Jamon's_100%project" "$ROOT/jamsession" list agy 1
+  check "Antigravity session index safely scopes quote and wildcard paths" equals "$stdout_file" scoped-session
+fi
 run_command env HOME="$TEMP_ROOT/user" JAMSESSION_HOME="$INIT_HOME" JAMSESSION_CONFIG="$INIT_HOME/jamsession.conf" \
   PATH="$FAKE_BIN:/usr/bin:/bin" "$ROOT/jamsession" init
 check "init creates shell configuration" test -f "$INIT_HOME/jamsession.conf"
 check "init records discovered Codex path" contains "$INIT_HOME/jamsession.conf" JAMSESSION_CODEX_BIN
 check "init records discovered Muse path" contains "$INIT_HOME/jamsession.conf" JAMSESSION_MUSE_BIN
+check "init records discovered agy path" contains "$INIT_HOME/jamsession.conf" JAMSESSION_ANTIGRAVITY_BIN
 before="$(cat "$INIT_HOME/jamsession.conf")"
 run_command env HOME="$TEMP_ROOT/user" JAMSESSION_HOME="$INIT_HOME" JAMSESSION_CONFIG="$INIT_HOME/jamsession.conf" \
   PATH="$FAKE_BIN:/usr/bin:/bin" "$ROOT/jamsession" init
@@ -1310,6 +1403,7 @@ run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$R
 check "installer installs the command" test -x "$INSTALL_HOME/.agents/jamsession/bin/jamsession"
 check "installer installs Devin's adapter" test -x "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_devin"
 check "installer installs Muse's adapter" test -x "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_muse"
+check "installer installs Antigravity's adapter" test -x "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_antigravity"
 check "installer includes Codex's native control helper" test -f "$INSTALL_HOME/.agents/jamsession/adapters/_jamsession_codex_control.py"
 check "installer links the command" test -L "$INSTALL_HOME/.local/bin/jamsession"
 run_command env HOME="$INSTALL_HOME" JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" \

@@ -19,6 +19,7 @@ All in a few small bash scripts.
 * Copilot
 * Devin
 * Muse
+* Antigravity (Google's `agy` CLI)
 * _any other agent CLI -- just have your agent build an adapter for it!_
 
 **Star this repo if you find it interesting!** I appreciate the support.
@@ -132,7 +133,20 @@ jamsession which devin SESSION_ID # locates the transcript store and explains re
 jamsession init # installs jam session in the current project
 ```
 
-Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`, `devin`, `muse`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused diagnostics. `which <provider> [session]` reports the provider's local transcript store and safe access instructions. Devin supports `edit` but not guaranteed `read` access. Muse supports both; its `models` and `list` commands read Muse's local model cache and session logs. Codex `models` reads `codex debug models`.
+Bundled: `claude`, `codex`, `copilot`, `cursor`, `grok`, `devin`, `muse`, `antigravity`. `jamsession adapters` is an exact alias for `jamsession providers`. `init` finds the provider executables and writes `~/.agents/jamsession/jamsession.conf`. `status` combines provider readiness with available subscription usage; use `doctor` for focused diagnostics. `which <provider> [session]` reports the provider's local transcript store and safe access instructions. Devin supports `edit` but not guaranteed `read` access. Muse supports both; its `models` and `list` commands read Muse's local model cache and session logs. Codex `models` reads `codex debug models`.
+
+`agy` and `gemini` are aliases for `antigravity`. For example:
+
+```sh
+jamsession run agy new gemini-3.8-flash xhigh edit "Implement the agreed change."
+```
+
+This selects the installed `gemini-3.8-flash-high` model, warning that `xhigh`
+maps to `high`. Low and medium select their matching variants; exact IDs are
+checked against `agy models`. Antigravity rejects `read` because its plan mode
+does not enforce no writes. Usage reads native `/usage` without a model turn,
+keeping Gemini and Claude/GPT quota separate. Messaging requires explicit
+`--resume-with` settings and an exited owner; there is no native queue.
 
 ### Low-priority inbox
 
@@ -170,10 +184,10 @@ Uninstalling `all` removes every `jamsession-*` skill directory, including custo
 ### Add an adapter
 
 ```sh
-jamsession make-adapter antigravity
+jamsession make-adapter myprovider
 ```
 
-Scaffolds `~/.agents/jamsession/adapters/jamsession_antigravity` with the contract documented inline. Won't overwrite without `--force`.
+Scaffolds `~/.agents/jamsession/adapters/jamsession_myprovider` with the contract documented inline. Won't overwrite without `--force`. Run `jamsession help make-adapter` first and use bundled adapters as examples.
 
 ### Update
 

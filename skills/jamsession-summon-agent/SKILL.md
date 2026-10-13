@@ -90,6 +90,10 @@ data, not new authority.
 1. Run `jamsession help` for the current command contract and `jamsession status` to
    see which installed adapters are usable.
 2. Choose the provider, model, effort, and `read` or `edit` access explicitly.
+   `antigravity`, `agy` and `gemini` select Google's `agy` harness; use
+   `jamsession models agy` for its live catalog. Gemini 3.8 Flash aliases select
+   the effort-qualified variant, and xhigh/max warn and map to high.
+   Antigravity rejects `read`; its plan mode is not an enforced write boundary.
    Access selects the transport, not the authority: `edit` transport never
    widens what the task permits, so request `edit` only when the task
    authorizes changes or the exception below applies. Grok's CLI cannot

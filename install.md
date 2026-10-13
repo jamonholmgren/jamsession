@@ -120,6 +120,11 @@ when its provider cannot mechanically enforce that restriction. Provider-native
 session metadata and Jam Session temporary output may still be written outside
 the workspace. Use `edit` only when the task authorizes unattended changes.
 Devin currently supports `edit` but not guaranteed `read` access.
+Antigravity (`agy` or `gemini`) also rejects `read`. Run `jamsession models agy`
+for its live catalog; `gemini-3.8-flash` selects the variant matching your effort,
+with `xhigh`/`max` mapped to `high` and a warning. Its native `/usage` reader is
+included in `jamsession usage` and `status`. Run `jamsession update` to install
+new bundled adapters without changing your config.
 Muse supports both modes. `jamsession models muse` and `jamsession list muse`
 read its cached local model catalog and session logs, respectively; they do
 not query a live Muse service.

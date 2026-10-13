@@ -31,7 +31,7 @@ are grouped; use `jamsession models <provider>` for exact installed IDs.
 | Devin / Cognition | SWE-2, SWE-1.7, SWE-1.7 Lightning and SWE-1.6 (including fast). Adaptive selects models; Fusion combines models rather than naming a separate native model. Devin also has access to other providers' models, including through Fusion. |
 | Muse / Meta | Muse Wonder 1.0; Muse Spark 1.3 and 1.2 (including contributor variants). |
 | Copilot / GitHub | A multi-model harness; no separate GitHub-native base model is identified here. |
-| Antigravity / Google (custom adapter) | Gemini 3.8, 3.7, 3.6 and 3.5 Flash; Gemini 3.1 Pro and Gemini 3 Flash are also known from harness catalogs. Verify the installed Google agent's catalog; the custom adapter is not bundled. |
+| Antigravity / Google | Gemini 3.8 Flash (low, medium, high) in the installed `agy` catalog. Older harness catalogs retain Gemini 3.7, 3.6 and 3.5 Flash, Gemini 3.1 Pro and Gemini 3 Flash; verify availability. Use provider `antigravity`, `agy` or `gemini`; xhigh/max map to high with a warning. Antigravity also hosts other providers' models. |
 
 ## Premium
 

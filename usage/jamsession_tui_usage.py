@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read supported interactive /usage screens through a disposable local PTY."""
+"""Read native quota commands and supported /usage screens, never model turns."""
 
 import codecs
 import errno
@@ -322,14 +322,63 @@ def muse_usage(binary: str, timeout: int) -> int:
             process.stdout.close()
 
 
+def antigravity_usage_text(text: str) -> str | None:
+    """The supported print-mode /usage command emits tab-separated quotas."""
+    rows = []
+    for line in text.splitlines():
+        fields = line.split("\t")
+        if len(fields) != 4 or fields[1] != "Weekly Limit Remaining":
+            continue
+        label, _, percent, reset = fields
+        if not label or not re.fullmatch(r"\d+(?:\.\d+)?%", percent):
+            return None
+        remaining = Decimal(percent[:-1])
+        if not 0 <= remaining <= 100:
+            return None
+        try:
+            datetime.fromisoformat(reset.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        rows.extend((f"Model quota: {label}", f"{100 - remaining:f}% used", f"Resets: {reset}"))
+    return "\n".join(rows) if rows else None
+
+
+def antigravity_usage(binary: str, timeout: int) -> int:
+    # /usage is a native slash command, not a model prompt. Use an empty cwd
+    # and no resume flag so existing sessions and repository content stay out.
+    with tempfile.TemporaryDirectory(prefix="jamsession-agy-usage-") as directory:
+        process = subprocess.Popen(
+            [binary, "-p", "/usage", "--print-timeout", f"{timeout}s"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            cwd=directory, text=True,
+        )
+        try:
+            try:
+                output, _ = process.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                return 1
+            result = antigravity_usage_text(output) if process.returncode == 0 else None
+            if result:
+                print(result)
+                return 0
+            return 1
+        finally:
+            stop_process(process)
+
+
 def main() -> int:
-    if len(sys.argv) != 4 or sys.argv[1] not in {"grok", "copilot", "claude-models", "devin", "muse"}:
+    if len(sys.argv) != 4 or sys.argv[1] not in {"grok", "copilot", "claude-models", "devin", "muse", "antigravity"}:
         return 2
     provider, binary = sys.argv[1:3]
     try:
         timeout = max(1, int(sys.argv[3]))
     except ValueError:
         return 2
+    if provider == "antigravity":
+        try:
+            return antigravity_usage(binary, timeout)
+        except OSError:
+            return 1
     if provider == "muse":
         started = time.monotonic()
         try:
