@@ -15,6 +15,24 @@ Here are Jamon's model recommendations, grouped into classes. A class names a mo
 
 Prefer each model's native harness. Cursor Grok (also called Crok or Croc) is the exception: treat it as native for both Grok and Cursor because xAI owns both.
 
+## Known native models
+
+Catalog snapshot: October 12, 2026. Models belong next to their native agent,
+not every harness that can host them. This is an inventory, not a recommendation
+or a guarantee of account availability. Effort, fast and contributor variants
+are grouped; use `jamsession models <provider>` for exact installed IDs.
+
+| Native agent | Known models and families |
+| --- | --- |
+| Codex / OpenAI | GPT-6.1 Sol; GPT-6 Astra, Sol and Luna; GPT-5.6 Sol, Terra and Luna. Other harness catalogs retain GPT-5.5, GPT-5.4 and Mini, GPT-5.3 Codex, GPT-5.2, GPT-5.1 and GPT-4.1; these are legacy, not necessarily available in Codex. |
+| Claude / Anthropic | Opus 5.5, 5, 4.8, 4.7, 4.6 and 4.5; Fable 6.1, 5.1 and 5; Sonnet 5.5, 5 and 4.6; Haiku 5.5 and 4.5. Some known families are omitted by the installed picker. |
+| Grok / xAI | Grok 4.7 (including build-fast), 4.6 and 4.5. Crok/Croc uses these through Cursor; do not duplicate their catalog under Cursor. |
+| Cursor | Composer 2.5 (including fast). Cursor also has access to other providers' models. |
+| Devin / Cognition | SWE-2, SWE-1.7, SWE-1.7 Lightning and SWE-1.6 (including fast). Adaptive selects models; Fusion combines models rather than naming a separate native model. Devin also has access to other providers' models, including through Fusion. |
+| Muse / Meta | Muse Wonder 1.0; Muse Spark 1.3 and 1.2 (including contributor variants). |
+| Copilot / GitHub | A multi-model harness; no separate GitHub-native base model is identified here. |
+| Antigravity / Google (custom adapter) | Gemini 3.8, 3.7, 3.6 and 3.5 Flash; Gemini 3.1 Pro and Gemini 3 Flash are also known from harness catalogs. Verify the installed Google agent's catalog; the custom adapter is not bundled. |
+
 ## Premium
 
 Expensive, with the best results. Use for ping-pong planning and hard problems.
@@ -48,6 +66,7 @@ Weaker implementers are fine as long as review and verification eventually get t
 
 ## Notes
 
+* As of October 12, Jamon considers Muse Wonder 1.0 at xhigh to be GPT-6.1 Sol-level
 * Devin `swe-2-high` is the fallback when the Devin Fusion models return `resource_exhausted` (weekly quota). Briefs that pin a Fusion model should name it as the fallback
 * There is no GPT-6 Terra, and GPT-5.6 Terra is weak; use GPT-6.1 Sol low in its place
 * Devin's top SWE-2 effort is `swe-2-max` (there is no xhigh)

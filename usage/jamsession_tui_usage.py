@@ -161,6 +161,20 @@ class Screen:
 
 def visible_usage(provider: str, screen: Screen) -> str | None:
     text = screen.text()
+    if provider == "muse":
+        # Session token counts are not account quota. Require the whole
+        # subscription panel, including the provider's observation stamp.
+        panel = text.partition("Subscription ·")[2]
+        observed = re.search(r"\bas of\s+([^\n│]+)", panel)
+        if not observed:
+            return None
+        rows = [f"Observed at: {observed.group(1).strip()}"]
+        for name, label in (("Current", "Subscription window"), ("Weekly", "Subscription weekly")):
+            quota = re.search(rf"\b{name}\s+(\d+(?:\.\d+)?)% used\s*·\s*Resets\s+([^\n│]+)", panel)
+            if not quota or not 0 <= float(quota.group(1)) <= 100:
+                return None
+            rows.extend((label, f"{quota.group(1)}% used", f"Resets: {quota.group(2).strip()}"))
+        return "\n".join(rows)
     if provider == "devin":
         quota = re.search(r"([^\n·]+)\s*·\s*(\d+(?:\.\d+)?)%\s+remaining\s*\(resets in ([^)\n]+)\)", text)
         if not quota or not 0 <= float(quota.group(2)) <= 100:
@@ -203,6 +217,9 @@ def visible_claude_models(screen: Screen) -> str | None:
 
 def command(provider: str, binary: str, directory: str) -> tuple[list[str], dict[str, str]]:
     environment = os.environ.copy()
+    if provider == "muse":
+        environment["TERM"] = "xterm-256color"
+        return [binary, "--no-session-log", "--disable-write", "--disable-shell", "--trust-workspace"], environment
     if provider == "grok":
         environment["TERM"] = "xterm-256color"
         environment["COLORTERM"] = "truecolor"
@@ -276,13 +293,11 @@ def muse_usage(binary: str, timeout: int) -> int:
                     elif frame.get("id") == 2:
                         usage = frame.get("result", {}).get("usage")
                         if usage is None:
-                            print("Muse has not observed subscription quota; no model call was made", file=sys.stderr)
                             return 3
                         if not isinstance(usage, dict):
                             raise ValueError("invalid Muse usage result")
                         text = muse_usage_text(usage)
                         if not text:
-                            print("Muse has no unexpired subscription observation; no balance inferred", file=sys.stderr)
                             return 3
                         print(text)
                         return 0
@@ -308,11 +323,17 @@ def main() -> int:
     except ValueError:
         return 2
     if provider == "muse":
+        started = time.monotonic()
         try:
-            return muse_usage(binary, timeout)
+            status = muse_usage(binary, timeout)
         except (OSError, ValueError, TypeError, OverflowError, AttributeError):
             print("Muse usage could not be read through its CLI protocol", file=sys.stderr)
             return 1
+        if status != 3:
+            return status
+        timeout -= time.monotonic() - started
+        if timeout <= 0:
+            return 3
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
     with tempfile.TemporaryDirectory(prefix="jamsession-usage-") as directory:
@@ -324,8 +345,11 @@ def main() -> int:
                 stdout=slave,
                 stderr=slave,
                 close_fds=True,
-                cwd=directory if provider in {"claude-models", "devin"} else None,
+                cwd=directory if provider in {"claude-models", "devin", "muse"} else None,
                 env=environment,
+                # Muse reads /dev/tty rather than stdin. Its disposable PTY
+                # must own the child session so input cannot reach our caller.
+                preexec_fn=(lambda: (os.setsid(), fcntl.ioctl(slave, termios.TIOCSCTTY, 0))) if provider == "muse" else None,
             )
         except OSError:
             os.close(master)
@@ -336,9 +360,11 @@ def main() -> int:
         screen = Screen()
         deadline = time.monotonic() + timeout
         send_usage_at = time.monotonic() + min(3, timeout / 2)
+        muse_keys = iter((b"/usage", b"\r"))
         accepted_trust = provider not in {"copilot", "claude-models"}
         sent_usage = False
         result = None
+        query_tail = b""
         try:
             while time.monotonic() < deadline:
                 ready, _, _ = select.select([master], [], [], min(0.2, deadline - time.monotonic()))
@@ -352,6 +378,15 @@ def main() -> int:
                     if not data:
                         break
                     screen.feed(decoder.decode(data))
+                    if provider == "muse":
+                        # Declare the PTY's ordinary key encoding. Without a
+                        # reply Muse interprets legacy Enter as a line break.
+                        queries = query_tail + data
+                        for query in re.finditer(rb"\x1b\[(?:\?u|c)", queries):
+                            if query.end() > len(query_tail):
+                                reply = b"\x1b[?0u" if query.group() == b"\x1b[?u" else b"\x1b[?1;2c"
+                                os.write(master, reply)
+                        query_tail = queries[-3:]
                     if b"\x1b[6n" in data:
                         os.write(master, f"\x1b[{screen.row + 1};{screen.column + 1}R".encode())
                     trust_text = screen.text()
@@ -372,14 +407,21 @@ def main() -> int:
                     if result and (sent_usage or provider == "devin"):
                         break
                 if provider != "devin" and accepted_trust and not sent_usage and time.monotonic() >= send_usage_at:
-                    os.write(master, b"/model\r" if provider == "claude-models" else b"/usage\r")
-                    sent_usage = True
+                    if provider == "muse":
+                        # Drain the input-menu redraw before submitting.
+                        key = next(muse_keys)
+                        os.write(master, key)
+                        send_usage_at = time.monotonic() + 0.2
+                        sent_usage = key == b"\r"
+                    else:
+                        os.write(master, b"/model\r" if provider == "claude-models" else b"/usage\r")
+                        sent_usage = True
             if result:
                 print(result)
                 return 0
             if os.environ.get("JAMSESSION_TUI_DEBUG"):
                 print(screen.text(), file=sys.stderr)
-            return 1
+            return 3 if provider == "muse" else 1
         finally:
             if process.poll() is None:
                 process.send_signal(signal.SIGTERM)
@@ -387,6 +429,7 @@ def main() -> int:
                     process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     process.kill()
+                    process.wait()
             os.close(master)
 
 

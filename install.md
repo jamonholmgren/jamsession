@@ -135,9 +135,10 @@ jamsession skills
 The installer includes `jamsession-summon-agent` and
 `jamsession-get-agent-usage` by default. Ask your coding agent for current
 provider usage to get a table of limits, remaining capacity, and reset times.
-Devin quota is read from its startup screen; Muse quota comes from its official
-CLI protocol. Both use system Python 3 without submitting a model prompt.
-Muse's last-observed windows include timestamps, and missing or expired quota
+Devin quota is read from its startup screen; Muse first reads its official
+CLI protocol, then its local `/usage` screen if no unexpired observation exists.
+Both use system Python 3 without submitting a model prompt.
+Muse's windows include provider as-of timestamps, and missing quota
 stays explicitly unavailable rather than being guessed.
 
 Install one or all optional skills:

@@ -363,7 +363,7 @@ provider_usage() {
       text="$(tui_usage muse "${JAMSESSION_MUSE_BIN:-muse}")" || read_status=$?
       if [ "$read_status" -eq 3 ]; then
         PROVIDER_ERROR_CODE="usage_not_observed"
-        PROVIDER_ERROR_MESSAGE="Muse has no current subscription quota observation; no model call was made"
+        PROVIDER_ERROR_MESSAGE="Muse has no current subscription quota observation from usage/read or /usage; session tokens are not quota; no model call was made"
       fi
       [ "$read_status" -eq 0 ] || return 1
       PROVIDER_WINDOWS="$(text_windows muse "$text")" || return 1

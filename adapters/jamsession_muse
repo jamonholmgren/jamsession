@@ -24,9 +24,12 @@ workspace changes within Muse's normal sandbox. Muse does not expose native
 headless session or model listing commands; list and models read its local
 session logs and cached model catalog.
 Usage reads last-observed subscription windows through `muse serve` and
-`usage/read`, without a model turn. Missing or expired observations are
-unavailable, not zero usage. It needs system Python 3; observation times are
-included so retained data is not presented as a live balance.
+`usage/read`, then falls back to the local `/usage` screen if needed. No model
+turn is sent. Missing quota is unavailable, not zero usage. It needs system
+Python 3; observation times are included so retained data is not presented as
+a live balance.
+Use `jamsession usage muse --json` for quota data, or `jamsession status muse`
+for the usual readiness check with the same quota windows.
 EOF
 }
 

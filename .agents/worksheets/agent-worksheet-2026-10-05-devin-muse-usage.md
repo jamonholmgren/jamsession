@@ -3,6 +3,12 @@
 Status: BLOCKED
 Starting HEAD: 48a72fb85b11c2d4bcb69830eb2b743c0912241c
 
+October 5 follow-up: the supported `/usage` screen reader obtained Muse 1.4.3
+quota locally; see `agent-worksheet-2026-10-05-muse-usage-screen.md`. October 12
+follow-up: Muse 1.4.7 exposes no subscription observation on this account; see
+`agent-worksheet-2026-10-12-muse-usage-and-native-models.md`. These records preserve
+the version-specific evidence rather than claiming live quota from old results.
+
 ## Task source
 
 Jamon asked to fix Devin and Muse usage collection rather than omit them from

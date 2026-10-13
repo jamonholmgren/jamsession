@@ -659,6 +659,7 @@ check "aggregate usage stays complete for providers with readable quota" contain
 check "Codex usage includes multiple rate-limit buckets" contains "$stdout_file" '"bucket_id":"spark:secondary"'
 check "Cursor usage reports remaining plan percentage" contains "$stdout_file" '"remaining_percent":68'
 check "aggregate usage succeeds when every fixture parses" test "$status" -eq 0
+check "aggregate usage includes Muse subscription windows" contains "$stdout_file" '"bucket_id":"subscription_weekly"'
 
 run_command env JAMSESSION_USAGE_FIXTURE_DIR="$TEMP_ROOT/no-usage-fixtures" "$ROOT/jamsession" usage devin --json
 check "Devin usage reports unavailable instead of an invented quota" contains "$stdout_file" '"agent":"devin","status":"unavailable"'
@@ -669,6 +670,13 @@ check "Devin adapter usage reaches the shared collector" contains "$stdout_file"
 run_command env JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/adapters/jamsession_muse" usage --json
 check "Muse adapter usage reaches the shared collector" contains "$stdout_file" '"remaining_percent":88'
 check "Muse observations retain their as-of stamp" contains "$stdout_file" '"observed_at":"2026-10-05T12:00:00+00:00"'
+run_command env FAKE_LOG="$LOG" JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" \
+  JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
+  JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
+  JAMSESSION_COPILOT_BIN="$FAKE_BIN/copilot" JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" "$ROOT/jamsession" status
+check "aggregate status includes readable Muse quota" contains "$stdout_file" 'Subscription weekly'
+check "aggregate status collects all seven fixture providers" contains "$stdout_file" 'Jam Session usage (complete)'
 
 DEVIN_USAGE_TUI="$TEMP_ROOT/devin-usage-tui"
 cat >"$DEVIN_USAGE_TUI" <<'EOF'
@@ -735,6 +743,65 @@ run_command env JAMSESSION_MUSE_BIN="$MUSE_USAGE_HOST" FAKE_MUSE_REQUESTS="$MUSE
 check "Muse small percentages are not misparsed from exponent notation" contains "$stdout_file" '"used_percent":0.000001'
 run_command env JAMSESSION_USAGE_TIMEOUT=1 JAMSESSION_MUSE_BIN="$MUSE_USAGE_HOST" FAKE_MUSE_REQUESTS="$MUSE_REQUESTS" FAKE_MUSE_USAGE=stall "$ROOT/jamsession" usage muse --json
 check "Muse quota read is bounded by its timeout" test "$status" -eq 1
+
+MUSE_USAGE_TUI="$TEMP_ROOT/muse-usage-tui"
+cat >"$MUSE_USAGE_TUI" <<'EOF'
+#!/usr/bin/env python3
+import json, os, sys, time, tty
+if sys.argv[1] == '--version':
+    print('Muse Code fixture')
+elif sys.argv[1] == 'serve':
+    for line in sys.stdin:
+        request = json.loads(line)
+        if request['method'] == 'initialized': continue
+        result = {'schema': {'version': 1}} if request['method'] == 'initialize' else {}
+        print(json.dumps({'id': request['id'], 'result': result}), flush=True)
+else:
+    assert {'--no-session-log', '--disable-write', '--disable-shell', '--trust-workspace'} <= set(sys.argv)
+    assert os.getcwd().split('/')[-1].startswith('jamsession-usage-')
+    # Like native Muse, read the controlling terminal, not the stdin pipe.
+    with open('/dev/tty', 'rb', buffering=0) as terminal:
+        tty.setraw(terminal.fileno())
+        if os.environ.get('FAKE_MUSE_QUERIES') == 'split':
+            for fragment in ('\033[?', 'u\033[', 'c'):
+                sys.stdout.write(fragment); sys.stdout.flush(); time.sleep(0.1)
+        else:
+            sys.stdout.write('\033[?u\033[c'); sys.stdout.flush()
+        reply = b'\033[?0u\033[?1;2c'
+        received = b''
+        while len(received) < len(reply): received += terminal.read(1)
+        assert received == reply, received
+        message = b''
+        while not message.endswith(b'\r'): message += terminal.read(1)
+    assert message == b'/usage\r', message
+    print('Session usage\r\n  Input 999\r\n  Output 777\r\n  Turns 0\r', flush=True)
+    if os.environ.get('FAKE_MUSE_PANEL') != 'missing':
+        print('Subscription · Muse Code High Usage\r\n'
+              'Current 0% used · Resets at 10:00 PM\r\n'
+              'Weekly 1% used · Resets Oct 11 at 5:00 PM\r\n'
+              'as of 6:09 PM\r', flush=True)
+    time.sleep(30)
+EOF
+chmod 755 "$MUSE_USAGE_TUI"
+run_command env JAMSESSION_MUSE_BIN="$MUSE_USAGE_TUI" "$ROOT/jamsession" usage muse --json
+check "Muse missing MSP quota falls back to local usage command" contains "$stdout_file" '"status":"ok"'
+check "Muse subscription screen preserves current quota" contains "$stdout_file" '"remaining_percent":100'
+check "Muse subscription screen preserves weekly quota" contains "$stdout_file" '"remaining_percent":99'
+check "Muse screen preserves provider as-of text" contains "$stdout_file" '"observed_at":"6:09 PM"'
+check "Muse screen preserves provider reset text" contains "$stdout_file" '"reset_display":"Oct 11 at 5:00 PM"'
+run_command env JAMSESSION_MUSE_BIN="$MUSE_USAGE_TUI" FAKE_MUSE_QUERIES=split "$ROOT/jamsession" usage muse --json
+check "Muse terminal queries survive split PTY reads" contains "$stdout_file" '"status":"ok"'
+run_command env JAMSESSION_MUSE_BIN="$MUSE_USAGE_TUI" "$ROOT/jamsession" status muse
+check "Muse status combines readiness and real reader quota" contains "$stdout_file" 'Muse Code fixture'
+check "Muse status includes the current subscription window" contains "$stdout_file" 'Subscription window'
+check "Muse status includes the weekly subscription window" contains "$stdout_file" 'Subscription weekly'
+check "Muse status preserves the provider observation time" contains "$stdout_file" 'usage as of 6:09 PM'
+check "Muse status succeeds when quota is readable" test "$status" -eq 0
+run_command env JAMSESSION_USAGE_TIMEOUT=6 JAMSESSION_MUSE_BIN="$MUSE_USAGE_TUI" FAKE_MUSE_PANEL=missing "$ROOT/jamsession" usage muse --json
+check "Muse session tokens alone never become subscription quota" contains "$stdout_file" '"code":"usage_not_observed"'
+run_command env JAMSESSION_USAGE_TIMEOUT=6 JAMSESSION_MUSE_BIN="$MUSE_USAGE_TUI" FAKE_MUSE_PANEL=missing "$ROOT/jamsession" status muse
+check "Muse status keeps readiness when quota is missing" test "$status" -eq 0
+check "Muse status explains missing quota without inventing a balance" contains "$stdout_file" 'session tokens are not quota'
 
 GROK_USAGE_TUI="$TEMP_ROOT/grok-usage-tui"
 cat >"$GROK_USAGE_TUI" <<'EOF'

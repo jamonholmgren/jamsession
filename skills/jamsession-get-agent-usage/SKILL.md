@@ -38,9 +38,12 @@ description: "Report provider usage, quotas, remaining capacity and reset times;
    session-local trust prompt, and uses plan mode; do not substitute
    model-reported usage, session-token counts, or a private API.
    Devin reads its startup subscription screen without a prompt. Muse uses
-   its official CLI `usage/read` method; `usage_not_observed` means the CLI has
-   no current quota observation, not that the account is unauthenticated or
-   unused. Do not start a model turn or login/reset to manufacture a report.
+   its official CLI `usage/read` method, falling back to its local `/usage`
+   screen in a fresh temporary folder with shell and writes disabled. Preserve
+   the screen's literal as-of/reset text when no full timestamp is exposed.
+   `usage_not_observed` means neither source provided quota, not that the account
+   is unauthenticated or unused. Do not start a model turn or login/reset to
+   manufacture a report.
 7. After the table, state how many providers returned usage out of the total.
    Mention unavailable providers in one concise sentence. If diagnostics show
    why collection failed, state that briefly; distinguish an unreadable usage
