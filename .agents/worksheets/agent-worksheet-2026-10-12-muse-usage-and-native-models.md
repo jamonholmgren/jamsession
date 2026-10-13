@@ -64,3 +64,17 @@ The quota-reader capability is implemented and integrated; live subscription
 availability on Muse 1.4.7 remains a documented provider limitation. No new
 balance is claimed until the provider exposes an observation without a model
 turn. Revisit recommendation rankings with Jamon after publication.
+
+## Native shutdown follow-up
+
+After the first publication, the final live status read found Muse stuck in its
+native exit state while Python waited without a deadline after SIGKILL. Stopped
+only this task's verified reader PID; the native process subsequently exited.
+Close the owned protocol stdin or PTY before shutdown, and bound both TERM and
+KILL waits in the shared cleanup helper. Report a native process that still
+cannot exit instead of hanging the CLI. Four cleanup boundary tests are wired
+into the existing suite. The final task-only package under
+/tmp/jamsession-muse-cleanup.YDa4qE/jamsession passed: 503 passed, 0 failed.
+The native status check with a five-second collection budget exited normally,
+preserving readiness and reporting quota unavailable. No owned reader or native
+Muse process from that check remains. Syntax and staged whitespace checks pass.

@@ -10,7 +10,6 @@ import os
 import pty
 import re
 import select
-import signal
 import struct
 import subprocess
 import sys
@@ -19,6 +18,21 @@ import termios
 import time
 from datetime import datetime, timezone
 from decimal import Decimal
+
+
+def stop_process(process: subprocess.Popen) -> None:
+    """Do not let a provider stuck exiting hold the quota reader forever."""
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=2)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        try:
+            process.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            print("Provider process did not finish exiting after termination", file=sys.stderr)
 
 
 class Screen:
@@ -303,14 +317,8 @@ def muse_usage(binary: str, timeout: int) -> int:
                         return 0
             raise ValueError("Muse usage read timed out or host exited")
         finally:
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
             process.stdin.close()
+            stop_process(process)
             process.stdout.close()
 
 
@@ -423,14 +431,8 @@ def main() -> int:
                 print(screen.text(), file=sys.stderr)
             return 3 if provider == "muse" else 1
         finally:
-            if process.poll() is None:
-                process.send_signal(signal.SIGTERM)
-                try:
-                    process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
             os.close(master)
+            stop_process(process)
 
 
 if __name__ == "__main__":

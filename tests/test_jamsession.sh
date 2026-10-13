@@ -1703,6 +1703,7 @@ check "the website summarizes orchestrator support skills" \
 
 check "Codex native control delivery and resume contracts" python3 "$ROOT/tests/test_codex_control.py"
 check "parallel adapter sessions keep independent OS-backed IDs" python3 "$ROOT/tests/test_adapter_sessions.py"
+check "quota reader process cleanup always has a deadline" python3 "$ROOT/tests/test_tui_usage.py"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
