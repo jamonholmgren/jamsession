@@ -1435,7 +1435,7 @@ run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jams
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
   "$ROOT/jamsession" skills install jamsession-model-recommendations
 check "model-recommendations skill installs on request" test -f "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md"
-check "model recommendations carry a freshness date" contains "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md" "fresh as of October 5, 2026"
+check "model recommendations install the current source bytes" cmp -s "$ROOT/skills/jamsession-model-recommendations/SKILL.md" "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/SKILL.md"
 
 run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
   JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
@@ -1970,8 +1970,8 @@ check "no workflow still refers to the old name" \
   sh -c "! grep -rqi jamwrap '$ROOT/.github/workflows/'"
 check "the model recommendation skill is bundled" \
   sh -c "grep -q '^name: jamsession-model-recommendations$' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
-check "model recommendations rank Opus 5.5 xhigh as best premium" \
-  sh -c "grep -Fq '* Best: Claude Opus 5.5 xhigh' '$ROOT/skills/jamsession-model-recommendations/SKILL.md'"
+check "model recommendations install their current UI metadata" \
+  cmp -s "$ROOT/skills/jamsession-model-recommendations/agents/openai.yaml" "$INSTALL_HOME/.agents/skills/jamsession-model-recommendations/agents/openai.yaml"
 check "the agent-usage skill requests structured usage" \
   sh -c "grep -Fq 'jamsession usage --json' '$ROOT/skills/jamsession-get-agent-usage/SKILL.md'"
 check "the remote-agent skill depends on no separately optional skill" \
