@@ -149,6 +149,38 @@ does not enforce no writes. Usage reads native `/usage` without a model turn,
 keeping Gemini and Claude/GPT quota separate. Messaging requires explicit
 `--resume-with` settings and an exited owner; there is no native queue.
 
+### Codex launch settings
+
+Fresh Codex `edit` runs use the operator's native Codex configuration, not a
+Jam Session workspace-write/never preset. CLI `read` always forces read-only/never,
+including when the old `JAMSESSION_CODEX_SANDBOX=off` setting is present. Control
+read resumes request read-only while retaining saved approval/reviewer policy.
+
+Optional overrides in `jamsession.conf`:
+
+```bash
+JAMSESSION_CODEX_PROFILE=automation
+JAMSESSION_CODEX_CONFIG=('sandbox_mode="danger-full-access"' 'approval_policy="never"')
+```
+
+`JAMSESSION_CODEX_PROFILE` names a readable `$CODEX_HOME/automation.config.toml`
+(normally `~/.codex/automation.config.toml`). Missing profiles fail rather than
+silently falling back. Native CLI launches use `--strict-config`; unsupported
+configuration or a Codex version without that flag fails before work starts.
+
+Explicit `JAMSESSION_CODEX_SANDBOX` beats that array; the array beats the selected
+profile/native configuration. Approval policies use the native array. Read mode
+wins last. Managed requirements always apply. Native Codex resolves trusted
+project, selected profile, user and system configuration in its supported order;
+invalid/unsupported configuration fails instead of trying different permissions.
+
+Control resumes keep saved permissions and their cold-start validation. Explicit
+launch overrides select native CLI resume up front, where Codex loads/validates
+them; no failed policy check triggers this selection. A busy queue keeps the
+owner's settings and reports that the requested settings were not applied.
+Legacy sandbox `off` selects full-access/never for edit only; `on`/`inherit`
+delegate to native defaults. Run `jamsession help configure` for details.
+
 ### Low-priority inbox
 
 Low-priority notes can wait without waking another agent:

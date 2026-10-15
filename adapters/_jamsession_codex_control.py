@@ -307,16 +307,12 @@ def resume_run(binary, session, prompt, model, effort, access):
         if thread["status"]["type"] == "active":
             raise SessionBusy("session became busy; no prompt was sent")
         cwd = os.path.abspath(os.environ.get("JAMSESSION_CWD", os.getcwd()))
-        if os.environ.get("JAMSESSION_CODEX_SANDBOX", "on") == "off":
-            sandbox = {"type": "dangerFullAccess"}
-        elif access == "read":
-            sandbox = {"type": "readOnly"}
-        else:
-            sandbox = {"type": "workspaceWrite", "writableRoots": [cwd], "networkAccess": False}
         params = {
             "threadId": session, "input": [{"type": "text", "text": prompt}],
-            "cwd": cwd, "sandboxPolicy": sandbox,
+            "cwd": cwd,
         }
+        if access == "read":
+            params["sandboxPolicy"] = {"type": "readOnly"}
         if model != "default":
             params["model"] = model
         if effort != "default":

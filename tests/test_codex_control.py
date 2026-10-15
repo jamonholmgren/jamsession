@@ -163,6 +163,7 @@ class ControlTests(unittest.TestCase):
                           " print(json.dumps({'status':'running' if Path(os.environ['FAKE_DAEMON_MARKER']).exists() else 'stopped','socketPath':os.environ['FAKE_DAEMON_SOCKET']}));sys.exit(0)\n"
                           "if sys.argv[1:4]==['app-server','daemon','start']:\n"
                           " Path(os.environ['FAKE_DAEMON_MARKER']).touch();sys.exit(0)\n"
+                          "if sys.argv[1]=='--profile': del sys.argv[1:3]\n"
                           "if sys.argv[1]=='exec':\n"
                           " mode=os.environ.get('FAKE_RESUME_MODE','denied')\n"
                           " if mode=='after_input': print(json.dumps({'type':'thread.started','thread_id':'fixture'}))\n"
@@ -254,6 +255,39 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(params["sandboxPolicy"], {"type": "readOnly"})
         self.assertNotIn("approvalPolicy", params)
         self.assertNotIn("approvalsReviewer", params)
+
+    def test_edit_resume_preserves_saved_permission_policy(self):
+        result = self.cli("run", "codex", "fixture", "model", "high", "edit", "continue")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        params = self.peer.calls[-1]["params"]
+        self.assertNotIn("sandboxPolicy", params)
+        self.assertNotIn("approvalPolicy", params)
+        self.assertNotIn("approvalsReviewer", params)
+
+    def test_cold_full_access_edit_resume_restores_saved_permissions(self):
+        self.peer.scenario = "cold"
+        self.peer.saved['permission_profile'] = {'type': 'disabled'}
+        self.peer.saved['approval_policy'] = 'never'
+        self.peer.save('fixture')
+        self.peer.resume_overrides['sandbox'] = {'type': 'dangerFullAccess'}
+        self.peer.resume_overrides['approvalPolicy'] = 'never'
+        result = self.cli("run", "codex", "fixture", "model", "high", "edit", "continue")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        resume = next(call['params'] for call in self.peer.calls if call['method'] == 'thread/resume')
+        self.assertEqual(resume['sandbox'], 'danger-full-access')
+        self.assertEqual(resume['approvalPolicy'], 'never')
+        self.assertNotIn('sandboxPolicy', self.peer.calls[-1]['params'])
+
+    def test_explicit_profile_selects_native_resume_before_connecting(self):
+        (self.path / '.codex').mkdir(exist_ok=True)
+        (self.path / '.codex/automation.config.toml').write_text('sandbox_mode="danger-full-access"\n')
+        self.env['JAMSESSION_CODEX_PROFILE'] = 'automation'
+        result = self.cli('run', 'codex', 'fixture', 'model', 'high', 'edit', 'continue')
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(self.peer.calls, [])
+        calls = [json.loads(line) for line in (self.path / 'cli-calls').read_text().splitlines()]
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0][:4], ['--profile', 'automation', 'exec', 'resume'])
 
     def test_steer_rejects_execution_override_flags_before_connecting(self):
         self.assertEqual(self.cli("steer", "codex", "fixture", "hello", "--resume-with", "model", "high", "edit").returncode, 2)

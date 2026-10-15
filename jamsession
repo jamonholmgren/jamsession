@@ -835,7 +835,9 @@ jamsession sources this file as Bash. Run 'jamsession init' to add paths it can
 discover without replacing existing values. Supported overrides:
 
   JAMSESSION_CODEX_BIN=/path/to/codex
-  JAMSESSION_CODEX_SANDBOX=off   (only where the Codex sandbox cannot start)
+  JAMSESSION_CODEX_PROFILE=automation
+  JAMSESSION_CODEX_CONFIG=('sandbox_mode="danger-full-access"' 'approval_policy="never"')
+  JAMSESSION_CODEX_SANDBOX=inherit   (or read-only/workspace-write/danger-full-access)
   JAMSESSION_CLAUDE_BIN=/path/to/claude
   JAMSESSION_CURSOR_BIN=/path/to/cursor-agent
   JAMSESSION_GROK_BIN=/path/to/grok
@@ -845,6 +847,17 @@ discover without replacing existing values. Supported overrides:
   JAMSESSION_ANTIGRAVITY_BIN=/path/to/agy
 
 Custom adapters belong in: $JAMSESSION_ADAPTER_DIR
+
+Codex edit inherits native config by default. Explicit JAMSESSION_CODEX_SANDBOX
+overrides JAMSESSION_CODEX_CONFIG, which overrides the selected native profile and
+Codex's own config layers. Native managed requirements always constrain execution.
+CLI read forces read-only/never last, even with legacy JAMSESSION_CODEX_SANDBOX=off.
+Control resumes retain saved permissions and reject unrepresentable cold starts.
+Control read requests read-only while retaining saved approval/reviewer policy.
+Explicit launch overrides choose native CLI resume before any control connection;
+Codex validates config and restores its session. Busy queues keep owner settings.
+PROFILE requires a readable \$CODEX_HOME/<name>.config.toml (default ~/.codex).
+Native launches use --strict-config and fail on unsupported config or CLI versions.
 EOF
       ;;
     make-adapter)

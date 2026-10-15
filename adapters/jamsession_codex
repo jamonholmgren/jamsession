@@ -33,10 +33,21 @@ Codex has no atomic idle-only start, so concurrent senders can race into steerin
 The saved approval/reviewer policy is retained.
 See `jamsession help message` for delivery states and ownership limits.
 
-Codex read mode uses its read-only sandbox. Edit mode uses workspace-write with
-interactive approvals disabled. Set JAMSESSION_CODEX_SANDBOX=off in jamsession.conf
-on a host where the Codex sandbox cannot start (for example Windows over SSH);
-Codex then runs unsandboxed and read access depends on the prompt alone.
+Fresh edit mode inherits Codex's native configuration and approval policy.
+JAMSESSION_CODEX_PROFILE selects a native config profile. JAMSESSION_CODEX_CONFIG
+is a Bash array of native key=value overrides in jamsession.conf. Explicit
+JAMSESSION_CODEX_SANDBOX (read-only/workspace-write/danger-full-access) overrides
+that array. Legacy sandbox=off means
+danger-full-access/never for edit only; on/inherit add no overrides.
+Read always requests read-only, even when sandbox=off. CLI read also forces never;
+control read retains saved approval/reviewer policy. Managed requirements
+still apply; configuration errors or denials never select weaker settings.
+Control resumes keep saved permissions, including cold-start restoration checks.
+Explicit launch overrides select native CLI resume before connecting to control;
+native Codex validates them. Busy delivery still retains the owner's settings.
+Profiles must have a readable $CODEX_HOME/<name>.config.toml file (default
+~/.codex). Native launches use --strict-config; unsupported config/version fails.
+Run `jamsession help configure` for precedence and configuration examples.
 `models` reads `codex debug models` and prints listed models with their efforts.
 Codex does not expose a non-interactive native session listing, so `list` reports unavailable.
 EOF
@@ -86,11 +97,33 @@ run_agent() {
 
   [ "$JAMSESSION_SESSION" != "${CODEX_THREAD_ID:-}" ] || \
     jamsession_die "cannot synchronously resume your own live session; use message or steer"
+  local -a launch_options=()
+  local override declaration
+  if [ -n "${JAMSESSION_CODEX_PROFILE:-}" ]; then
+    case "$JAMSESSION_CODEX_PROFILE" in .|..|*[!a-zA-Z0-9_.-]*) jamsession_die "Codex profile must be a simple profile-file name" ;; esac
+    [ -r "${CODEX_HOME:-$HOME/.codex}/$JAMSESSION_CODEX_PROFILE.config.toml" ] || \
+      jamsession_die "Codex profile file is missing or unreadable: $JAMSESSION_CODEX_PROFILE.config.toml; refusing native default fallback"
+    launch_options+=(--profile "$JAMSESSION_CODEX_PROFILE")
+  fi
+  if declaration="$(declare -p JAMSESSION_CODEX_CONFIG 2>/dev/null)"; then
+    case "$declaration" in 'declare -a '*) ;; *) jamsession_die "JAMSESSION_CODEX_CONFIG must be a Bash array in jamsession.conf" ;; esac
+    if [ "${#JAMSESSION_CODEX_CONFIG[@]}" -gt 0 ]; then
+      for override in "${JAMSESSION_CODEX_CONFIG[@]}"; do
+        case "$override" in *=*) launch_options+=(-c "$override") ;; *) jamsession_die "Codex config overrides must be key=value" ;; esac
+      done
+    fi
+  fi
+  case "${JAMSESSION_CODEX_SANDBOX:-inherit}" in
+    on|inherit) ;;
+    off) launch_options+=(-c 'sandbox_mode="danger-full-access"' -c 'approval_policy="never"') ;;
+    read-only|workspace-write|danger-full-access) launch_options+=(-c "sandbox_mode=\"$JAMSESSION_CODEX_SANDBOX\"") ;;
+    *) jamsession_die "unsupported JAMSESSION_CODEX_SANDBOX; use inherit, on, off, read-only, workspace-write or danger-full-access" ;;
+  esac
   local control_socket="${JAMSESSION_CODEX_CONTROL_SOCKET:-${CODEX_HOME:-$HOME/.codex}/app-server-control/app-server-control.sock}"
-  if [ "$JAMSESSION_SESSION" != new ] && [ -S "$control_socket" ]; then
+  if [ "$JAMSESSION_SESSION" != new ] && [ -S "$control_socket" ] && [ "${#launch_options[@]}" -eq 0 ]; then
     local python_bin="${JAMSESSION_PYTHON_BIN:-python3}" control_status=0
     command -v "$python_bin" >/dev/null 2>&1 || jamsession_die "Codex control resume needs system Python 3"
-    export JAMSESSION_CODEX_CONTROL_SOCKET JAMSESSION_CODEX_SANDBOX JAMSESSION_CWD
+    export JAMSESSION_CODEX_CONTROL_SOCKET JAMSESSION_CWD
     printf '%s' "$JAMSESSION_PROMPT" | "$python_bin" "$ADAPTER_DIR/_jamsession_codex_control.py" \
       "$JAMSESSION_PROVIDER_BIN" run "$JAMSESSION_SESSION" "$JAMSESSION_MODEL" \
       "$JAMSESSION_EFFORT" "$JAMSESSION_ACCESS" || control_status=$?
@@ -115,36 +148,27 @@ run_agent() {
   : >"$temp_events"; : >"$temp_last"; : >"$temp_error"
 
   if [ "$JAMSESSION_SESSION" = new ]; then
-    command_args=(exec --json --skip-git-repo-check -C "$JAMSESSION_CWD" -o "$temp_last")
+    command_args=(exec --strict-config --json --skip-git-repo-check -C "$JAMSESSION_CWD" -o "$temp_last")
   else
-    command_args=(exec resume --json --skip-git-repo-check -o "$temp_last")
+    command_args=(exec resume --strict-config --json --skip-git-repo-check -o "$temp_last")
   fi
   [ "$JAMSESSION_MODEL" = default ] || command_args+=(-m "$JAMSESSION_MODEL")
   [ "$JAMSESSION_EFFORT" = default ] || command_args+=(-c "model_reasoning_effort=$JAMSESSION_EFFORT")
 
-  if [ "${JAMSESSION_CODEX_SANDBOX:-on}" = off ]; then
-    command_args+=(--dangerously-bypass-approvals-and-sandbox)
-    if [ "$JAMSESSION_ACCESS" = read ]; then
-      jamsession_hint "Codex sandbox is off (JAMSESSION_CODEX_SANDBOX=off); read access is enforced only by the prompt."
-    else
-      jamsession_hint "Codex sandbox is off (JAMSESSION_CODEX_SANDBOX=off); it may edit and run anything without asking."
-    fi
-  elif [ "$JAMSESSION_ACCESS" = read ]; then
+  if [ "$JAMSESSION_ACCESS" = read ]; then
     if [ "$JAMSESSION_SESSION" = new ]; then
       command_args+=(-s read-only)
     else
       command_args+=(-c 'sandbox_mode="read-only"')
     fi
     command_args+=(-c 'approval_policy="never"')
+    command_args+=(-c 'default_permissions=":read-only"')
     jamsession_hint "Codex is running in its read-only sandbox."
   else
-    if [ "$JAMSESSION_SESSION" = new ]; then
-      command_args+=(-s workspace-write)
-    else
-      command_args+=(-c 'sandbox_mode="workspace-write"')
-    fi
-    command_args+=(-c 'approval_policy="never"')
-    jamsession_hint "Codex may edit the current workspace without asking for approval."
+    jamsession_hint "Codex edit permissions come from native config/profile and explicit launch overrides; no implicit workspace-write or approval-policy override."
+  fi
+  if [ "${#launch_options[@]}" -gt 0 ]; then
+    command_args=("${launch_options[@]}" "${command_args[@]}")
   fi
 
   if [ "$JAMSESSION_SESSION" = new ]; then

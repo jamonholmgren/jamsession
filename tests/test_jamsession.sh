@@ -913,8 +913,9 @@ check "Codex read mode uses native read-only sandbox" contains "$LOG" "-s read-o
 
 run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" JAMSESSION_CODEX_SANDBOX=off \
   "$ROOT/adapters/jamsession_codex" run new default high read prompt
-check "Codex sandbox-off config bypasses the sandbox" contains "$LOG" "--dangerously-bypass-approvals-and-sandbox"
-check "Codex sandbox-off read mode warns that the prompt enforces read access" contains "$stderr_file" "read access is enforced only by the prompt"
+check "Codex read wins over legacy sandbox-off" contains "$LOG" "-s read-only"
+check "Codex read selects the named read-only profile too" contains "$LOG" 'default_permissions=":read-only"'
+check "Codex read never passes the bypass flag" sh -c "! grep -Fq -- '--dangerously-bypass-approvals-and-sandbox' '$LOG'"
 
 run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
   "$ROOT/adapters/jamsession_claude" run new default high read prompt
@@ -1982,6 +1983,7 @@ check "the website summarizes orchestrator support skills" \
   grep -Fq 'supporting skills for worksheets, worker discipline, and SSH' "$ROOT/index.html"
 
 check "Codex native control delivery and resume contracts" python3 "$ROOT/tests/test_codex_control.py"
+check "Codex launch settings preserve native configuration" python3 "$ROOT/tests/test_codex_launch_settings.py"
 check "parallel adapter sessions keep independent OS-backed IDs" python3 "$ROOT/tests/test_adapter_sessions.py"
 check "quota reader process cleanup always has a deadline" python3 "$ROOT/tests/test_tui_usage.py"
 
