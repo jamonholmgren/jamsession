@@ -1,6 +1,6 @@
 # Archie communication repair
 
-Status: ACTIVE
+Status: CODE FIX PUBLISHED; COORDINATION BLOCKED ON DESKTOP OWNER
 Starting HEAD: 19028debef672733ea1c82511986c71bd65ddabc
 Request: ARCHIE-COMMS-REPAIR-20261016, direct Jamon authorization.
 
@@ -74,8 +74,11 @@ and reports read-only discovery errors separately. Added corresponding tests
 and clear rejection of malformed rollout objects. Final package: 612 passed,
 zero failures; focused control tests: 44 passed.
 Skill validator (Homebrew Python with existing PyYAML), shell syntax and diff
-checks pass. No dependencies installed. Normal install, verified scheduling,
-publication and return handoff pending.
+checks pass. No dependencies installed. Code commit
+`b653f3646c18ced6ff0fc8581a034e3ec7cdeefc` pushed to origin/main. Normal
+`jamsession update` succeeded; installed adapter/helper/default summon skill
+match source, all 44 control tests pass against the installed CLI, and installed
+native listing succeeds. No unrelated files were staged or published.
 
 Pre-send native read confirmed exact Archie ID/sessionId, no fork, GSO cwd;
 controller state notLoaded, not a global availability claim. Zero recorded
@@ -101,4 +104,15 @@ and exited zero. This is native acceptance, NOT verified receipt/execution.
 The payload asks Archie to consume his own existing inbox, reconcile/deduplicate
 the two approved assignments, schedule them, and publish task-specific evidence
 to the agreed ignored reply file. No fleet slots or workers allocated here.
-One bounded 300-second reply watcher is active; no repeat messages will be sent.
+The bounded 300-second reply watcher timed out (exit 124); exact queue entry
+remains pending and original note hash is unchanged. No repeat messages sent.
+
+Archie's writer is ChatGPT desktop (PID identified from its exact rollout);
+it exposes no native listening control endpoint. Computer Use explicitly denied
+control of ChatGPT for safety. No alternate UI automation, private-IPC injection,
+lock edits, ownership takeover or safeguards bypass attempted. Bringing the
+existing session forward normally may let its owner consume the accepted queue;
+this cannot be guaranteed or performed through the available permitted UI tool.
+PF6/Deck assignment receipt/scheduling is NOT verified and remains blocked.
+Durable scoped report written to the user-authorized Documents fallback path;
+one native return message to the requesting session follows this final checkpoint.
