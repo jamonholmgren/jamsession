@@ -49,7 +49,14 @@ Profiles must have a readable $CODEX_HOME/<name>.config.toml file (default
 ~/.codex). Native launches use --strict-config; unsupported config/version fails.
 Run `jamsession help configure` for precedence and configuration examples.
 `models` reads `codex debug models` and prints listed models with their efforts.
-Codex does not expose a non-interactive native session listing, so `list` reports unavailable.
+`list [count]` uses native control to list recent sessions in the current directory,
+including exec sessions. It prints ID and this controller's runtime status, not
+global desktop availability. Absence is not proof a session does not exist; use
+`which <session>` for an exact known ID. Listing never resumes a session.
+Cold restores ignore legacy ID-less settings only when a later verified settings
+record exists. Explicit foreign IDs, conflicting headers and unrepresentable
+permissions still fail before input. Started means native turn acceptance, not
+proof the recipient read the task or completed it; verify its turn/reply.
 EOF
 }
 
@@ -260,7 +267,18 @@ case "${1:-help}" in
   run) shift; run_agent "$@" ;;
   which) shift; which_transcript "$@" ;;
   models) jamsession_require_binary; list_models ;;
-  list|usage|status) jamsession_unsupported "$1" ;;
+  list)
+    shift
+    [ $# -le 1 ] || jamsession_die "list takes an optional count"
+    count="${1:-5}"
+    jamsession_positive_count "$count"
+    jamsession_require_binary
+    python_bin="${JAMSESSION_PYTHON_BIN:-python3}"
+    command -v "$python_bin" >/dev/null 2>&1 || jamsession_die "Codex listing needs system Python 3"
+    export JAMSESSION_CWD
+    "$python_bin" "$ADAPTER_DIR/_jamsession_codex_control.py" "$JAMSESSION_PROVIDER_BIN" list "$count"
+    ;;
+  usage|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" --version

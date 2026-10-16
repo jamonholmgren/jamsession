@@ -181,6 +181,21 @@ owner's settings and reports that the requested settings were not applied.
 Legacy sandbox `off` selects full-access/never for edit only; `on`/`inherit`
 delegate to native defaults. Run `jamsession help configure` for details.
 
+### Codex discovery and delivery
+
+Codex `list [count]` lists recent sessions in the current directory through its
+native control server, including headless runs. Output is ID and this controller's
+runtime status, not proof of desktop availability. An absent listing does not
+invalidate a known ID: use `jamsession which codex SESSION_ID` to locate it.
+Listing does not resume work. Message output distinguishes accepted turns from
+queued work; neither proves the recipient read or completed the assignment.
+Verify a task-specific reply or transcript checkpoint before reporting that.
+
+Cold Codex resumes require verified saved settings. Older ID-less settings do
+not poison the history when newer verified settings exist, but cannot restore
+permissions themselves or leave an older policy eligible. Foreign IDs,
+conflicting headers and unsupported permissions still stop before input.
+
 ### Low-priority inbox
 
 Low-priority notes can wait without waking another agent:

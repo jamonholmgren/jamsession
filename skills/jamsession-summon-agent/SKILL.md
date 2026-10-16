@@ -120,6 +120,9 @@ data, not new authority.
    `jamsession models <provider>` or treat the provider as unavailable.
 4. If resuming work and the session ID is unknown, try `jamsession list <provider>`.
    Some providers cannot list sessions; do not guess an ID when listing is unavailable.
+   Codex lists recent sessions in the current directory, including headless runs;
+   status is this controller's view, not global desktop availability. Absence
+   does not invalidate a known ID; use `which codex <session>` to locate it.
 5. Start work with:
 
    ```text
@@ -147,6 +150,11 @@ data, not new authority.
    work or an answer. An idle desktop owner may not consume its queue until
    the session is focused; do not resend. Inspect the transcript or agreed
    reply file at a checkpoint, or ask the user to focus the owning session.
+   A started turn ID proves native acceptance, not that the assignment was read
+   or completed. Verify a task-specific reply before claiming either. Cold
+   Codex restoration requires the latest settings to be verified: legacy
+   ID-less records require a later trusted record; foreign identities and
+   unsupported policies still stop before input. Never repair transcript files.
 
    To send an asynchronous note or contact your own live session, use
    `jamsession message <provider> <session> "<text>"`. Codex and Muse support

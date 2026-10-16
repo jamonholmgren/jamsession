@@ -31,12 +31,22 @@ class RpcError(ControlError):
         self.code = error.get("code")
 
 
-def control_socket(binary):
+def published_socket():
+    root = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+    return os.path.abspath(os.path.join(root, "app-server-control", "app-server-control.sock"))
+
+
+def control_socket(binary, discover=False):
     if not hasattr(socket, "AF_UNIX") or not hasattr(os, "getuid"):
         raise ControlUnavailable("native Codex control needs Unix sockets (macOS, Linux or WSL)")
     configured = os.environ.get("JAMSESSION_CODEX_CONTROL_SOCKET")
     if configured:
         return configured
+    # The native daemon publishes this endpoint. Reuse it before spawning a
+    # discovery CLI (which may wait on a different installed daemon version).
+    published = published_socket()
+    if not discover and os.path.exists(published):
+        return published  # Control still checks socket type and current-user ownership.
     try:
         result = subprocess.run(
             [binary, "app-server", "daemon", "version"],
@@ -57,6 +67,18 @@ def control_socket(binary):
         if daemon.get("status") != "running" or not daemon.get("socketPath"):
             raise ControlUnavailable("Codex has no running local control server")
     return daemon["socketPath"]
+
+
+def connect_control(binary):
+    path = control_socket(binary)
+    try:
+        return Control(path)
+    except (ConnectionRefusedError, FileNotFoundError):
+        # Only a dead/disappeared implicit endpoint, before any handshake/input.
+        # Explicit endpoints, unsafe files, policy errors and uncertain sends stop.
+        if os.environ.get("JAMSESSION_CODEX_CONTROL_SOCKET") or path != published_socket():
+            raise
+        return Control(control_socket(binary, discover=True))
 
 
 class Control:
@@ -189,18 +211,31 @@ def saved_resume_params(thread):
     with open(thread["path"], encoding="utf-8") as rollout:
         for line in rollout:
             item = json.loads(line)
+            if not isinstance(item, dict) or not isinstance(item.get("payload", {}), dict):
+                raise ControlError("malformed saved rollout record; no prompt was sent")
             payload = item.get("payload", {})
             if item.get("type") == "session_meta":
-                identity = payload.get("id")
+                if identity is not None or payload.get("id") != session:
+                    raise ControlError("saved rollout has a conflicting or duplicate session header")
+                identity = session
             elif item.get("type") == "turn_context":
+                if identity != session:
+                    raise ControlError("saved settings precede a verified session header")
                 settings = payload
             elif (item.get("type") == "event_msg" and
                   payload.get("type") == "thread_settings_applied"):
+                if identity != session:
+                    raise ControlError("saved settings precede a verified session header")
+                if "thread_id" not in payload:
+                    # Legacy events were unscoped. They cannot supply policy or
+                    # leave an older policy eligible; a later verified record is required.
+                    settings = None
+                    continue
                 if payload.get("thread_id") != session:
                     raise ControlError("saved settings belong to another session")
                 settings = payload["thread_settings"]
     if identity != session or not settings:
-        raise ControlError("cannot verify saved session settings; no prompt was sent")
+        raise ControlError("cannot verify latest saved session settings; no prompt was sent")
     cwd = settings["cwd"]
     profile = settings.get("permission_profile")
     root_read = {"path": {"type": "special", "value": {"kind": "root"}}, "access": "read"}
@@ -301,7 +336,7 @@ def join_thread(client, session, subscribe=False, require_idle=False):
 
 
 def resume_run(binary, session, prompt, model, effort, access):
-    client = Control(control_socket(binary))
+    client = connect_control(binary)
     try:
         thread = join_thread(client, session, subscribe=True, require_idle=True)
         if thread["status"]["type"] == "active":
@@ -346,7 +381,7 @@ def resume_run(binary, session, prompt, model, effort, access):
 
 
 def deliver(binary, intent, session, prompt):
-    client = Control(control_socket(binary))
+    client = connect_control(binary)
     try:
         try:
             thread = join_thread(client, session, require_idle=intent == "message")
@@ -355,7 +390,8 @@ def deliver(binary, intent, session, prompt):
         user_input = [{"type": "text", "text": prompt}]
         if intent == "steer" or thread["status"]["type"] != "active":
             turn = client.call("turn/start", {"threadId": session, "input": user_input})["turn"]
-            print("delivery: started" if intent == "message" else "delivery: steer accepted", file=sys.stderr)
+            print("delivery: started; native turn accepted, completion unconfirmed" if intent == "message"
+                  else "delivery: steer accepted", file=sys.stderr)
             print("turn: " + turn["id"], file=sys.stderr)
             return 0
         queued = client.call("thread/queue/add", {
@@ -369,19 +405,66 @@ def deliver(binary, intent, session, prompt):
         client.close()
 
 
+def list_sessions(binary, count):
+    """Native discovery only: do not load sessions or expose prompt previews."""
+    client = connect_control(binary)
+    try:
+        params = {"cwd": os.environ.get("JAMSESSION_CWD", os.getcwd()), "limit": min(count, 100),
+                  "sortKey": "updated_at", "sortDirection": "desc",
+                  "sourceKinds": ["cli", "vscode", "exec", "appServer", "subAgent",
+                                  "subAgentReview", "subAgentCompact", "subAgentThreadSpawn",
+                                  "subAgentOther", "unknown"]}
+        print("note: recent sessions in this directory; status is this controller's view, "
+              "not proof of desktop ownership or execution. Absence does not mean nonexistent.", file=sys.stderr)
+        seen_cursors = set()
+        seen_ids = set()
+        rows = []
+        deadline = time.monotonic() + 30
+        for _ in range(100):
+            client.timeout = min(15, deadline - time.monotonic())
+            if client.timeout <= 0:
+                raise ControlError("session listing timed out; results are incomplete")
+            page = client.call("thread/list", params)
+            for thread in page["data"]:
+                if not count:
+                    break
+                if thread["id"] in seen_ids:
+                    continue
+                seen_ids.add(thread["id"])
+                rows.append(thread["id"] + "\t" + thread["status"]["type"])
+                count -= 1
+            cursor = page.get("nextCursor")
+            if not cursor or not count:
+                for row in rows:
+                    print(row)
+                return 0
+            if cursor in seen_cursors:
+                raise ControlError("Codex repeated a session-list cursor; results are incomplete")
+            seen_cursors.add(cursor)
+            params["cursor"] = cursor
+            params["limit"] = min(count, 100)
+        raise ControlError("session listing exceeded its page limit; results are incomplete")
+    finally:
+        client.close()
+
+
 def main():
     if not ((len(sys.argv) == 4 and sys.argv[2] in ("message", "steer")) or
+            (len(sys.argv) == 4 and sys.argv[2] == "list" and sys.argv[3].isascii() and
+             sys.argv[3].isdigit() and int(sys.argv[3]) > 0) or
             (len(sys.argv) == 7 and sys.argv[2] == "run")):
-        print("usage: _jamsession_codex_control.py <codex-bin> <message|steer|run> <session> [model effort access]", file=sys.stderr)
+        print("usage: _jamsession_codex_control.py <codex-bin> <message|steer|run> <session> [model effort access]; or <codex-bin> list <count>", file=sys.stderr)
         return 2
-    prompt = sys.stdin.read()
-    if not prompt:
+    prompt = sys.stdin.read() if sys.argv[2] != "list" else None
+    if sys.argv[2] != "list" and not prompt:
         print("jamsession_codex: message text must not be empty", file=sys.stderr)
         return 2
     if sys.argv[2] == "run" and (not sys.argv[4] or not sys.argv[5] or sys.argv[6] not in ("read", "edit")):
         print("jamsession_codex: run requires model, effort and read|edit access", file=sys.stderr)
         return 2
     try:
+        if sys.argv[2] == "list":
+            return list_sessions(sys.argv[1], int(sys.argv[3]))
         if sys.argv[2] == "run":
             return resume_run(sys.argv[1], sys.argv[3], prompt, *sys.argv[4:])
         return deliver(sys.argv[1], sys.argv[2], sys.argv[3], prompt)
@@ -396,11 +479,13 @@ def main():
             print("delivery: another process owns this session; no prompt was sent", file=sys.stderr)
             return 4
         print("jamsession_codex: " + str(error), file=sys.stderr)
-        print("No fallback or retry was attempted; inspect the target before resending.", file=sys.stderr)
+        print("Session discovery failed; no session was resumed or message sent." if sys.argv[2] == "list"
+              else "No fallback or retry was attempted; inspect the target before resending.", file=sys.stderr)
         return 2
-    except (ControlError, OSError, ValueError, KeyError) as error:
+    except (ControlError, OSError, ValueError, KeyError, TypeError) as error:
         print("jamsession_codex: " + str(error), file=sys.stderr)
-        print("No fallback or retry was attempted; inspect the target before resending.", file=sys.stderr)
+        print("Session discovery failed; no session was resumed or message sent." if sys.argv[2] == "list"
+              else "No fallback or retry was attempted; inspect the target before resending.", file=sys.stderr)
         return 2
 
 

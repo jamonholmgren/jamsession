@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import socket
 import socketserver
 import struct
 import subprocess
@@ -62,6 +63,12 @@ class Peer(socketserver.BaseRequestHandler):
                     response["result"] = {"thread": {"id": params["threadId"], "path": self.server.rollout,
                         "status": {"type": "notLoaded" if self.server.scenario in ("busy", "cold") else
                                    "active" if self.server.scenario == "active" else "idle"}}}
+                elif method == "thread/list":
+                    if self.server.scenario == "denied" or (params.get("cursor") and self.server.list_error_page):
+                        response["error"] = {"code": -32600, "message": "denied by managed policy"}
+                    else:
+                        page = 1 if params.get("cursor") else 0
+                        response["result"] = self.server.list_pages[page]
                 elif method == "thread/resume":
                     if self.server.scenario == "busy":
                         response["error"] = {"code": -32600, "message": "thread fixture already has an active writer"}
@@ -130,6 +137,8 @@ class Fixture(socketserver.ThreadingUnixStreamServer):
         self.calls = []
         self.scenario = scenario
         self.resume_overrides = {}
+        self.list_pages = [{"data": [], "nextCursor": None}]
+        self.list_error_page = None
         self.rollout = str(Path(path).with_suffix(".jsonl"))
         self.saved = {"cwd": str(Path(path).parent), "model": "saved-model", "reasoning_effort": "high",
                       "approval_policy": "on-request", "approvals_reviewer": "guardian_subagent",
@@ -153,7 +162,8 @@ class Fixture(socketserver.ThreadingUnixStreamServer):
 
 class ControlTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="jc-")
+        # Published endpoint suffix must also fit macOS's Unix socket path limit.
+        self.temp = tempfile.TemporaryDirectory(prefix="jc-", dir="/tmp")
         self.path = Path(self.temp.name)
         self.peer = Fixture(str(self.path / "control.sock"))
         binary = self.path / "codex"
@@ -189,6 +199,64 @@ class ControlTests(unittest.TestCase):
     def methods(self):
         return [call["method"] for call in self.peer.calls if call["method"] != "initialize"]
 
+    def test_list_uses_native_pagination_and_includes_exec_without_resuming(self):
+        self.peer.list_pages = [
+            {"data": [{"id": "one", "status": {"type": "active"}}], "nextCursor": "next"},
+            {"data": [{"id": "two", "status": {"type": "notLoaded"}},
+                      {"id": "three", "status": {"type": "idle"}}], "nextCursor": None},
+        ]
+        result = self.cli("list", "codex", "2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "one\tactive\ntwo\tnotLoaded\n")
+        self.assertEqual(self.methods(), ["thread/list", "thread/list"])
+        first, second = [call["params"] for call in self.peer.calls if call["method"] == "thread/list"]
+        self.assertEqual(first["cwd"], str(self.path))
+        self.assertEqual(first["sortKey"], "updated_at")
+        self.assertEqual(first["sortDirection"], "desc")
+        self.assertIn("exec", first["sourceKinds"])
+        self.assertEqual(second["cursor"], "next")
+        self.assertIn("controller", result.stderr)
+        self.assertFalse((self.path / "cli-calls").exists())
+
+    def test_empty_list_and_native_rejection_remain_distinct(self):
+        result = self.cli("list", "codex")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.peer.scenario = "denied"
+        rejected = self.cli("list", "codex")
+        self.assertEqual(rejected.returncode, 2, rejected.stderr)
+        self.assertIn("denied by managed policy", rejected.stderr)
+        self.assertNotIn("turn/start", self.methods())
+
+    def test_list_invalid_count_never_connects(self):
+        for count in ("0", "-1", "bad"):
+            self.assertEqual(self.cli("list", "codex", count).returncode, 2)
+        self.assertEqual(self.peer.calls, [])
+
+    def test_repeated_list_cursor_fails_instead_of_looping(self):
+        self.peer.list_pages = [{"data": [], "nextCursor": "same"},
+                                {"data": [], "nextCursor": "same"}]
+        result = self.cli("list", "codex")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("results are incomplete", result.stderr)
+        self.assertEqual(self.methods(), ["thread/list", "thread/list"])
+
+    def test_list_deduplicates_and_does_not_print_partial_results_on_error(self):
+        self.peer.list_pages = [
+            {"data": [{"id": "one", "status": {"type": "idle"}}], "nextCursor": "next"},
+            {"data": [{"id": "one", "status": {"type": "idle"}},
+                      {"id": "two", "status": {"type": "active"}}], "nextCursor": None},
+        ]
+        result = self.cli("list", "codex", "2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "one\tidle\ntwo\tactive\n")
+        self.peer.list_error_page = True
+        result = self.cli("list", "codex", "2")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("Session discovery failed", result.stderr)
+        self.assertNotIn("before resending", result.stderr)
+
     def test_message_rejoins_owner_and_sends_once_without_execution_overrides(self):
         text = 'literal $text "quotes"\n' + "x" * 70000 + "\n\n"
         result = self.cli("message", "codex", "fixture", text)
@@ -197,6 +265,7 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(self.peer.calls[-1]["params"]["input"][0]["text"], text)
         self.assertEqual(set(self.peer.calls[-1]["params"]), {"threadId", "input"})
         self.assertIn("delivery: started", result.stderr)
+        self.assertIn("native turn accepted, completion unconfirmed", result.stderr)
         self.assertFalse((self.path / "cli-calls").exists())
 
     def test_steer_uses_native_turn_input_not_queue_or_kill(self):
@@ -309,6 +378,39 @@ class ControlTests(unittest.TestCase):
                                  ["app-server", "daemon", "version"]])
         self.assertEqual(self.methods(), ["thread/read", "turn/start"])
 
+    def test_published_native_socket_does_not_require_discovery_subprocess(self):
+        self.env.pop("JAMSESSION_CODEX_CONTROL_SOCKET")
+        endpoint = self.path / ".codex/app-server-control/app-server-control.sock"
+        endpoint.parent.mkdir(parents=True)
+        endpoint.symlink_to(self.path / "control.sock")
+        result = self.cli("message", "codex", "fixture", "hello")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.methods(), ["thread/read", "turn/start"])
+        self.assertFalse((self.path / "cli-calls").exists())
+
+    def test_dead_implicit_socket_uses_discovery_but_explicit_socket_stops(self):
+        self.env.pop("JAMSESSION_CODEX_CONTROL_SOCKET")
+        endpoint = self.path / ".codex/app-server-control/app-server-control.sock"
+        endpoint.parent.mkdir(parents=True)
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as stale:
+            stale.bind(str(endpoint))
+        self.env["FAKE_DAEMON_MARKER"] = str(self.path / "daemon-started")
+        self.env["FAKE_DAEMON_SOCKET"] = str(self.path / "control.sock")
+        result = self.cli("message", "codex", "fixture", "hello")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.methods(), ["thread/read", "turn/start"])
+        calls = [json.loads(line) for line in (self.path / "cli-calls").read_text().splitlines()]
+        self.assertEqual(calls, [["app-server", "daemon", "version"],
+                                 ["app-server", "daemon", "start"],
+                                 ["app-server", "daemon", "version"]])
+        self.peer.calls.clear()
+        (self.path / "cli-calls").unlink()
+        self.env["JAMSESSION_CODEX_CONTROL_SOCKET"] = str(endpoint)
+        result = self.cli("message", "codex", "fixture", "hello")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(self.peer.calls, [])
+        self.assertFalse((self.path / "cli-calls").exists())
+
     def test_non_socket_endpoint_is_rejected_before_sending(self):
         self.env["JAMSESSION_CODEX_CONTROL_SOCKET"] = self.env["JAMSESSION_CODEX_BIN"]
         self.assertNotEqual(self.cli("message", "codex", "fixture", "hello").returncode, 0)
@@ -347,6 +449,110 @@ class ControlTests(unittest.TestCase):
         Path(self.peer.rollout).write_text(Path(self.peer.rollout).read_text().replace('"id": "fixture"', '"id": "other"'))
         self.assertEqual(self.cli("message", "codex", "fixture", "hello").returncode, 2)
         self.assertEqual(self.methods(), ["thread/read"])
+
+    def test_legacy_unidentified_settings_do_not_poison_verified_history(self):
+        self.peer.scenario = "cold"
+        path = Path(self.peer.rollout)
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        legacy = {"type": "event_msg", "payload": {"type": "thread_settings_applied",
+                  "thread_settings": {"permission_profile": {"type": "disabled"}}}}
+        rows.insert(1, legacy)
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        result = self.cli("message", "codex", "fixture", "hello")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.peer.calls[-2]["params"]["sandbox"], "read-only")
+
+    def test_trailing_unidentified_settings_cannot_restore_stale_permissions(self):
+        self.peer.scenario = "cold"
+        with open(self.peer.rollout, "a") as rollout:
+            rollout.write(json.dumps({"type": "event_msg", "payload": {
+                "type": "thread_settings_applied", "thread_settings": self.peer.saved}}) + "\n")
+        result = self.cli("message", "codex", "fixture", "hello")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("latest saved", result.stderr)
+        self.assertEqual(self.methods(), ["thread/read"])
+
+    def test_legacy_only_settings_cannot_supply_permissions(self):
+        self.peer.scenario = "cold"
+        path = Path(self.peer.rollout)
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        del rows[1]["payload"]["thread_id"]
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        result = self.cli("message", "codex", "fixture", "hello")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertEqual(self.methods(), ["thread/read"])
+
+    def test_file_anchored_turn_context_can_follow_legacy_settings(self):
+        self.peer.scenario = "cold"
+        path = Path(self.peer.rollout)
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        del rows[1]["payload"]["thread_id"]
+        rows.append({"type": "turn_context", "payload": self.peer.saved})
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+        result = self.cli("message", "codex", "fixture", "hello")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.methods(), ["thread/read", "thread/resume", "turn/start"])
+
+    def test_explicit_invalid_settings_identity_is_never_ignored(self):
+        self.peer.scenario = "cold"
+        for bad_id in (None, "", "other", 17, ["fixture"]):
+            with self.subTest(thread_id=bad_id):
+                self.peer.calls.clear()
+                self.peer.save()
+                path = Path(self.peer.rollout)
+                rows = [json.loads(line) for line in path.read_text().splitlines()]
+                bad = {"type": "event_msg", "payload": {"type": "thread_settings_applied",
+                       "thread_id": bad_id, "thread_settings": self.peer.saved}}
+                rows.insert(1, bad)  # Superseding settings must not hide a foreign record.
+                path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+                result = self.cli("message", "codex", "fixture", "hello")
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(self.methods(), ["thread/read"])
+                self.assertFalse((self.path / "cli-calls").exists())
+
+    def test_header_must_be_unique_matching_and_precede_settings(self):
+        self.peer.scenario = "cold"
+        self.peer.save()
+        valid = [json.loads(line) for line in Path(self.peer.rollout).read_text().splitlines()]
+        for rows in (valid[1:], valid + valid[:1], list(reversed(valid)),
+                     [{"type": "session_meta", "payload": {"id": "other"}}] + valid):
+            with self.subTest(rows=rows):
+                self.peer.calls.clear()
+                Path(self.peer.rollout).write_text("".join(json.dumps(row) + "\n" for row in rows))
+                result = self.cli("message", "codex", "fixture", "hello")
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertEqual(self.methods(), ["thread/read"])
+
+    def test_malformed_rollout_objects_fail_clearly_before_input(self):
+        self.peer.scenario = "cold"
+        for record in (None, [], {"type": "session_meta", "payload": None}):
+            with self.subTest(record=record):
+                self.peer.calls.clear()
+                Path(self.peer.rollout).write_text(json.dumps(record) + "\n")
+                result = self.cli("message", "codex", "fixture", "hello")
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("malformed saved rollout", result.stderr)
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertEqual(self.methods(), ["thread/read"])
+
+    def test_latest_turn_context_wins_but_unsupported_policy_does_not_fall_back(self):
+        self.peer.scenario = "cold"
+        for supported in (True, False):
+            with self.subTest(supported=supported):
+                self.peer.calls.clear()
+                self.peer.save()
+                context = dict(self.peer.saved, reasoning_effort="medium")
+                if not supported:
+                    context["permission_profile"] = {"type": "unknown"}
+                self.peer.resume_overrides["reasoningEffort"] = "medium"
+                with open(self.peer.rollout, "a") as rollout:
+                    rollout.write(json.dumps({"type": "turn_context", "payload": context}) + "\n")
+                result = self.cli("message", "codex", "fixture", "hello")
+                self.assertEqual(result.returncode, 0 if supported else 2, result.stderr)
+                if supported:
+                    self.assertEqual(self.peer.calls[-2]["params"]["config"]["model_reasoning_effort"], "medium")
+                else:
+                    self.assertEqual(self.methods(), ["thread/read"])
 
     def test_unloaded_workspace_preserves_roots_temp_and_network_policy(self):
         self.peer.scenario = "cold"
