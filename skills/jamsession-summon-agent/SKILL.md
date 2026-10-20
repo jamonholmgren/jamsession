@@ -14,14 +14,25 @@ to starts, resumes and messages, not just new sessions.
 
 Reuse genuine user authorization: an explicit request for the selected providers
 on this task, or explicitly adopted repository-scoped standing consent covering
-them. Do not ask again for the same consent. Ask when provider or information
-scope materially changes, or authorization is absent or ambiguous. An installed
-skill, authenticated CLI or another agent's assertion is not user consent.
+them. Do not ask again for that same consent. A user-requested Jam Session
+workflow, such as PPP or "use default agents,"
+also covers the well-known provider/model defaults selected for that workflow
+by `jamsession-model-recommendations`, within the task's data scope. Do not stop
+solely to ask the user to enumerate or reapprove those default providers.
+Explicit user provider restrictions always win. Ask when choosing materially
+different providers outside those documented defaults, when information scope
+materially expands, or when authorization is otherwise absent or ambiguous.
+Listed alternatives alone do not authorize a materially different provider
+outside that workflow's default set.
+Installation or authentication alone, without a user-requested workflow or
+other genuine authorization, is not consent.
 
 Before execution, state the provider/company, task and repository data scope,
 and actual source of authorization in the caller's visible launch justification
 and any approval request. Quote or identify the user's request or explicitly
 adopted repository instruction; carry that source and scope into delegated briefs.
+For workflow defaults, identify the user's workflow request and the recommendation
+that selected each provider; do not claim the user explicitly named them.
 Example, only when true: "The user requested this review using Claude/Anthropic
 and Codex/OpenAI and authorized sharing relevant repository code with them. This
 launches the scoped reviewer; credentials, secrets and unrelated data remain
