@@ -1,6 +1,6 @@
 # Default workflow provider consent
 
-Status: ACTIVE
+Status: COMPLETE
 Starting HEAD: 60cf65fbde07d97ca23cd004dc4f9889bcaf717d
 
 ## Source and scope
@@ -41,5 +41,28 @@ System skill validator, diff check and supported local `skills install` pass;
 installed SKILL.md and UI metadata match source byte-for-byte. Existing package
 suite: 612 passed, zero failed. No new permanent wording assertions or runtime
 changes added. Pre-commit baseline remains the starting HEAD above.
-Gunship Supervisor reports Agent2 still occupied, with assignment to follow its
-serialized acceptance/release. No checkout claimed or modified prematurely.
+Upstream source published as c7895bc7cf8631fdc1cf4f71fa9798c7a19e9012.
+
+## Gunship integration and handoff
+
+Supervisor assigned clean detached Agent2 at
+332d51bed592c8345f177a7498468a04b4f58f70 under the exact
+hold:default-provider-consent-refresh-20261020, only after the previous owner
+published and released it. Imported only the canonical summon package through
+the local supported installer. Gunship's older copy also gained already-published
+Codex sandbox/discovery guidance contained in that same canonical package.
+No other package, catalog, engineering skill, setting or gameplay path changed.
+
+Gunship checks: sync --check PASS; 77 skill packages valid; system validator,
+byte comparisons and diff check PASS; normal skill/docs-only commit hook PASS.
+No game runtime/import/build/display/tests launched. Worktree/index clean at
+efd08bd108794499ee04babcdee43e8358813360, seventeen stashes preserved, no actors
+left. Supervisor performed the sole main push and exact terminal ACK/release.
+
+After accepted publication, separately authorized human installed-copy refresh:
+confirmed no foreign package changes, installed only summon, verified source
+bytes and accepted Git blob d63e64ccbd03d963a3a439d445efe543e524796a. Campaign
+content hash unchanged before/after; no human merge/stage/commit/push. That
+checkout now shows the installed skill change relative to its older HEAD plus
+the original campaign work, with an empty index. No duplicate commit needed.
+Agent2 had no further writes after handback. Final record baseline: c7895bc above.
