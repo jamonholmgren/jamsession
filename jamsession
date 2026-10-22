@@ -86,6 +86,7 @@ bundled_skills() {
     jamsession-get-agent-usage \
     jamsession-model-recommendations \
     jamsession-ping-pong-planning \
+    jamsession-peasant-mob \
     jamsession-contrarian-review \
     jamsession-ask-agent-panel \
     jamsession-orchestrate-agent-work \
@@ -890,6 +891,11 @@ Skill directory: $JAMSESSION_SKILL_DIR
 
 'list' shows every bundled skill and whether it is installed. 'install'
 downloads bundled skills; 'all' means every bundled skill.
+
+Peasant Mob is an eight-lane skill workflow with at least two feedback rounds:
+  jamsession skills install jamsession-peasant-mob
+Noble Court is a nickname for premium PPP (jamsession-ping-pong-planning),
+not a different CLI command or a change to PPP's requested round count.
 
 'uninstall <name>' removes one installed skill directory. The name must start
 with 'jamsession-'; jamsession does not remove skills outside that namespace.

@@ -5,7 +5,7 @@ description: "Choose agent providers, models and effort using Jamon's recommenda
 
 # Jam Session Model Recommendations
 
-These recommendations are fresh as of October 13, 2026. If that date is more
+These recommendations are fresh as of October 21, 2026. If that date is more
 than two months old, warn that the recommendations could be stale. Run
 `jamsession status`, then choose the provider, model, effort, and access level
 explicitly from what is available. If a default is unavailable, use a listed
@@ -35,16 +35,38 @@ Cheap implementation assumes a good supplied plan. Use the difficult-planning
 or diagnosis defaults when diagnosis is needed; review and verification still
 belong to the task's workflow.
 
-## PPP
+## PPP / Noble Court
 
 For ping-pong planning, use Astra 6 xhigh and Opus 5.5 xhigh as planners, with
 native Grok 4.7 high as the contrarian. Use the ping-pong planning workflow for
 independent drafts, challenge rounds and synthesis.
 
+## Peasant Mob
+
+Use `jamsession-peasant-mob` for the requested eight-lane planning/research/
+diagnosis workflow. That skill owns the exact roster and practical effort
+settings: all eight attempted in parallel, failed members left behind, and at
+least two complete feedback rounds after initial drafts. Synthesis uses Sol
+6.1 LOW or Opus 5.5 LOW, outside the eight lanes. It is experimental, with no
+measured superiority claim or guarantee of effort-price/quota parity. Noble
+Court keeps the premium PPP defaults and its existing round-count behavior.
+
 ## Babysitting
 
 Use Luna 6 xhigh, Sonnet 5.5 medium or native Grok 4.7 high to babysit external
 implementers. Route hard planning or diagnosis to the task defaults above.
+
+## New autonomous assignments
+
+For a new autonomous main lead, prefer **Cursor Opus 5.5**, then **Devin Fusion**.
+For autonomous implementation, prefer **Cursor Grok 4.7 non-fast xhigh**, then
+**native Grok 4.7 high**. These role-specific choices override the general
+implementation rows and native-harness preference for these roles only;
+they do not change Noble Court's roster
+or Peasant Mob's LOW synthesizer. Verify installed IDs and supported effort
+before launching; never silently substitute. Apply at new assignments or
+natural handoffs, not by restarting productive workers. Explicit task/provider
+restrictions and actual approvals always win.
 
 ## Daily drivers
 

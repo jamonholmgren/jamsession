@@ -1,4 +1,4 @@
 interface:
   display_name: "Ping-Pong Planning"
-  short_description: "PPP: cross-model analysis, planning, and review"
-  default_prompt: "Use $jamsession-ping-pong-planning (PPP) to analyze, plan, or review this problem through independent drafts and challenge rounds."
+  short_description: "PPP / Noble Court: cross-model planning and review"
+  default_prompt: "Use $jamsession-ping-pong-planning (PPP / Noble Court) to analyze, plan, or review this problem through independent drafts and challenge rounds."

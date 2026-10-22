@@ -12,6 +12,7 @@ LINK_DIR="$HOME/.local/bin"
 PROVIDERS="codex claude cursor grok copilot devin muse antigravity"
 DEFAULT_SKILLS="jamsession-summon-agent jamsession-get-agent-usage"
 OPTIONAL_SKILLS="jamsession-model-recommendations jamsession-ping-pong-planning
+jamsession-peasant-mob
 jamsession-contrarian-review jamsession-ask-agent-panel
 jamsession-orchestrate-agent-work jamsession-use-agent-worksheet
 jamsession-run-agent-comparison

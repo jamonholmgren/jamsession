@@ -1444,6 +1444,16 @@ run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jams
 check "agent-worksheet skill installs on request" test -f "$INSTALL_HOME/.agents/skills/jamsession-use-agent-worksheet/SKILL.md"
 check "agent-worksheet skill installs its metadata" test -f "$INSTALL_HOME/.agents/skills/jamsession-use-agent-worksheet/agents/openai.yaml"
 
+run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
+  JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" JAMSESSION_SOURCE_URL="file://$ROOT" \
+  "$ROOT/jamsession" skills install jamsession-peasant-mob
+check "Peasant Mob installs through the normal skill command" test "$status" -eq 0
+check "Peasant Mob installed instructions match source" cmp -s "$ROOT/skills/jamsession-peasant-mob/SKILL.md" "$INSTALL_HOME/.agents/skills/jamsession-peasant-mob/SKILL.md"
+check "Peasant Mob installed UI metadata matches source" cmp -s "$ROOT/skills/jamsession-peasant-mob/agents/openai.yaml" "$INSTALL_HOME/.agents/skills/jamsession-peasant-mob/agents/openai.yaml"
+run_command env HOME="$INSTALL_HOME" JAMSESSION_HOME="$INSTALL_HOME/.agents/jamsession" \
+  JAMSESSION_SKILL_DIR="$INSTALL_HOME/.agents/skills" "$ROOT/jamsession" skills
+check "Peasant Mob is discoverable as an installed bundled skill" contains "$stdout_file" jamsession-peasant-mob
+
 # --- Skill resource bundles: isolated local downloads, no provider calls ---
 RESOURCE_SOURCE="$TEMP_ROOT/resource-source"
 RESOURCE_SKILL=jamsession-work-over-ssh

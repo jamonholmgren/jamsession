@@ -1,0 +1,4 @@
+interface:
+  display_name: "Peasant Mob"
+  short_description: "Eight-lane analysis with two feedback rounds"
+  default_prompt: "Use $jamsession-peasant-mob to gather independent analysis and refine it through at least two feedback rounds."

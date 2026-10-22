@@ -45,8 +45,9 @@ Currently, we support the providers [listed above](#supported-agent-providers). 
 When I have a task and want agents to talk to each other, I'll use the proper skills associated with that:
 
 * **Agent Panel:** I'll have my agent ask two or more different agents to form a panel to answer a question. They make separate plans and then your agent will combine them into a single response.
-* **Ping-pong Planning:** Similar to Agent Panel, but more for robust planning. First, uses an agent panel to make separate plans, then my agent combines them, kicks them back to first one, then the other for comment, similarly down the line, and integrates valid feedback as it goes. Super good for getting much stronger agent plans or doing deeper research.
-* **Contrarian Review:** Can be combined with the panel or ping-ponging. Introduce a contrarian (adverse) reviewer. I like to use Grok for this, and Fable / Astra as main "adults talking", while this annoying kid Grok tries hard to poke holes in it.
+* **Ping-pong Planning (PPP):** Agents draft independently, then challenge and improve a combined plan. The premium Astra/Opus panel with native Grok as contrarian is nicknamed **Noble Court**. Same workflow; one round by default unless you ask for more.
+* **Peasant Mob:** Eight parallel analysis lanes, a LOW-effort Sol or Opus synthesizer, and at least two feedback rounds after the initial drafts. Failed members are named and left behind, not replaced. The [skill](skills/jamsession-peasant-mob/SKILL.md) has the roster and limits. It's experimental—not a claim that more agents beat a premium model or cost the same at every effort.
+* **Contrarian Review:** Can be combined with the panel or ping-ponging. Introduce a contrarian (adverse) reviewer. I like to use Grok for this, and Opus / Astra as main "adults talking", while this annoying kid Grok tries hard to poke holes in it.
 * **Orchestrator:** This is essentially what runs my well-known [Night Shift](https://jamon.dev/night-shift) autonomous work system. Your agent runs workers (or sometimes even managers, who then manage workers) to do autonomous loop work. It can keep checked-in task state with **Agent Worksheet**, and uses the **Individual Worker Workflow**, **Work Over SSH**, and **Use Remote Agent Over SSH** skills, which aren't necessarily intended for you to use directly.
 * **Model Recommendations:** If you're using the same providers that I do, this is useful for knowing what I (Jamon) prefer to use for what types of work. Loading it up means you can focus on your work, and the agent will decide what other agents work best for what situations.
 * **Agent Comparison:** Use the [comparison kit](skills/jamsession-run-agent-comparison/SKILL.md) to design, run or evaluate controlled trials with reusable prompts, a manifest and blind scoring guidance. Keep quality, process, availability and cost separate. The caller or project chooses the results home; sharing results is a separate decision, and loading the skill does not authorize new runs.
@@ -219,7 +220,11 @@ jamsession skills uninstall jamsession-orchestrate-agent-work
 jamsession skills uninstall all
 ```
 
-`jamsession-summon-agent` and `jamsession-get-agent-usage` are installed by default. Ask your agent for current usage and it will turn `jamsession usage --json` into a readable table. The rest are opt-in: model recommendations, ping-pong planning, contrarian review, agent panels, orchestration, agent worksheets, worker tasks, and SSH.
+`jamsession-summon-agent` and `jamsession-get-agent-usage` are installed by default. Ask your agent for current usage and it will turn `jamsession usage --json` into a readable table. The rest are opt-in: model recommendations, ping-pong planning (Noble Court), Peasant Mob, contrarian review, agent panels, orchestration, agent worksheets, worker tasks, and SSH.
+
+Install the mob skill with `jamsession skills install jamsession-peasant-mob`,
+then ask your agent to use it on a scoped question. It is a skill, not a new
+`jamsession` subcommand; provider permissions and approvals still apply.
 
 The optional `jamsession-run-agent-comparison` skill owns the comparison workflow;
 the caller owns the results. Loading it does not authorize new runs.
