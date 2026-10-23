@@ -1,6 +1,6 @@
 # Codex accepted identity retention
 
-Status: ACTIVE
+Status: COMPLETE
 Request: Archie owner-directed scoped repair, October 23, 2026; task-relevant
 Jam Session source only. No recovery/retry of UNKNOWN helicopter review.
 
@@ -38,8 +38,13 @@ per-event subprocess/parser dependency. Astra's retained-session follow-up found
 the issue resolved and no remaining concrete regression; it independently
 checked matcher probes and syntax, not the full file-writing fake suite.
 
-Installed Codex adapter/helper hashes match the published baseline. Source
-publication, normal update and installed byte-equality verification pending.
+Published fix: 0f6e3e89e967c69c6391e4487ae159125580665e, normal main push.
+Normal installed `jamsession update` from public main succeeded. Installed
+Codex adapter, control helper, CLI and summon skill byte-match canonical source;
+installed `help codex` displays the new contract. No global Codex settings,
+transcripts, locks, UNKNOWN sessions or Gunship files changed. Local cancellation
+still makes no remote cancellation guarantee. Review coverage remains one Astra
+reviewer, with Grok unavailable as recorded above.
 
 Unrelated usage-skill changes appeared during work and remain excluded, along
 with pre-existing Finder files and cache-investigation worksheet.
