@@ -353,7 +353,9 @@ def resume_run(binary, session, prompt, model, effort, access):
         if effort != "default":
             params["effort"] = effort
         turn = client.call("turn/start", params)["turn"]
-        print("delivery: started; waiting for the turn result", file=sys.stderr)
+        print("session: " + session, file=sys.stderr, flush=True)
+        print("turn: " + turn["id"], file=sys.stderr, flush=True)
+        print("delivery: started; waiting for the turn result", file=sys.stderr, flush=True)
         final_text = ""
         while True:
             client.deadline = time.monotonic() + 3600

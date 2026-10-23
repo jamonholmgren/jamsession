@@ -106,6 +106,10 @@ class Peer(socketserver.BaseRequestHandler):
                     response["error"] = {"code": -32601, "message": "unexpected method"}
                 self.send(response)
                 if method == "turn/start" and "error" not in response:
+                    if self.server.scenario == "accepted_disconnect":
+                        return
+                    if self.server.scenario == "stalled":
+                        continue
                     self.send({"method": "item/completed", "params": {
                         "threadId": "fixture", "turnId": "t1", "item": {
                             "type": "agentMessage", "phase": "final_answer", "text": "CONTROL_RESULT",
@@ -176,6 +180,12 @@ class ControlTests(unittest.TestCase):
                           "if sys.argv[1]=='--profile': del sys.argv[1:3]\n"
                           "if sys.argv[1]=='exec':\n"
                           " mode=os.environ.get('FAKE_RESUME_MODE','denied')\n"
+                          " if mode=='stalled':\n"
+                          "  import signal\n"
+                          "  event={'thread_id':'native-fixture','type':'thread.started'} if os.environ.get('FAKE_REVERSE_EVENT') else {'type':'thread.started','thread_id':'native-fixture'}\n"
+                          "  print(json.dumps(event),flush=True)\n"
+                          "  print(json.dumps({'type':'turn.started'}),flush=True)\n"
+                          "  signal.pause()\n"
                           " if mode=='after_input': print(json.dumps({'type':'thread.started','thread_id':'fixture'}))\n"
                           " print('Error: thread/resume: thread/resume failed: thread fixture already has an active writer (code -32600)' if mode in ('busy','after_input') else 'Error: denied by managed policy',file=sys.stderr);sys.exit(1)\n"
                           "print('CODEX_QUEUED')\nsys.exit(int(os.environ.get('FAKE_EXIT','0')))\n")
@@ -198,6 +208,75 @@ class ControlTests(unittest.TestCase):
 
     def methods(self):
         return [call["method"] for call in self.peer.calls if call["method"] != "initialize"]
+
+    def interrupted_run(self, session, stop_signal):
+        process = subprocess.Popen(
+            [str(ROOT / "jamsession"), "run", "codex", session, "default", "default", "read", "test"],
+            env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, start_new_session=True,
+        )
+        try:
+            with self.assertRaises(subprocess.TimeoutExpired) as pending:
+                process.communicate(timeout=2)
+            captured = pending.exception.stderr or b""
+            if isinstance(captured, bytes):
+                captured = captured.decode()
+            # Assert before cancellation: shutdown-time flushing is too late.
+            self.assertIn("session: " + ("native-fixture" if session == "new" else session), captured)
+            if session != "new":
+                self.assertIn("turn: t1", captured)
+            os.killpg(process.pid, stop_signal)
+            output = process.communicate(timeout=5)
+            self.assertNotEqual(process.returncode, 0, output)
+            return output
+        finally:
+            if process.poll() is None:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.communicate()
+
+    def test_control_identity_survives_caller_timeout_and_cancellation(self):
+        self.peer.scenario = "stalled"
+        for stop_signal in (signal.SIGTERM, signal.SIGINT):
+            with self.subTest(stop_signal=stop_signal):
+                self.peer.calls.clear()
+                _, stderr = self.interrupted_run("fixture", stop_signal)
+                self.assertIn("session: fixture\nturn: t1\n", stderr)
+                self.assertIn("delivery: started", stderr)
+                self.assertNotIn("CONTROL_RESULT", stderr)
+                self.assertEqual(self.methods(), ["thread/read", "thread/resume", "turn/start"])
+
+    def test_fresh_native_identity_streams_without_inventing_turn_id(self):
+        self.env["FAKE_RESUME_MODE"] = "stalled"
+        for stop_signal in (signal.SIGTERM, signal.SIGINT):
+            with self.subTest(stop_signal=stop_signal):
+                _, stderr = self.interrupted_run("new", stop_signal)
+                self.assertIn("session: native-fixture", stderr)
+                self.assertNotIn("turn:", stderr)
+                self.assertEqual(self.peer.calls, [])
+
+    def test_fresh_native_identity_accepts_reordered_fields(self):
+        self.env.update(FAKE_RESUME_MODE="stalled", FAKE_REVERSE_EVENT="1")
+        _, stderr = self.interrupted_run("new", signal.SIGTERM)
+        self.assertIn("session: native-fixture", stderr)
+        self.assertNotIn("turn:", stderr)
+
+    def test_preinput_denial_has_no_accepted_identity(self):
+        self.peer.scenario = "denied"
+        result = self.cli("run", "codex", "fixture", "default", "default", "read", "test")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertNotIn("turn:", result.stderr)
+        self.assertNotIn("delivery: started", result.stderr)
+        self.assertNotIn("thread/queue/add", self.methods())
+
+    def test_accepted_disconnect_preserves_identity_without_fallback(self):
+        self.peer.scenario = "accepted_disconnect"
+        result = self.cli("run", "codex", "fixture", "default", "default", "read", "test")
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("session: fixture\nturn: t1\n", result.stderr)
+        self.assertIn("delivery: started", result.stderr)
+        self.assertIn("No fallback or retry was attempted", result.stderr)
+        self.assertEqual(self.methods(), ["thread/read", "thread/resume", "turn/start"])
+        self.assertFalse((self.path / "cli-calls").exists())
 
     def test_list_uses_native_pagination_and_includes_exec_without_resuming(self):
         self.peer.list_pages = [

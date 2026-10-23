@@ -162,7 +162,11 @@ data, not new authority.
    the session is focused; do not resend. Inspect the transcript or agreed
    reply file at a checkpoint, or ask the user to focus the owning session.
    A started turn ID proves native acceptance, not that the assignment was read
-   or completed. Verify a task-specific reply before claiming either. Cold
+   or completed. Codex control runs flush accepted session/turn IDs before
+   waiting; native CLI runs stream the supplied session ID, not an invented
+   turn ID. Retain stderr in the task log before waiting. Timeout or local
+   cancellation does not prove remote cancellation or authorize a resend.
+   Verify a task-specific reply before claiming completion. Cold
    Codex restoration requires the latest settings to be verified: legacy
    ID-less records require a later trusted record; foreign identities and
    unsupported policies still stop before input. Never repair transcript files.

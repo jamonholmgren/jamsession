@@ -57,6 +57,10 @@ Cold restores ignore legacy ID-less settings only when a later verified settings
 record exists. Explicit foreign IDs, conflicting headers and unrepresentable
 permissions still fail before input. Started means native turn acceptance, not
 proof the recipient read the task or completed it; verify its turn/reply.
+Accepted control runs emit session/turn IDs before waiting. Native CLI runs
+stream the supplied thread.started session ID; turn.started supplies no turn ID.
+Retain stderr in the task log. A timeout/cancel does not prove remote cancellation
+or authorize a resend, even when an identity has been retained.
 EOF
 }
 
@@ -185,7 +189,21 @@ run_agent() {
   fi
 
   status=0
-  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${command_args[@]}" </dev/null >"$temp_events" 2>"$temp_error") || status=$?
+  # Retain native events for the existing failure guards, but publish the native
+  # thread.started identity immediately, before a caller timeout can end us.
+  # Exec's turn.started event has no turn ID; never manufacture one.
+  local type_field='[[:space:]]*"type"[[:space:]]*:[[:space:]]*"thread.started"[[:space:]]*'
+  local id_field='[[:space:]]*"thread_id"[[:space:]]*:[[:space:]]*"([^"\\]+)"[[:space:]]*'
+  local event_forward="^[[:space:]]*\{$type_field,$id_field\}[[:space:]]*$"
+  local event_reverse="^[[:space:]]*\{$id_field,$type_field\}[[:space:]]*$"
+  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${command_args[@]}" </dev/null 2>"$temp_error") |
+    while IFS= read -r line || [ -n "$line" ]; do
+      printf '%s\n' "$line" >>"$temp_events"
+      if [[ "$line" =~ $event_forward ]] || [[ "$line" =~ $event_reverse ]]; then
+        jamsession_session "${BASH_REMATCH[1]}"
+      fi
+    done
+  status=${PIPESTATUS[0]}
   if [ "$status" -ne 0 ] && [ "$JAMSESSION_SESSION" != new ] && \
     [ ! -s "$temp_events" ] && [ ! -s "$temp_last" ] && \
     grep -Fxq "Error: thread/resume: thread/resume failed: thread $JAMSESSION_SESSION already has an active writer (code -32600)" "$temp_error"; then
@@ -200,9 +218,7 @@ run_agent() {
     break
   done < <(sed -n 's/.*"thread_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$temp_events")
   [ -n "$session_id" ] || [ "$JAMSESSION_SESSION" = new ] || session_id="$JAMSESSION_SESSION"
-  if [ -n "$session_id" ]; then
-    jamsession_session "$session_id"
-  else
+  if [ -z "$session_id" ]; then
     printf 'jamsession_codex: provider returned no session identifier\n' >&2
   fi
 
