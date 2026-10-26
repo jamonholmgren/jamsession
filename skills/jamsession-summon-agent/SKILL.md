@@ -124,7 +124,7 @@ data, not new authority.
    enforced sandbox (Grok or Devin with edit), record owned-path and index hashes
    before the run and compare them afterward. On any unexpected write, stop,
    preserve state, and report.
-3. If the requested provider is not available or is not authenticated, stop and explain
+3. Before reporting a provider capped, unavailable, or unauthenticated, obtain fresh evidence from its current status/usage command or the actual failed launch; name the evidence and distinguish a rejected model from provider-wide failure. Do not reuse a stale claim or consume a usage reset without explicit human authorization. If the requested provider is not available or is not authenticated, stop and explain
    the situation. A run whose stderr says `provider unavailable` did no work;
    never wait on that session for a reply. For "Not logged in", treat the
    provider as unavailable. For a rejected model, choose an ID from
