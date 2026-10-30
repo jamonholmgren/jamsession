@@ -34,7 +34,9 @@ These notes expire after three days; blockers and final handoffs stay direct.
    agreed unique completion marker last. Never include that marker in unfinished
    report text. Use foreground `jamsession watch` when waiting for an answer to
    your own session; do not resume a live caller or worker as a notification.
-2. Inspect only enough context to complete the task. Preserve human and sibling
+2. Inspect only enough context to complete the task. When continuing earlier
+   work from a worksheet, read it and the repository state first, then use
+   `jamsession recall --worksheet <path> "<query>"` for exact earlier details. Preserve human and sibling
    work; never stash, reset, switch branches, destructively clean, or adopt
    unrelated changes.
 3. Make the smallest complete change inside the assigned ownership. Stop when

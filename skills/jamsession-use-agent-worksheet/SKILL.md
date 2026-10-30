@@ -38,7 +38,9 @@ Record only durable task state:
 - relevant findings and decisions
 - plan and current progress
 - agent sessions that made a useful contribution, with provider or transport,
-  exact resumable identifier when exposed, role, and state
+  exact resumable identifier when exposed, role, and state; sessions launched
+  with `jamsession run --worksheet` are logged automatically under
+  `## Jam Session log`, so do not edit or duplicate that section
 - files changed by repository-relative path
 - commands, tests, reviews, and other decisive evidence
 - blockers, remaining work, handoff, and final outcome
@@ -52,6 +54,21 @@ time or explain a decision.
 Update the worksheet at meaningful boundaries: after investigation, when the
 plan or scope changes, after delegated results arrive, after validation, and
 before handoff. It is task state, not a running narration.
+
+## Continue from the worksheet
+
+A fresh session continuing the task reads the worksheet, then the repository
+state (`git log`, the diff, changed files). For an exact earlier detail the
+worksheet does not hold, such as an error message, a path, a number or a
+human's wording, search the logged sessions instead of guessing:
+
+```text
+jamsession recall --worksheet <path> "<query>"
+jamsession recall <provider> <session> --entry <n> --around 2
+```
+
+Copy what recall prints; do not paraphrase it into requirements. Record a newly
+recovered fact that later sessions will need in the worksheet.
 
 ## Coordinate ownership
 

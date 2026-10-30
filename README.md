@@ -79,6 +79,16 @@ jamsession run codex 019abc gpt-5.6-sol high read "Check the revised diff."
 
 Every part is required. Pass a session ID instead of `new` to resume, and `-` as the prompt to read stdin. The reply goes to stdout; session IDs, the session's current token size, and diagnostics go to stderr. Past 250K tokens it suggests handing off to a fresh session.
 
+### Continue from a worksheet instead of compacting
+
+```sh
+jamsession run --worksheet .agents/worksheets/task.md claude new haiku-5.5 low edit "Continue the task in .agents/worksheets/task.md."
+jamsession recall --worksheet .agents/worksheets/task.md "Parse Error"
+jamsession recall claude SESSION_ID --entry 212 --around 2
+```
+
+`--worksheet` on `run`, `message` and `steer` appends the session, its settings and the exact prompt or message to the worksheet's `## Jam Session log`. When a session grows too large, start a fresh one pointed at the worksheet: it reads the worksheet and repo state, then uses `recall` to copy exact lines (an error, a path, an instruction) from every earlier session instead of trusting a summary. `recall` reads JSONL transcripts and Devin's database without changing them; see `jamsession help recall`.
+
 `read` means the agent is called with the best settings to avoid changing your workspace. `edit` uses the provider's unattended coding mode. Model and effort are passed through or mapped to provider-supported variants.
 
 ### Get Providers, Models, Sessions

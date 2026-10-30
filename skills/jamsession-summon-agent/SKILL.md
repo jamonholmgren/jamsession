@@ -145,6 +145,12 @@ data, not new authority.
    length, or why the provider exposes none. Past 250K tokens it suggests a
    fresh session; prefer recording state in the task worksheet and starting
    `new` over resuming an oversized session for unrelated work.
+   When the task has a worksheet, put `--worksheet <path>` right after `run`,
+   `message` or `steer`. Jam Session then logs the session and the exact
+   prompt or message in the worksheet's `## Jam Session log`. To continue an
+   oversized session, start `new` with the same `--worksheet` and a prompt that
+   names the worksheet and says to use `jamsession recall --worksheet <path>`
+   for exact earlier details; do not paste a summary of the old session.
    Resume only that provider's exact session:
 
    ```text
@@ -217,7 +223,8 @@ data, not new authority.
    and `jamsession help message` for ownership limits. Retain an owned watch's
    PID/log; avoid repeatedly asking another agent whether a reply has arrived.
 
-   If messaging is unavailable, or the session only needs inspection, run
+   If messaging is unavailable, or the session only needs inspection, use
+   `jamsession recall <provider> <session> "<query>"` for exact lines, or run
    `jamsession which <provider> <session>` and follow its read-only transcript
    guidance. Do not remove provider locks or edit transcript stores.
 

@@ -34,9 +34,11 @@ usage() {
 jamsession — one small interface for coding-agent CLIs
 
 Usage:
-  jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
-  jamsession message <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]
-  jamsession steer <provider> <session> <text>
+  jamsession run [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
+  jamsession message [--worksheet <path>] <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]
+  jamsession steer [--worksheet <path>] <provider> <session> <text>
+  jamsession recall <provider> <session> [query] [options]
+  jamsession recall --worksheet <path> [query] [options]
   jamsession inbox <recipient-id> <read|write <sender-id> <note>>
   jamsession watch <file> <text> [<provider> <session>] [--timeout <seconds>]
   jamsession list <provider> [count]
@@ -56,6 +58,10 @@ Usage:
 The prompt may be `-` to read stdin. Provider output goes to stdout; session
 IDs, session sizes, hints, warnings, and diagnostics go to stderr. Past 250K
 tokens, the size line suggests handing off to a fresh session.
+
+`--worksheet` logs each run's session and each message's exact text in the
+worksheet's "## Jam Session log". `recall` searches transcripts for exact lines;
+with `--worksheet` it searches every logged session, oldest first.
 
 `providers` lists the installed provider adapters. `adapters` is an exact alias.
 `antigravity` runs Google's agy CLI; `agy` and `gemini` are aliases for it.
@@ -471,8 +477,10 @@ uninstall_command() {
 
 compact_usage() {
   cat >&2 <<'EOF'
-Usage: jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
+Usage: jamsession run [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
        jamsession <list|which|models|message|steer> <provider> [arguments]
+       jamsession recall <provider> <session> [query] [options]
+       jamsession recall --worksheet <path> [query] [options]
        jamsession watch <file> <text> [<provider> <session>] [options]
        jamsession <usage|status|doctor> [provider]
        jamsession <providers|init|make-adapter|skills|update|help>
@@ -648,6 +656,74 @@ EOF
   chmod 755 "$target"
   printf 'Created %s\n' "$target"
   printf 'Edit it, then run: jamsession status %s\n' "$provider"
+}
+
+recall_helper() {
+  local candidate
+  for candidate in "$JAMSESSION_HOME/bin/jamsession_recall.py" "$JAMSESSION_HOME/usage/jamsession_recall.py" \
+    "$SCRIPT_DIR/jamsession_recall.py" "$SCRIPT_DIR/usage/jamsession_recall.py"; do
+    [ -f "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  die "recall helper is not installed; run jamsession update"
+}
+
+# Sets WORKSHEET to the absolute path of an existing worksheet.
+worksheet_path() {
+  [ -n "$1" ] || die "--worksheet needs a path"
+  [ -f "$1" ] || die "worksheet not found: $1"
+  WORKSHEET="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
+}
+
+# Text for the entry arrives on stdin. A failed log never stops the agent call.
+worksheet_log() {
+  "${JAMSESSION_PYTHON_BIN:-python3}" "$(recall_helper)" log "$1" "$2" "$3" "$4" \
+    --detail "$5" --text-stdin || printf 'warning: could not log to worksheet %s\n' "$1" >&2
+}
+
+# Passes the adapter's stderr through and logs the run as soon as its session
+# line appears, so the worksheet names the session while it is still working.
+worksheet_tap() {
+  local line logged=0
+  while IFS= read -r line || [ -n "$line" ]; do
+    printf '%s\n' "$line" >&2
+    if [ "$logged" -eq 0 ] && [[ $line =~ ^session:\ ([^[:space:]]+)$ ]]; then
+      worksheet_log "$1" run "$2" "${BASH_REMATCH[1]}" "$3" <"$4"
+      logged=1
+    fi
+  done
+}
+
+run_with_worksheet() {
+  local adapter="$1" provider="$2" status=0 detail prompt_file
+  shift 2
+  make_temp_dir
+  prompt_file="$JAMSESSION_TEMP_DIR/prompt"
+  if [ "$5" = - ]; then cat >"$prompt_file"; else printf '%s' "$5" >"$prompt_file"; fi
+  detail="$([ "$1" = new ] && printf new || printf resume) $2 $3 $4 in ${JAMSESSION_CWD:-$PWD}"
+  if [ "$5" = - ]; then
+    { "$adapter" run "$@" <"$prompt_file" 2>&1 1>&3 3>&- | worksheet_tap "$WORKSHEET" "$provider" "$detail" "$prompt_file"
+      status=${PIPESTATUS[0]}; } 3>&1
+  else
+    { "$adapter" run "$@" 2>&1 1>&3 3>&- | worksheet_tap "$WORKSHEET" "$provider" "$detail" "$prompt_file"
+      status=${PIPESTATUS[0]}; } 3>&1
+  fi
+  exit "$status"
+}
+
+message_with_worksheet() {
+  local adapter="$1" intent="$2" provider="$3" session="$4" status=0 text_file
+  shift 4
+  make_temp_dir
+  text_file="$JAMSESSION_TEMP_DIR/text"
+  if [ "$1" = - ]; then cat >"$text_file"; else printf '%s' "$1" >"$text_file"; fi
+  if [ "$1" = - ]; then
+    "$adapter" "$intent" "$session" "$@" <"$text_file" || status=$?
+  else
+    "$adapter" "$intent" "$session" "$@" || status=$?
+  fi
+  worksheet_log "$WORKSHEET" "$intent" "$provider" "$session" \
+    "$([ "$status" -eq 0 ] || printf '(delivery failed, exit %s)' "$status")" <"$text_file"
+  exit "$status"
 }
 
 usage_helper() {
@@ -936,12 +1012,16 @@ EOF
       ;;
     run)
       cat <<'EOF'
-Usage: jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
+Usage: jamsession run [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
 
 Use `new` to create a session or pass an exact provider-native session ID to
 resume. Use `default` to let the provider choose its model or effort. `read`
 must be enforced by the adapter; `edit` permits unattended workspace changes.
 Pass `-` as the prompt to read stdin.
+`--worksheet` appends the session, settings and exact prompt to the worksheet's
+"## Jam Session log" as soon as the session ID is known (prompts past 4000
+characters are cut; the transcript keeps the full text). A later session can
+then search this one with `jamsession recall --worksheet <path>`.
 Prefer run for Codex follow-ups: resume/start first and wait for the result.
 Only confirmed pre-input busy/ownership refusal falls back to native delivery,
 once. Queued work keeps the owner's model, effort, workspace and permissions, not the
@@ -980,9 +1060,12 @@ EOF
       ;;
     message|steer)
       cat <<'EOF'
-Usage: jamsession message <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]
+Usage: jamsession message [--worksheet <path>] <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]
 Alias: jamsession <provider> <session> message <text> [--resume-with <model> <effort> <read|edit>]
-       jamsession steer <provider> <session> <text>
+       jamsession steer [--worksheet <path>] <provider> <session> <text>
+
+`--worksheet` appends the exact text to the worksheet's "## Jam Session log"
+after delivery, marking a failed delivery with its exit code.
 
 Send to an existing session using the provider's native messaging mechanism.
 For Codex follow-up work prefer run: resume/start first, queue only if busy/owned.
@@ -1023,6 +1106,33 @@ forked, and no delivery is retried. Explicit settings use normal run semantics;
 default default omits model/effort overrides, while edit may grant broad tool
 permissions. Unenforceable read access still errors. Use `run` if you deliberately
 want to choose new execution settings for a native-messaging provider.
+EOF
+      ;;
+    recall)
+      cat <<'EOF'
+Usage: jamsession recall <provider> <session> [query] [options]
+       jamsession recall --worksheet <path> [query] [options]
+
+Prints exact transcript lines, so a fresh session can copy what it needs from
+an earlier one instead of trusting a summary. Each block is labeled with its
+entry number and role (user, assistant, tool-call, tool-result, ...).
+A line matches when it contains every word of the query, in any order and
+ignoring case; if no line does, recall shows lines with at least half of the
+words. Quote a query with spaces, and put `--` before one that starts with `-`.
+
+Options:
+  --regex         treat the query as one case-insensitive regular expression
+  --around N      context lines around a match (default 2), or entries with --entry
+  --max N         most matching lines to print per session (default 30)
+  --role R        only entries whose role starts with R, such as user
+  --entry N       print entry N in full, with --around entries either side
+  --tail N        print the last N entries in full
+  --sessions      with --worksheet, list the logged sessions
+
+`--worksheet` searches every session in the worksheet's "## Jam Session log",
+oldest first. Reads JSONL transcripts (Claude, Codex, Grok, Copilot, Muse and
+Antigravity's JSONL brain) and Devin's database read-only; Cursor and
+Antigravity SQLite stores are reported as unsupported. Exit 1 means no match.
 EOF
       ;;
     watch)
@@ -1125,22 +1235,35 @@ case "$command_name" in
     exit $?
     ;;
   message|steer)
+    WORKSHEET=""
+    if [ "${1:-}" = --worksheet ]; then worksheet_path "${2:-}"; shift 2; fi
     if [ "$command_name" = steer ] && [ $# -ne 3 ]; then
-      die "steer needs <provider> <session> <text>"
+      die "steer needs [--worksheet <path>] <provider> <session> <text>"
     fi
     validate_message_args "$@"
     provider="$1"; shift
-    exec "$(require_adapter "$provider")" "$command_name" "$@"
+    adapter="$(require_adapter "$provider")"
+    [ -n "$WORKSHEET" ] || exec "$adapter" "$command_name" "$@"
+    session="$1"; shift
+    message_with_worksheet "$adapter" "$command_name" "$provider" "$session" "$@"
+    ;;
+  recall)
+    command -v "${JAMSESSION_PYTHON_BIN:-python3}" >/dev/null 2>&1 || die "recall needs python3"
+    JAMSESSION_CLI="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" exec "${JAMSESSION_PYTHON_BIN:-python3}" "$(recall_helper)" "$@"
     ;;
   watch)
     watch_file "$@"
     exit $?
     ;;
   run)
-    [ $# -eq 6 ] || die "run needs <provider> <new|session> <model> <effort> <read|edit> <prompt>"
+    WORKSHEET=""
+    if [ "${1:-}" = --worksheet ]; then worksheet_path "${2:-}"; shift 2; fi
+    [ $# -eq 6 ] || die "run needs [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>"
     provider="$1"; shift
     case "$4" in read|edit) ;; *) die "access must be read or edit" ;; esac
-    exec "$(require_adapter "$provider")" run "$@"
+    adapter="$(require_adapter "$provider")"
+    [ -n "$WORKSHEET" ] || exec "$adapter" run "$@"
+    run_with_worksheet "$adapter" "$provider" "$@"
     ;;
   list)
     [ $# -ge 1 ] && [ $# -le 2 ] || die "list needs <provider> [count]"
