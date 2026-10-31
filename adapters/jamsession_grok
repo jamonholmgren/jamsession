@@ -22,6 +22,11 @@ Grok edit mode uses bypassPermissions because headless approval modes can end a
 session without returning its answer. This adapter rejects read mode: Grok's
 current read-only controls do not reliably prevent shell writes. Grok reasoning
 effort stops at high, so xhigh or max is an error rather than a quiet downgrade.
+
+Doctor/status inspect `grok models`, without spending a prompt. A confirmed
+login is reported as ready, not proof a task will run. A failed or unrecognized
+catalog check is unverified, not a provider outage; the authorized task launch
+is the decisive check. Explicit authentication errors still fail doctor.
 EOF
 }
 
@@ -98,18 +103,20 @@ case "${1:-help}" in
   steer|usage|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
-    "$JAMSESSION_PROVIDER_BIN" --version
-    doctor_output="$("$JAMSESSION_PROVIDER_BIN" models 2>&1)" || {
+    "$JAMSESSION_PROVIDER_BIN" --version || exit $?
+    doctor_status=0
+    doctor_output="$("$JAMSESSION_PROVIDER_BIN" models 2>&1)" || doctor_status=$?
+    if printf '%s\n' "$doctor_output" | grep -Eiq '^[[:space:]]*(error:[[:space:]]*)?(you are |you.re )?(not authenticated|not logged in|not signed in)([[:space:].!,:;]|$)'; then
+      printf 'authentication: rejected by grok models\n' >&2
       printf '%s\n' "$doctor_output" >&2
       exit 1
-    }
-    case "$doctor_output" in
-      *'not authenticated'*|*'Not authenticated'*)
-        printf 'authentication: unavailable\n' >&2
-        exit 1
-        ;;
-      *) printf 'authentication: ready\n' ;;
-    esac
+    elif [ "$doctor_status" -eq 0 ] && printf '%s\n' "$doctor_output" | grep -Eq '^You are logged in with .+\.$'; then
+      printf 'authentication: ready (grok models reports logged in; task launch not tested)\n'
+    else
+      printf 'authentication: unverified (grok models exit %s; not proof Grok is unavailable)\n' "$doctor_status"
+      printf 'Launch the authorized task to verify execution; do not switch providers based on this check alone.\n'
+      [ -z "$doctor_output" ] || printf '%s\n' "$doctor_output" >&2
+    fi
     ;;
   help|-h|--help) help_text ;;
   *) jamsession_die "unknown command '$1'" ;;

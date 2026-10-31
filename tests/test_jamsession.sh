@@ -320,7 +320,9 @@ cat >"$FAKE_BIN/grok" <<'EOF'
 case "${1:-}" in
   --version) printf '%s\n' GROK_VERSION; exit 0 ;;
   sessions) printf '%s\n' GROK_SESSIONS; exit 0 ;;
-  models) printf '%s\n' GROK_MODELS; exit 0 ;;
+  models)
+    printf '%s\n' "${FAKE_GROK_MODELS:-You are logged in with grok.com.}"
+    exit "${FAKE_GROK_MODELS_EXIT:-0}" ;;
   doctor) printf '%s\n' GROK_DOCTOR_OK; exit 0 ;;
 esac
 printf '%s\n' "$*" >"$FAKE_LOG"
@@ -904,6 +906,32 @@ run_command env FAKE_LOG="$LOG" JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
   JAMSESSION_USAGE_FIXTURE_DIR="$TEMP_ROOT/partial-usage" "$ROOT/jamsession" status grok
 check "status succeeds when readiness passes but usage is unavailable" test "$status" -eq 0
 check "status reports unavailable usage without hiding readiness" contains "$stdout_file" unavailable
+
+run_command env JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
+  JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/jamsession" status grok
+check "Grok status recognizes native login evidence" contains "$stdout_file" 'authentication: ready'
+check "Grok status keeps quota separate from login" contains "$stdout_file" '65%'
+
+for catalog_exit in 0 1; do
+  run_command env JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
+    FAKE_GROK_MODELS='Failed to connect to model catalog' FAKE_GROK_MODELS_EXIT="$catalog_exit" \
+    JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/jamsession" status grok
+  check "Grok inconclusive catalog exit $catalog_exit does not exclude the provider" test "$status" -eq 0
+  check "Grok inconclusive catalog exit $catalog_exit is unverified" contains "$stdout_file" 'authentication: unverified'
+  check "Grok inconclusive catalog exit $catalog_exit retains diagnostics" contains "$stderr_file" 'Failed to connect'
+done
+
+for auth_error in 'Not authenticated' 'You are not logged in.' 'Error: not signed in'; do
+  run_command env JAMSESSION_GROK_BIN="$FAKE_BIN/grok" FAKE_GROK_MODELS="$auth_error" \
+    JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/jamsession" status grok
+  check "Grok rejects explicit authentication failure: $auth_error" test "$status" -ne 0
+  check "Grok preserves authentication failure evidence: $auth_error" contains "$stderr_file" "$auth_error"
+done
+
+run_command env JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
+  FAKE_GROK_MODELS='Help: if not authenticated, run grok login' "$ROOT/jamsession" doctor grok
+check "Grok does not treat incidental authentication wording as rejection" test "$status" -eq 0
+check "Grok does not invent readiness from an unrecognized catalog" contains "$stdout_file" 'authentication: unverified'
 
 run_command env FAKE_LOG="$LOG" JAMSESSION_CODEX_BIN="$FAKE_BIN/codex" \
   "$ROOT/adapters/jamsession_codex" run new default high read prompt
