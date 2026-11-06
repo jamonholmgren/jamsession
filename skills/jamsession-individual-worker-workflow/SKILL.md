@@ -39,9 +39,7 @@ These notes expire after three days; blockers and final handoffs stay direct.
    `jamsession recall --worksheet <path> "<query>"` for exact earlier details. Preserve human and sibling
    work; never stash, reset, switch branches, destructively clean, or adopt
    unrelated changes.
-3. Make the smallest complete change inside the assigned ownership. Stop when
-   completion requires a product decision, broader authority, or edits outside
-   the assignment.
+3. Perform the assigned task directly; do not recursively delegate without explicit authority. Full-task ownership can include implementation, checks and handoff when the brief grants it. Make the smallest complete change, resolve reversible in-scope choices, and report actual missing authority or consequential unresolved choices. Large effort alone is not a stopping reason.
 4. Run the cheapest check that could falsify the result, plus every explicitly
    required gate. Do not claim unrun or unavailable validation.
 5. Return a concise verdict, files inspected or changed, commands and results,

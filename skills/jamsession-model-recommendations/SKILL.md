@@ -37,9 +37,7 @@ belong to the task's workflow.
 
 ## PPP / Noble Court
 
-For ping-pong planning, use Astra 6 xhigh and Opus 5.5 xhigh as planners, with
-native Grok 4.7 high as the contrarian. Use the ping-pong planning workflow for
-independent drafts, challenge rounds and synthesis.
+Ordinary PPP uses two independent model families and one challenge/integration round, with task-appropriate defaults or listed alternatives. Add a premium third reviewer (Noble Court: Astra 6 xhigh, Opus 5.5 xhigh, native Grok 4.7 high contrarian) only when explicitly requested or justified by a concrete unresolved high-risk question. Follow the ping-pong planning workflow without expanding the agreed roster or round count.
 
 ## Peasant Mob
 
