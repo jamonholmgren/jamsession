@@ -7,6 +7,24 @@ ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ADAPTER_DIR/_jamsession_adapter_common"
 jamsession_adapter_setup grok grok JAMSESSION_GROK_BIN
 
+GROK_NOT_AUTHENTICATED='^[[:space:]]*(error:[[:space:]]*)?(you are |you.re )?(not authenticated|not logged in|not signed in)([[:space:].!,:;]|$)'
+
+# `grok models` answers from the expired token while its silent refresh is still
+# in flight, so the first call after the 6-hour token lapses prints "not
+# authenticated" and the bundled catalog. The refresh lands within a second;
+# one retry reads the real login and catalog. A second refusal is real.
+grok_models() {
+  local output status=0
+  output="$("$JAMSESSION_PROVIDER_BIN" models 2>&1)" || status=$?
+  if printf '%s\n' "$output" | grep -Eiq "$GROK_NOT_AUTHENTICATED"; then
+    sleep 1
+    status=0
+    output="$("$JAMSESSION_PROVIDER_BIN" models 2>&1)" || status=$?
+  fi
+  printf '%s\n' "$output"
+  return "$status"
+}
+
 help_text() {
   cat <<'EOF'
 jamsession_grok
@@ -99,14 +117,14 @@ case "${1:-help}" in
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" sessions list --limit "$count"
     ;;
-  models) jamsession_require_binary; "$JAMSESSION_PROVIDER_BIN" models ;;
+  models) jamsession_require_binary; grok_models ;;
   steer|usage|status) jamsession_unsupported "$1" ;;
   doctor)
     jamsession_require_binary
     "$JAMSESSION_PROVIDER_BIN" --version || exit $?
     doctor_status=0
-    doctor_output="$("$JAMSESSION_PROVIDER_BIN" models 2>&1)" || doctor_status=$?
-    if printf '%s\n' "$doctor_output" | grep -Eiq '^[[:space:]]*(error:[[:space:]]*)?(you are |you.re )?(not authenticated|not logged in|not signed in)([[:space:].!,:;]|$)'; then
+    doctor_output="$(grok_models 2>&1)" || doctor_status=$?
+    if printf '%s\n' "$doctor_output" | grep -Eiq "$GROK_NOT_AUTHENTICATED"; then
       printf 'authentication: rejected by grok models\n' >&2
       printf '%s\n' "$doctor_output" >&2
       exit 1

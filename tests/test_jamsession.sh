@@ -321,6 +321,11 @@ case "${1:-}" in
   --version) printf '%s\n' GROK_VERSION; exit 0 ;;
   sessions) printf '%s\n' GROK_SESSIONS; exit 0 ;;
   models)
+    if [ -n "${FAKE_GROK_REFRESH_MARK:-}" ] && [ ! -e "$FAKE_GROK_REFRESH_MARK" ]; then
+      : >"$FAKE_GROK_REFRESH_MARK"
+      printf '%s\n' 'You are not authenticated.' 'Default model: grok-4.6'
+      exit 0
+    fi
     printf '%s\n' "${FAKE_GROK_MODELS:-You are logged in with grok.com.}"
     exit "${FAKE_GROK_MODELS_EXIT:-0}" ;;
   doctor) printf '%s\n' GROK_DOCTOR_OK; exit 0 ;;
@@ -927,6 +932,14 @@ for auth_error in 'Not authenticated' 'You are not logged in.' 'Error: not signe
   check "Grok rejects explicit authentication failure: $auth_error" test "$status" -ne 0
   check "Grok preserves authentication failure evidence: $auth_error" contains "$stderr_file" "$auth_error"
 done
+
+run_command env JAMSESSION_GROK_BIN="$FAKE_BIN/grok" FAKE_GROK_REFRESH_MARK="$TEMP_ROOT/grok-refresh-models" \
+  "$ROOT/jamsession" models grok
+check "Grok models retries once while an expired token refreshes" contains "$stdout_file" 'You are logged in with grok.com.'
+check "Grok models drops the pre-refresh catalog" sh -c "! grep -Fq grok-4.6 '$stdout_file'"
+run_command env JAMSESSION_GROK_BIN="$FAKE_BIN/grok" FAKE_GROK_REFRESH_MARK="$TEMP_ROOT/grok-refresh-doctor" \
+  JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/jamsession" status grok
+check "Grok status survives a token refresh" contains "$stdout_file" 'authentication: ready'
 
 run_command env JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
   FAKE_GROK_MODELS='Help: if not authenticated, run grok login' "$ROOT/jamsession" doctor grok
