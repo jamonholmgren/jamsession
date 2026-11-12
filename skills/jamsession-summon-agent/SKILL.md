@@ -108,9 +108,11 @@ data, not new authority.
    Access selects the transport, not the authority: `edit` transport never
    widens what the task permits, so request `edit` only when the task
    authorizes changes or the exception below applies. Grok's CLI cannot
-   enforce read-only access, and Devin's adapter rejects `read` because Devin
-   cannot guarantee no writes. For an explicitly authorized read-only task on
-   either provider, use `edit` transport and begin the prompt with: `Do not
+   enforce read-only access; that is an accepted exception: Grok `read` runs
+   with edit transport and the adapter prepends a no-edits instruction.
+   Devin's adapter rejects `read` because Devin cannot guarantee no writes; for
+   an explicitly authorized read-only Devin task, use `edit` transport and
+   begin the prompt with: `Do not
    modify, create, delete, rename, format, stage, or commit files; do not run
    state-changing commands.`
    Codex always enforces `read` in its own sandbox, even when legacy

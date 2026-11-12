@@ -70,7 +70,12 @@ session_size() {
 run_agent() {
   jamsession_validate_run "$@"
   jamsession_require_binary
-  [ "$JAMSESSION_ACCESS" = edit ] || jamsession_die "read access is unsupported because this Grok CLI cannot guarantee no writes"
+  if [ "$JAMSESSION_ACCESS" = read ]; then
+    # Accepted exception: Grok cannot enforce read-only, so read runs with edit transport and a no-edits instruction.
+    printf 'note: Grok has no enforced read-only mode; running with a no-edits instruction\n' >&2
+    JAMSESSION_PROMPT="Do not modify, create, delete, rename, format, stage, or commit files; do not run state-changing commands.
+$JAMSESSION_PROMPT"
+  fi
 
   local session_id status
   local -a args

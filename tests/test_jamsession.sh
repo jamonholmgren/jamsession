@@ -473,7 +473,7 @@ run_command env FAKE_LOG="$LOG" GROK_SESSION_ID=target JAMSESSION_GROK_BIN="$FAK
 check "known own Grok session cannot be resumed for messaging" test "$status" -eq 2
 run_command env FAKE_LOG="$LOG" JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
   "$ROOT/jamsession" message grok another-session question --resume-with default high read
-check "fallback never weakens Grok read access" test "$status" -eq 2
+check "Grok read fallback carries the no-edits instruction" contains "$LOG" "Do not modify, create, delete"
 run_command env FAKE_LOG="$LOG" JAMSESSION_CURSOR_BIN="$FAKE_BIN/cursor-agent" \
   "$ROOT/jamsession" message cursor target question --resume-with default default read
 check "Cursor fallback retains its existing read adapter" test "$status" -eq 0
@@ -1068,8 +1068,8 @@ check "stdin prompt is neither word-split nor glob-expanded" equals "$LOG.count"
 
 run_command env FAKE_LOG="$LOG" JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
   "$ROOT/adapters/jamsession_grok" run new default high read prompt
-check "Grok rejects unenforceable read access" test "$status" -eq 2
-check "Grok explains the read rejection" contains "$stderr_file" "cannot guarantee no writes"
+check "Grok runs read access with a no-edits instruction" contains "$LOG" "Do not modify, create, delete"
+check "Grok notes its read-only exception" contains "$stderr_file" "no enforced read-only mode"
 
 rm -f "$LOG"
 run_command env FAKE_LOG="$LOG" JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
