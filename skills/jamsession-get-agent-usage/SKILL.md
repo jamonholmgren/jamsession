@@ -20,8 +20,13 @@ description: "Report provider usage, quotas, remaining capacity and reset times;
    `remaining_percent`. Do not show `used_percent`. Keep `gpt-reserve`; it is the
    Codex `base_model_inference` weekly bucket, although Codex does not expose which
    exact models or fallback path consume it. Label Claude's useful windows
-   `All Models (weekly)` and `Fable (weekly)`. Show a provider name only on its
-   first row when it has multiple windows.
+   `All Models (weekly)` and `Fable (weekly)`. Repeat the provider name on every
+   row, including when it has multiple windows. Put a remaining-quota indicator
+   immediately before the name in the Provider column: 🟢 above 70%, 🟡 above 50%
+   through 70%, 🟠 above 0% through 50%, 🔴 at 0%, and ⚪️ when usage is
+   unavailable. Do not add a Used column. For Cursor, report Included and Auto
+   as separate breakdown rows when available, but omit its API/Other models
+   category entirely; never include that category in a usage report.
 5. Normalize every reset to Pacific time. Format dates as `Sept 14 (in 7 days)`.
    For today or tomorrow only, add the compact reset time, such as
    `Sept 8 (tomorrow @ 9:12pm)`. Use calendar-day differences, not elapsed
