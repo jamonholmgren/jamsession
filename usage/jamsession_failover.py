@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,6 +37,119 @@ except ImportError:  # Python before 3.11
 
 class Failure(Exception):
     pass
+
+
+class Unresolved(Failure):
+    """`<family>@latest` has no ID on this harness, or its listing failed with nothing cached."""
+
+
+# `<family>@latest` resolves per harness to the newest ID its `models` listing
+# shows. An ID must be exactly the family pattern plus an optional effort
+# suffix, so fast, lightning, mini, thinking, 1m and "default" never qualify.
+_VERSION = r"(\d+(?:[.-]\d+)*)"
+_EFFORT = r"(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?"
+FAMILIES = {name: re.compile(pattern.replace("V", _VERSION) + _EFFORT) for name, pattern in {
+    "fable": "claude-fable-V", "opus": "claude-opus-V", "sonnet": "claude-sonnet-V", "haiku": "claude-haiku-V",
+    "astra": "gpt-V-astra", "sol": "gpt-V-sol", "terra": "gpt-V-terra", "luna": "gpt-V-luna",
+    "grok": "grok-V", "wonder": "muse-wonder-V", "spark": "muse-spark-V",
+    "swe-2": "swe-V", "swe-2-flash": "swe-V-flash",
+}.items()}
+FAMILY_ALIASES = {"swe": "swe-2", "swe-flash": "swe-2-flash"}
+LATEST_TTL = 3600.0
+
+
+def family_name(model: str) -> str:
+    """The family of `<family>@latest`, or "" for a concrete ID."""
+    if "@" not in model:
+        return ""
+    family, tag = model.split("@", 1)
+    family = FAMILY_ALIASES.get(family.lower(), family.lower())
+    if tag != "latest" or family not in FAMILIES:
+        raise Failure(f"unknown model '{model}'; use <family>@latest with one of: {', '.join(FAMILIES)}")
+    return family
+
+
+def family_of_id(model: str) -> str:
+    key = model.strip().lower()
+    return next((name for name, pattern in FAMILIES.items() if pattern.fullmatch(key)), "")
+
+
+def newest(listing: str, family: str) -> str:
+    """The newest ID in a harness's model listing for `family`, without its effort suffix."""
+    pattern, best, best_version = FAMILIES[family], "", ()
+    for token in re.findall(r"[a-z0-9][a-z0-9._-]*", listing.lower()):
+        match = pattern.fullmatch(token)
+        if not match:
+            continue
+        version = tuple(int(part) for part in re.split(r"[.-]", match.group(1)))
+        if version > best_version:
+            best, best_version = re.sub(r"-(none|minimal|low|medium|high|xhigh|max|ultra)$", "", token), version
+    return best
+
+
+class Latest:
+    """Resolves `<family>@latest` per harness, caching results for LATEST_TTL seconds.
+    A failed listing falls back to the last resolved value, however old."""
+
+    def __init__(self, path: Path | None = None, ttl: float | None = None, lister=None):
+        self.path = path or Path(os.environ.get("JAMSESSION_LATEST_CACHE")
+                                 or os.path.expanduser("~/.cache/jamsession/latest-models.json"))
+        self.ttl = float(os.environ.get("JAMSESSION_LATEST_TTL", LATEST_TTL)) if ttl is None else ttl
+        self.lister = lister or list_models
+        self.listings: dict[str, str | None] = {}
+
+    def load(self) -> dict:
+        try:
+            return json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+
+    def save(self, cache: dict) -> None:
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.path.with_suffix(".tmp")
+            temporary.write_text(json.dumps(cache, indent=2) + "\n", encoding="utf-8")
+            temporary.replace(self.path)
+        except OSError:
+            pass  # a resolution that cannot be cached is still right for this run
+
+    def resolve(self, harness: str, model: str) -> str:
+        family = family_name(model)
+        if not family:
+            return model
+        key = f"{harness}/{family}"
+        cache = self.load()
+        entry = cache.get(key)
+        if entry and time.time() - float(entry.get("at", 0)) < self.ttl:
+            return entry["id"]
+        if harness not in self.listings:
+            try:
+                self.listings[harness] = self.lister(harness)
+            except (OSError, subprocess.SubprocessError, Failure):
+                self.listings[harness] = None
+        listing = self.listings[harness]
+        if listing is None:
+            if entry:
+                print(f"note: could not list {harness} models; using last resolved {family}@latest = {entry['id']}",
+                      file=sys.stderr)
+                return entry["id"]
+            raise Unresolved(f"could not list {harness} models to resolve {model}, and none is cached")
+        found = newest(listing, family)
+        if not found:
+            raise Unresolved(f"{harness} does not serve {family}")
+        cache[key] = {"id": found, "at": time.time()}
+        self.save(cache)
+        return found
+
+
+def list_models(harness: str) -> str:
+    adapter_dir = os.environ.get("JAMSESSION_ADAPTER_DIR") or str(Path(__file__).resolve().parent.parent / "adapters")
+    adapter = Path(adapter_dir) / f"jamsession_{harness}"
+    command = [str(adapter), "models"] if adapter.is_file() else [os.environ.get("JAMSESSION_CLI", "jamsession"), "models", harness]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+    if result.returncode != 0 or not result.stdout.strip():
+        raise Failure(f"{harness} model listing failed")
+    return result.stdout
 
 
 @dataclass
@@ -114,6 +228,9 @@ def tier_of(table: dict) -> dict[str, tuple[int, str]]:
 
 
 def find_model(table: dict, provider: str, model: str) -> str:
+    family = family_name(model) or family_of_id(model)
+    if family in table["model"]:
+        return family
     key, _ = normalize(model)
     matches = [name for name, entry in table["model"].items()
                for via in entry["via"] if normalize(via["id"])[0] == key]
@@ -284,13 +401,19 @@ def skip_reason(candidate: Candidate, access: str, usage: Usage, min_usage: floa
 
 
 def run(candidates: list[Candidate], session: str, access: str, prompt: bytes, *, cli: str, worksheet: str,
-        min_usage: float, check_first: bool) -> int:
+        min_usage: float, check_first: bool, latest: "Latest | None" = None) -> int:
     usage = Usage(cli)
+    latest = latest or Latest()
     requested = candidates[0]
     if len(candidates) == 1:
         print(f"failover: {requested.model} is not in the tiers table; no fallbacks", file=sys.stderr)
     tried, noted = 0, False
     for index, candidate in enumerate(candidates):
+        try:
+            candidate.model = latest.resolve(candidate.provider, candidate.model)
+        except Unresolved as error:
+            print(f"failover: skipping {candidate.label()} ({error})", file=sys.stderr)
+            continue
         if index > 0 or check_first:
             reason = skip_reason(candidate, access, usage, min_usage)
             if reason:
@@ -360,6 +483,11 @@ def main(argv: list[str]) -> int:
     command, args = argv[0], argv[1:]
     options, rest = parse_options(args)
     cli = os.environ.get("JAMSESSION_CLI", "jamsession")
+    if command == "resolve":
+        if len(rest) != 2:
+            raise Failure("resolve needs <harness> <model>")
+        print(Latest().resolve(*rest))
+        return 0
     if command == "route":
         if len(rest) != 1:
             raise Failure("route needs <name> [--json]")

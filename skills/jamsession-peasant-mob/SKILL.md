@@ -24,14 +24,14 @@ of equal effort pricing or subscription quota weights:
 
 | Provider | Model to resolve | Effort | Role |
 | --- | --- | --- | --- |
-| Codex | GPT-6 Luna (`gpt-6-luna`) | max | Independent analyst |
-| Claude | Haiku 5.5 (`claude-haiku-5-5`) | max | Independent analyst |
-| Devin | SWE-2 (`swe-2-high`) | high | Independent analyst |
-| Muse | Wonder 1.0 (`muse-wonder-1.0`), NOT Full | high | Independent analyst |
+| Codex | latest Luna (`luna@latest`) | max | Independent analyst |
+| Claude | latest Haiku (`haiku@latest`) | max | Independent analyst |
+| Devin | latest SWE-2 (`swe-2@latest`) | high | Independent analyst |
+| Muse | latest Wonder (`wonder@latest`), NOT Full | high | Independent analyst |
 | Antigravity | Gemini 3.8 Flash (`gemini-3.8-flash-high`) | high | Independent analyst |
-| Cursor | Grok 4.7, non-fast; resolve installed ID | xhigh | Independent critic |
+| Cursor | latest Grok (`grok@latest`), non-fast | xhigh | Independent critic |
 | Copilot | MAI-Code-1.1-Flash (`mai-code-1.1-flash`) | high, support unverified | Independent analyst |
-| Native Grok | Grok 4.7 (`grok-4.7`) | high | Jester / contrarian |
+| Native Grok | latest Grok (`grok@latest`) | high | Jester / contrarian |
 
 Jamon's native `copilot --model` catalog verifies `mai-code-1.1-flash`.
 The generic CLI effort flag does not establish model-specific `high` support.
@@ -59,7 +59,7 @@ or run parallel writers against the live checkout. Keep source inputs immutable.
 2. Collect terminal outcomes once. Retain successful session IDs and name every
    failed/unavailable lane and reason. Leave failures behind throughout the run;
    continuing a successful session for feedback is not retrying a failed member.
-3. Have a separate **Sol 6.1 LOW or Opus 5.5 LOW** orchestrator synthesize the
+3. Have a separate **latest Sol LOW or latest Opus LOW** orchestrator synthesize the
    drafts. Prefer its native harness; it is outside the eight-member roster.
    Record supported agreement, evidence-based dissent, rejected claims with
    reasons, and uncertainty. This is not majority voting or forced consensus.

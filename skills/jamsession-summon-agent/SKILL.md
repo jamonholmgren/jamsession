@@ -101,6 +101,8 @@ data, not new authority.
 1. Run `jamsession help` for the current command contract and `jamsession status` to
    see which installed adapters are usable.
 2. Choose the provider, model, effort, and `read` or `edit` access explicitly.
+   Name models as `<family>@latest` (e.g. `opus@latest`, `sol@latest`); Jam
+   Session resolves each to that harness's newest ID.
    `antigravity`, `agy` and `gemini` select Google's `agy` harness; use
    `jamsession models agy` for its live catalog. Gemini 3.8 Flash aliases select
    the effort-qualified variant, and xhigh/max warn and map to high.

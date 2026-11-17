@@ -72,9 +72,9 @@ Installs to `~/.agents/jamsession/` and links `~/.local/bin/jamsession`. Never t
 ```sh
 jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
 
-jamsession run codex new gpt-5.6-sol high read "Review the current diff."
-jamsession run claude new claude-opus-5 high edit "Implement the requested change."
-jamsession run codex 019abc gpt-5.6-sol high read "Check the revised diff."
+jamsession run codex new sol@latest high read "Review the current diff."
+jamsession run claude new opus@latest high edit "Implement the requested change."
+jamsession run codex 019abc sol@latest high read "Check the revised diff."
 ```
 
 Every part is required. Pass a session ID instead of `new` to resume, and `-` as the prompt to read stdin. The reply goes to stdout; session IDs, the session's current token size, and diagnostics go to stderr. Past 250K tokens it suggests handing off to a fresh session.
@@ -84,7 +84,7 @@ A provider refusal (spend, usage or rate limit, quota, or auth failure) exits 75
 ### Continue from a worksheet instead of compacting
 
 ```sh
-jamsession run --worksheet .agents/worksheets/task.md claude new haiku-5.5 low edit "Continue the task in .agents/worksheets/task.md."
+jamsession run --worksheet .agents/worksheets/task.md claude new haiku@latest low edit "Continue the task in .agents/worksheets/task.md."
 jamsession recall --worksheet .agents/worksheets/task.md "Parse Error"
 jamsession recall claude SESSION_ID --entry 212 --around 2
 ```

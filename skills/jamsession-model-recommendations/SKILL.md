@@ -16,8 +16,10 @@ defaults are preferred routes, and alternatives are acceptable for that role.
 Task defaults take precedence over general daily-driver preferences. These are
 Jamon's preferences, not a universal model ranking.
 
-Prefer each model's native harness. Grok in the task table means native Grok 4.7
-at high. Crok/Croc means Cursor Grok; use that harness when the caller names it.
+Always use the latest model in each family; configs say `<family>@latest`.
+
+Prefer each model's native harness. Grok in the task table means native latest
+Grok at high. Crok/Croc means Cursor Grok; use that harness when the caller names it.
 Use `jamsession models <provider>` to resolve exact installed IDs. A missing
 picker entry alone does not prove a requested model unavailable.
 
@@ -25,25 +27,25 @@ picker entry alone does not prove a requested model unavailable.
 
 | Work | Default | Alternatives |
 | --- | --- | --- |
-| Difficult planning or diagnosis | Opus 5.5 high, Sol 6.1 xhigh | Opus 5.5 xhigh; latest Astra xhigh or Fable 5.2 as panelists |
-| UI work | Latest Astra or Fable 5.2, as panelists under a Sol or Opus lead | Opus 5.5 high |
-| Analysis, planning, diagnosis, performance work | Sol 6.1 high | Opus 5.5 medium, native Grok high |
-| Building new things, ordinary task work | Opus 5.5 medium | Sol 6.1 high, native Grok high |
+| Difficult planning or diagnosis | latest Opus high, latest Sol xhigh | latest Opus xhigh; latest Astra xhigh or latest Fable as panelists |
+| UI work | latest Astra or latest Fable, as panelists under a Sol or Opus lead | latest Opus high |
+| Analysis, planning, diagnosis, performance work | latest Sol high | latest Opus medium, native Grok high |
+| Building new things, ordinary task work | latest Opus medium | latest Sol high, native Grok high |
 | Light task work or implementation from a plan | native Grok high | Cursor Grok high |
-| Cheap limited-scope work from a good plan | SWE-2 max, SWE-2 Flash max | Luna 6 max, Haiku 5.5 xhigh |
-| Contrarian review | native Grok high | Cursor Grok high, SWE-2 max, Wonder 1.0 high |
+| Cheap limited-scope work from a good plan | SWE-2 max, SWE-2 Flash max | latest Luna max, latest Haiku xhigh |
+| Contrarian review | native Grok high | Cursor Grok high, SWE-2 max, latest Wonder high |
 
 Cheap work assumes a good supplied plan: SWE-2 and SWE-2 Flash are free, so
 use them as limited-scope spiders with a clear heuristic written by a stronger
 model. Use the difficult-planning or diagnosis defaults when diagnosis is
 needed; review and verification still belong to the task's workflow.
 
-Opus 5.5 at medium or high is the best mix of power and efficiency, so do not
+Latest Opus at medium or high is the best mix of power and efficiency, so do not
 spend it on routine interactions unless the human asks. Spend Opus from Devin's
 bucket first, then native Claude, then Cursor's included Opus as a last
-fallback. The latest Astra and Fable 5.2 are best in class and expensive: use them as
+fallback. The latest Astra and latest Fable are best in class and expensive: use them as
 panelists for work a Sol or Opus lead manages, mostly UI work, not as leads.
-Terra 6.1 high and Sonnet 5.5 high are about Grok level; use native Grok
+Latest Terra high and latest Sonnet high are about Grok level; use native Grok
 instead.
 
 Jam Session's `tiers.toml` (`jamsession tiers`) ranks these models A to F and
@@ -52,26 +54,26 @@ follow it, so keep it in step with these recommendations.
 
 ## PPP / Noble Court
 
-Ordinary PPP uses two independent model families and one challenge/integration round, with task-appropriate defaults or listed alternatives. Add a premium third reviewer (Noble Court: latest Astra xhigh, Opus 5.5 xhigh, native Grok 4.7 high contrarian) only when explicitly requested or justified by a concrete unresolved high-risk question. Follow the ping-pong planning workflow without expanding the agreed roster or round count.
+Ordinary PPP uses two independent model families and one challenge/integration round, with task-appropriate defaults or listed alternatives. Add a premium third reviewer (Noble Court: latest Astra xhigh, latest Opus xhigh, native latest Grok high contrarian) only when explicitly requested or justified by a concrete unresolved high-risk question. Follow the ping-pong planning workflow without expanding the agreed roster or round count.
 
 ## Peasant Mob
 
 Use `jamsession-peasant-mob` for the requested eight-lane planning/research/
 diagnosis workflow. That skill owns the exact roster and practical effort
 settings: all eight attempted in parallel, failed members left behind, and at
-least two complete feedback rounds after initial drafts. Synthesis uses Sol
-6.1 LOW or Opus 5.5 LOW, outside the eight lanes. It is experimental, with no
+least two complete feedback rounds after initial drafts. Synthesis uses latest
+Sol LOW or latest Opus LOW, outside the eight lanes. It is experimental, with no
 measured superiority claim or guarantee of effort-price/quota parity. Noble
 Court keeps the premium PPP defaults and its existing round-count behavior.
 
 ## Babysitting
 
-Use native Grok 4.7 high or Luna 6 xhigh to babysit external implementers. Route hard planning or diagnosis to the task defaults above.
+Use native latest Grok high or latest Luna xhigh to babysit external implementers. Route hard planning or diagnosis to the task defaults above.
 
 ## New autonomous assignments
 
-For a new autonomous lead or implementer, prefer **Opus 5.5 medium**, through
-Devin, then native Claude, then Cursor. Prefer **Sol 6.1 high** for analysis,
+For a new autonomous lead or implementer, prefer **latest Opus medium**, through
+Devin, then native Claude, then Cursor. Prefer **latest Sol high** for analysis,
 diagnosis and performance work. A repository's own routing (Gunship:
 `gso-complete-task` model routing) chooses reviewers and panels. These role-specific choices override the general
 implementation rows and native-harness preference for these roles only;
@@ -85,15 +87,15 @@ restrictions and actual approvals always win.
 
 General interactive preferences, when no task-specific route applies:
 
-* Routine replies and questions: native Grok 4.7 high (it can be slow), then
-  Cursor Grok 4.7 high
-* Task work: GPT-6.1 Sol high
-* Best, when the human asks: Claude Opus 5.5 medium or high
+* Routine replies and questions: native latest Grok high (it can be slow), then
+  Cursor latest Grok high
+* Task work: latest Sol high
+* Best, when the human asks: latest Opus medium or high
 
 ## Do not use
 
-* Claude Fable 5.1: superseded by Fable 5.2, which is a panelist only (above)
-* GPT-6.1 Terra and Claude Sonnet 5.5 as a first choice: use native Grok; they
+* Claude Fable 5.1: superseded by Fable 5.2 (history); latest Fable is a panelist only (above)
+* Latest Terra and latest Sonnet as a first choice: use native Grok; they
   remain last-resort tier C failover targets
 
 ## Known native models
@@ -118,7 +120,7 @@ are grouped; use `jamsession models <provider>` for exact installed IDs.
 
 * Muse Wonder 1.0 and Muse Wonder Full 1.0 are distinct models; keep their roles
   and requested settings separate
-* Muse Wonder 1.0 is tier C (with Grok) only at high effort; run it at high
+* Latest Wonder is tier C (with Grok) only at high effort; run it at high
 * Devin's top SWE-2 effort is `swe-2-max` (there is no xhigh). The cheap tier
   is SWE-2 Flash (`swe-2-flash-max`); there is no "SWE-2 light". The
   `-lightning` variants are billed, so never pick them by default
@@ -127,10 +129,14 @@ are grouped; use `jamsession models <provider>` for exact installed IDs.
 * GPT-5.5, Claude Sonnet before 5.5, and other older models are poor choices;
   use them only when a harness has nothing better
 
-Unknown, haven't used enough:
+Unknown, haven't used enough (do not route to these):
 
 * Gemini 3.8 Flash
 * GLM 5.3 (Flash)
+* Gemini 4 Carbon, Argon and Hydrogen
+* Muse Ember 1.0
+* Kimi K3.1 Pro
+* GLM-5.3
 
 Users can copy this skill under another name and maintain their own model
 recommendations. Prefer user recommendations over Jamon's if present.

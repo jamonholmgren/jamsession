@@ -76,7 +76,22 @@ jamsession_validate_run() {
   [ -n "$JAMSESSION_MODEL" ] || jamsession_die "model must not be empty"
   [ -n "$JAMSESSION_EFFORT" ] || jamsession_die "effort must not be empty"
   case "$JAMSESSION_ACCESS" in read|edit) ;; *) jamsession_die "access must be read or edit" ;; esac
+  JAMSESSION_MODEL="$(jamsession_resolve_model "$JAMSESSION_MODEL")" || exit $?
   jamsession_read_prompt "$5"
+}
+
+# `<family>@latest` becomes this harness's newest listed ID for that family
+# (cached briefly); a concrete ID passes through unchanged.
+jamsession_resolve_model() {
+  case "$1" in *@*) ;; *) printf '%s\n' "$1"; return 0 ;; esac
+  local helper resolved
+  helper="$ADAPTER_DIR/../usage/jamsession_failover.py"
+  [ -f "$helper" ] || helper="$ADAPTER_DIR/../bin/jamsession_failover.py"
+  [ -f "$helper" ] || jamsession_die "cannot resolve $1: the model resolver is not installed; run jamsession update"
+  resolved="$(JAMSESSION_ADAPTER_DIR="$ADAPTER_DIR" "${JAMSESSION_PYTHON_BIN:-python3}" "$helper" resolve "$JAMSESSION_PROVIDER" "$1")" || \
+    jamsession_die "cannot resolve $1 for $JAMSESSION_PROVIDER"
+  printf 'model: %s -> %s\n' "$1" "$resolved" >&2
+  printf '%s\n' "$resolved"
 }
 
 jamsession_uuid() {
@@ -138,7 +153,7 @@ jamsession_validate_message() {
     [ "$3" = --resume-with ] || jamsession_die "expected --resume-with <model> <effort> <read|edit>"
     [ -n "$4" ] && [ -n "$5" ] || jamsession_die "model and effort must not be empty"
     case "$6" in read|edit) ;; *) jamsession_die "access must be read or edit" ;; esac
-    JAMSESSION_MESSAGE_MODEL="$4"
+    JAMSESSION_MESSAGE_MODEL="$(jamsession_resolve_model "$4")" || exit $?
     JAMSESSION_MESSAGE_EFFORT="$5"
     JAMSESSION_MESSAGE_ACCESS="$6"
     JAMSESSION_MESSAGE_RESUME=1

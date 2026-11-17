@@ -1040,7 +1040,10 @@ EOF
 Usage: jamsession run [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
 
 Use `new` to create a session or pass an exact provider-native session ID to
-resume. Use `default` to let the provider choose its model or effort. `read`
+resume. Use `default` to let the provider choose its model or effort. A model
+of `<family>@latest` (opus, fable, sonnet, haiku, sol, astra, terra, luna, grok,
+wonder, spark, swe-2, swe-2-flash) resolves to that harness's newest listed ID,
+cached for an hour (JAMSESSION_LATEST_TTL), and prints `model: ... -> <id>`. `read`
 must be enforced by the adapter; `edit` permits unattended workspace changes.
 Pass `-` as the prompt to read stdin.
 `--worksheet` appends the session, settings and exact prompt to the worksheet's

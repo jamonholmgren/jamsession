@@ -24,7 +24,9 @@ args = sys.argv[1:]
 if args[:1] == ["create-chat"]:
     print("chat-1"); sys.exit(0)
 if args[:1] == ["models"]:
-    print("gemini-3.8-flash-high"); sys.exit(0)
+    print(os.environ.get("FAKE_MODELS", "gemini-3.8-flash-high")); sys.exit(0)
+if os.environ.get("FAKE_ECHO_ARGS"):
+    print(" ".join(args)); sys.exit(0)
 if args[:2] == ["list", "--format"]:
     print("id,title"); sys.exit(0)
 sys.stdout.write(os.environ.get("FAKE_STDOUT", ""))
@@ -110,11 +112,72 @@ class AdapterRefusalTests(unittest.TestCase):
         reply = self.run_adapter("claude", 0, FAKE_STDOUT="You've hit your spend limit · resets 3pm\n")
         self.assertEqual(reply.returncode, REFUSAL)
 
+    def test_an_adapter_resolves_family_at_latest_before_launching(self):
+        env = dict(self.env, FAKE_MODELS="* grok-4.7 (default)\n- grok-4.7-build-fast\n- grok-4.6",
+                   FAKE_ECHO_ARGS="1", JAMSESSION_LATEST_CACHE=str(Path(self.temp.name) / "latest.json"))
+        reply = subprocess.run([str(ROOT / "jamsession"), "run", "grok", "new", "grok@latest", "high", "edit", "hi"],
+                               env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertIn("-m grok-4.7 ", reply.stdout)
+        self.assertIn("model: grok@latest -> grok-4.7", reply.stderr)
+
     def test_a_long_successful_reply_that_mentions_limits_is_not_a_refusal(self):
         answer = "Added a rate limit to the API.\nThe quota now resets daily.\nTests pass.\nDone.\n"
         reply = self.run_adapter("grok", 0, FAKE_STDOUT=answer, FAKE_STDERR="warning: rate limit hit, retrying\n")
         self.assertEqual(reply.returncode, 0, reply.stderr)
         self.assertEqual(reply.stdout, answer)
+
+
+class LatestTests(unittest.TestCase):
+    def test_newest_version_wins_numerically(self):
+        self.assertEqual(failover.newest("gpt-6.1-sol gpt-6.2-sol gpt-5.6-sol", "sol"), "gpt-6.2-sol")
+        self.assertEqual(failover.newest("claude-opus-4-8 claude-opus-5-5 claude-opus-5", "opus"), "claude-opus-5-5")
+        self.assertEqual(failover.newest("grok-4.10 grok-4.9", "grok"), "grok-4.10")
+
+    def test_fast_lightning_mini_thinking_and_default_variants_never_qualify(self):
+        listing = ("default - Fable\nclaude-opus-6-0-fast\nclaude-opus-6-0-thinking-high\ngpt-6.3-sol-mini\n"
+                   "swe-3-max-lightning\nclaude-opus-5-5-high\ngpt-6.2-sol\nswe-2-max\nswe-2-flash-max\n")
+        self.assertEqual(failover.newest(listing, "opus"), "claude-opus-5-5")
+        self.assertEqual(failover.newest(listing, "sol"), "gpt-6.2-sol")
+        self.assertEqual(failover.newest(listing, "swe-2"), "swe-2")
+        self.assertEqual(failover.newest(listing, "swe-2-flash"), "swe-2-flash")
+
+    def latest(self, listings, ttl=3600.0):
+        def lister(harness):
+            if listings.get(harness) is None:
+                raise failover.Failure("listing failed")
+            return listings[harness]
+        return failover.Latest(self.cache, ttl, lister)
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="jamsession-latest-test-")
+        self.cache = Path(self.temp.name) / "latest.json"
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def test_each_harness_resolves_its_own_newest_and_skips_families_it_lacks(self):
+        latest = self.latest({"codex": "gpt-6.2-sol gpt-6.1-sol", "devin": "gpt-6-1-sol-high gpt-6-sol-high"})
+        self.assertEqual(latest.resolve("codex", "sol@latest"), "gpt-6.2-sol")
+        self.assertEqual(latest.resolve("devin", "sol@latest"), "gpt-6-1-sol")
+        with self.assertRaises(failover.Unresolved):
+            latest.resolve("codex", "opus@latest")
+        self.assertEqual(latest.resolve("codex", "gpt-6.1-sol"), "gpt-6.1-sol")
+
+    def test_a_failed_listing_falls_back_to_the_last_resolved_value(self):
+        self.assertEqual(self.latest({"codex": "gpt-6.2-sol"}).resolve("codex", "sol@latest"), "gpt-6.2-sol")
+        self.assertEqual(self.latest({"codex": None}, ttl=0).resolve("codex", "sol@latest"), "gpt-6.2-sol")
+        with self.assertRaises(failover.Unresolved):
+            self.latest({"devin": None}, ttl=0).resolve("devin", "sol@latest")
+
+    def test_a_fresh_cache_skips_listing(self):
+        self.latest({"codex": "gpt-6.2-sol"}).resolve("codex", "sol@latest")
+        self.assertEqual(self.latest({"codex": "gpt-7-sol"}).resolve("codex", "sol@latest"), "gpt-6.2-sol")
+        self.assertEqual(self.latest({"codex": "gpt-7-sol"}, ttl=0).resolve("codex", "sol@latest"), "gpt-7-sol")
+
+    def test_an_unknown_family_is_an_error(self):
+        with self.assertRaises(failover.Failure):
+            self.latest({}).resolve("codex", "gpt@latest")
 
 
 def table():
@@ -172,10 +235,28 @@ sys.exit(status)
 """
 
 
+# What each fake harness lists for `<family>@latest`.
+LISTINGS = {
+    "claude": "claude-opus-5-5\nclaude-sonnet-5-5\nclaude-fable-5-2\nclaude-haiku-5-5",
+    "devin": "claude-opus-5-5-medium\ngpt-6-1-sol-high\ngpt-6-astra-high\ngrok-4-7-high\nclaude-sonnet-5-5-high\n"
+             "gpt-6-1-terra-high\nmuse-wonder-1-0-high\nswe-2-max\ngpt-6-luna-high",
+    "cursor": "claude-opus-5-5-medium - Opus\ngrok-4.7-high - Grok\nclaude-sonnet-5-5-high - Sonnet",
+    "codex": "gpt-6.2-sol - Sol\ngpt-6.1-sol - Sol\ngpt-6.2-astra - Astra\ngpt-6.1-terra - Terra",
+    "grok": "* grok-4.7 (default)",
+    "muse": "muse-wonder-1.0\nmuse-spark-1.3",
+}
+
+
 class FailoverRunTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="jamsession-failover-test-")
         root = Path(self.temp.name)
+        self.adapters = root / "adapters"
+        self.adapters.mkdir()
+        for harness, listing in LISTINGS.items():
+            adapter = self.adapters / f"jamsession_{harness}"
+            adapter.write_text(f"#!/bin/sh\n[ \"$1\" = models ] && printf '%s\\n' '{listing}'\n")
+            adapter.chmod(0o755)
         self.cli = root / "jamsession"
         self.cli.write_text(FAKE_CLI)
         self.cli.chmod(0o755)
@@ -192,7 +273,8 @@ class FailoverRunTests(unittest.TestCase):
             self.usage.write_text(json.dumps({"providers": usage}))
         env = dict(os.environ, JAMSESSION_CLI=str(self.cli), FAKE_CALLS=str(self.calls), FAKE_PLAN=json.dumps(plan),
                    JAMSESSION_USAGE_JSON=str(self.usage), JAMSESSION_TIERS=str(ROOT / "tiers.toml"),
-                   JAMSESSION_ROUTES=str(self.routes))
+                   JAMSESSION_ROUTES=str(self.routes), JAMSESSION_ADAPTER_DIR=str(self.adapters),
+                   JAMSESSION_LATEST_CACHE=str(Path(self.temp.name) / "latest.json"))
         reply = subprocess.run([sys.executable, str(ROOT / "usage" / "jamsession_failover.py"), *args],
                                env=env, capture_output=True, text=True, timeout=30)
         calls = [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
@@ -206,6 +288,13 @@ class FailoverRunTests(unittest.TestCase):
         self.assertEqual([call[1:5] for call in calls],
                          [["claude", "sess-1", "claude-opus-5-5", "medium"], ["devin", "new", "claude-opus-5-5", "medium"]])
         self.assertIn("ran: provider=devin model=claude-opus-5-5 effort=medium session=new", reply.stderr)
+
+    def test_family_at_latest_resolves_per_harness_and_ran_names_the_resolved_id(self):
+        reply, calls = self.run_helper({"codex": [REFUSAL, ""]},
+                                       "run", "codex", "new", "sol@latest", "high", "edit", "do it")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual([call[1:4] for call in calls], [["codex", "new", "gpt-6.2-sol"], ["devin", "new", "gpt-6-1-sol"]])
+        self.assertIn("ran: provider=devin model=gpt-6-1-sol effort=high", reply.stderr)
 
     def test_an_ordinary_failure_does_not_fail_over(self):
         reply, calls = self.run_helper({"claude": [1, "partial"]},
