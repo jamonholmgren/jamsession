@@ -192,8 +192,8 @@ data, not new authority.
    <session> "<text>"` for immediate redirection instead; it also starts idle
    work, without killing the current process. System Python 3 is required;
    the adapter starts Codex's native daemon when needed. Another controller's writer
-   lock is preserved: message goes to that owner's queue, and steer reports
-   unavailable unless its local control socket is configured. Muse may not
+   lock is preserved: message goes to that owner's queue, and steer queues there
+   too, reporting `steer unavailable ... queueing instead` (not steered). Muse may not
    wake an idle session. Unloaded Codex sessions whose saved permission policy
    cannot be safely restored fail before sending; use their owning controller.
    A native send error is final, not permission to retry

@@ -28,6 +28,8 @@ receives messages through codex queue; its queue consumer controls delivery. It
 cannot be steered through this adapter unless its control socket is available.
 An idle desktop owner may leave its queue pending until the session is focused.
 `delivery: queued; execution unconfirmed` is not a started run or a final answer.
+Steer on a session another process owns (such as a `codex exec` worker) falls
+back to the native queue and reports "steer unavailable ... queueing instead".
 Use steer for intentional redirection. Serialize follow-ups to the same session:
 Codex has no atomic idle-only start, so concurrent senders can race into steering.
 The saved approval/reviewer policy is retained.
@@ -273,7 +275,10 @@ deliver_message() {
   printf '%s' "$JAMSESSION_PROMPT" | "$python_bin" "$ADAPTER_DIR/_jamsession_codex_control.py" \
     "$JAMSESSION_PROVIDER_BIN" "$intent" "$JAMSESSION_MESSAGE_SESSION" || status=$?
   if [ "$status" -eq 4 ]; then
-    [ "$intent" = message ] || jamsession_unsupported "steer: the session belongs to another controller"
+    # A `codex exec` worker owns its session and cannot be steered; queue
+    # instead and say so, rather than leaving the session unreachable.
+    [ "$intent" = message ] || \
+      printf 'delivery: steer unavailable: another process owns the session; queueing instead (not steered)\n' >&2
     native_queue "$JAMSESSION_MESSAGE_SESSION" "$JAMSESSION_PROMPT"
     return $?
   fi

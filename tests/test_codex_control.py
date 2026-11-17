@@ -174,6 +174,7 @@ class ControlTests(unittest.TestCase):
         binary.write_text("#!" + sys.executable + "\nimport os,json,sys\nfrom pathlib import Path\n"
                           "with open(os.environ['FAKE_LOG'],'a') as f: f.write(json.dumps(sys.argv[1:])+'\\n')\n"
                           "if sys.argv[1:4]==['app-server','daemon','version']:\n"
+                          " if os.environ.get('FAKE_VERSION_FAILS') and not Path(os.environ['FAKE_DAEMON_MARKER']).exists(): print('Error: failed to connect',file=sys.stderr);sys.exit(1)\n"
                           " print(json.dumps({'status':'running' if Path(os.environ['FAKE_DAEMON_MARKER']).exists() else 'stopped','socketPath':os.environ['FAKE_DAEMON_SOCKET']}));sys.exit(0)\n"
                           "if sys.argv[1:4]==['app-server','daemon','start']:\n"
                           " Path(os.environ['FAKE_DAEMON_MARKER']).touch();sys.exit(0)\n"
@@ -367,10 +368,15 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(json.loads((self.path / "cli-calls").read_text()),
                          ["queue", "--thread", "fixture", "--message", "hello"])
 
-    def test_foreign_writer_cannot_be_steered_by_a_second_controller(self):
+    def test_foreign_writer_steer_falls_back_to_the_native_queue_and_says_so(self):
         self.peer.scenario = "busy"
-        self.assertEqual(self.cli("steer", "codex", "fixture", "redirect").returncode, 3)
-        self.assertFalse((self.path / "cli-calls").exists())
+        result = self.cli("steer", "codex", "fixture", "redirect")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("steer unavailable", result.stderr)
+        self.assertIn("delivery: queued; execution unconfirmed", result.stderr)
+        self.assertNotIn("turn/start", self.methods())
+        self.assertEqual(json.loads((self.path / "cli-calls").read_text()),
+                         ["queue", "--thread", "fixture", "--message", "redirect"])
 
     def test_denial_does_not_trigger_queue_or_resume_fallback(self):
         self.peer.scenario = "denied"
@@ -456,6 +462,19 @@ class ControlTests(unittest.TestCase):
                                  ["app-server", "daemon", "start"],
                                  ["app-server", "daemon", "version"]])
         self.assertEqual(self.methods(), ["thread/read", "turn/start"])
+
+    def test_steer_starts_the_daemon_when_version_fails_because_none_runs(self):
+        # Codex 0.169 exits nonzero from `daemon version` while no daemon runs.
+        self.env.pop("JAMSESSION_CODEX_CONTROL_SOCKET")
+        self.env.update(FAKE_VERSION_FAILS="1", FAKE_DAEMON_MARKER=str(self.path / "daemon-started"),
+                        FAKE_DAEMON_SOCKET=str(self.path / "control.sock"))
+        result = self.cli("steer", "codex", "fixture", "are you blocked?")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("delivery: steer accepted", result.stderr)
+        calls = [json.loads(line) for line in (self.path / "cli-calls").read_text().splitlines()]
+        self.assertEqual(calls, [["app-server", "daemon", "version"],
+                                 ["app-server", "daemon", "start"],
+                                 ["app-server", "daemon", "version"]])
 
     def test_published_native_socket_does_not_require_discovery_subprocess(self):
         self.env.pop("JAMSESSION_CODEX_CONTROL_SOCKET")

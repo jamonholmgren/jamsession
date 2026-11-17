@@ -36,6 +36,22 @@ def published_socket():
     return os.path.abspath(os.path.join(root, "app-server-control", "app-server-control.sock"))
 
 
+def daemon_version(binary):
+    """The running daemon's status, or {} when none runs: Codex 0.169 exits
+    nonzero from `daemon version` then instead of reporting a stopped status."""
+    try:
+        result = subprocess.run([binary, "app-server", "daemon", "version"],
+                                capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ControlUnavailable("cannot discover Codex's running app server") from error
+    if result.returncode != 0:
+        return {}
+    try:
+        return json.loads(result.stdout)
+    except ValueError as error:
+        raise ControlUnavailable("cannot discover Codex's running app server") from error
+
+
 def control_socket(binary, discover=False):
     if not hasattr(socket, "AF_UNIX") or not hasattr(os, "getuid"):
         raise ControlUnavailable("native Codex control needs Unix sockets (macOS, Linux or WSL)")
@@ -47,23 +63,14 @@ def control_socket(binary, discover=False):
     published = published_socket()
     if not discover and os.path.exists(published):
         return published  # Control still checks socket type and current-user ownership.
-    try:
-        result = subprocess.run(
-            [binary, "app-server", "daemon", "version"],
-            capture_output=True, text=True, timeout=10, check=True,
-        )
-        daemon = json.loads(result.stdout)
-    except (OSError, subprocess.SubprocessError, ValueError) as error:
-        raise ControlUnavailable("cannot discover Codex's running app server") from error
+    daemon = daemon_version(binary)
     if daemon.get("status") != "running" or not daemon.get("socketPath"):
         try:
             subprocess.run([binary, "app-server", "daemon", "start"],
                            capture_output=True, text=True, timeout=30, check=True)
-            result = subprocess.run([binary, "app-server", "daemon", "version"],
-                                    capture_output=True, text=True, timeout=10, check=True)
-            daemon = json.loads(result.stdout)
-        except (OSError, subprocess.SubprocessError, ValueError) as error:
+        except (OSError, subprocess.SubprocessError) as error:
             raise ControlUnavailable("Codex's native local control server could not start") from error
+        daemon = daemon_version(binary)
         if daemon.get("status") != "running" or not daemon.get("socketPath"):
             raise ControlUnavailable("Codex has no running local control server")
     return daemon["socketPath"]
