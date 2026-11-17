@@ -146,7 +146,9 @@ def list_models(harness: str) -> str:
     adapter_dir = os.environ.get("JAMSESSION_ADAPTER_DIR") or str(Path(__file__).resolve().parent.parent / "adapters")
     adapter = Path(adapter_dir) / f"jamsession_{harness}"
     command = [str(adapter), "models"] if adapter.is_file() else [os.environ.get("JAMSESSION_CLI", "jamsession"), "models", harness]
-    result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+    # Adapters find their helpers through JAMSESSION_HOME, which the CLI normally exports.
+    env = dict(os.environ, JAMSESSION_HOME=os.environ.get("JAMSESSION_HOME") or str(Path(adapter_dir).parent))
+    result = subprocess.run(command, capture_output=True, text=True, timeout=120, env=env)
     if result.returncode != 0 or not result.stdout.strip():
         raise Failure(f"{harness} model listing failed")
     return result.stdout
