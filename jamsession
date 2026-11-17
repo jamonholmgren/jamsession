@@ -35,6 +35,10 @@ jamsession — one small interface for coding-agent CLIs
 
 Usage:
   jamsession run [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
+  jamsession run --failover [--allow-lower] [--min-usage <percent>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
+  jamsession run --route <name> <new|session> <read|edit> <prompt>
+  jamsession route <name> [--json]
+  jamsession tiers [<provider> <model> <effort>] [--allow-lower] [--json]
   jamsession message [--worksheet <path>] <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]
   jamsession steer [--worksheet <path>] <provider> <session> <text>
   jamsession recall <provider> <session> [query] [options]
@@ -477,7 +481,10 @@ uninstall_command() {
 
 compact_usage() {
   cat >&2 <<'EOF'
-Usage: jamsession run [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
+Usage: jamsession run [--worksheet <path>] [--failover [--allow-lower] [--min-usage <n>]] <provider> <new|session> <model> <effort> <read|edit> <prompt>
+       jamsession run [--worksheet <path>] --route <name> <new|session> <read|edit> <prompt>
+       jamsession route <name> [--json]
+       jamsession tiers [<provider> <model> <effort>] [--allow-lower] [--json]
        jamsession <list|which|models|message|steer> <provider> [arguments]
        jamsession recall <provider> <session> [query] [options]
        jamsession recall --worksheet <path> [query] [options]
@@ -627,7 +634,8 @@ Commands:
   jamsession_$PROVIDER help
 
 Implement each command using the provider CLI's native non-interactive and
-resume features. A read run must hard-error unless writes are mechanically
+resume features. A run the provider refuses for a spend, usage or rate limit,
+a quota, or an auth failure exits 75 so `run --failover` can move on. A read run must hard-error unless writes are mechanically
 blocked. Print agent output to stdout and metadata or warnings to stderr.
 Prefer native delivery for message and retain its execution settings. Without
 native delivery, report unavailable unless --resume-with explicitly supplies
@@ -724,6 +732,23 @@ message_with_worksheet() {
   worksheet_log "$WORKSHEET" "$intent" "$provider" "$session" \
     "$([ "$status" -eq 0 ] || printf '(delivery failed, exit %s)' "$status")" <"$text_file"
   exit "$status"
+}
+
+failover_helper() {
+  local candidate
+  for candidate in "$JAMSESSION_HOME/bin/jamsession_failover.py" "$JAMSESSION_HOME/usage/jamsession_failover.py" \
+    "$SCRIPT_DIR/usage/jamsession_failover.py"; do
+    [ -f "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  die "failover helper is not installed; run jamsession update"
+}
+
+# Failover, routes and the tiers table live in one Python helper. Exit 75 means
+# every candidate refused (a limit, quota or auth failure) or was skipped.
+failover_exec() {
+  command -v "${JAMSESSION_PYTHON_BIN:-python3}" >/dev/null 2>&1 || die "$1 needs python3"
+  shift
+  JAMSESSION_CLI="$SCRIPT_DIR/$(basename "${BASH_SOURCE[0]}")" exec "${JAMSESSION_PYTHON_BIN:-python3}" "$(failover_helper)" "$@"
 }
 
 usage_helper() {
@@ -1034,6 +1059,17 @@ CLI resumes. Saved approval/reviewer policy is retained on the control path.
 Use steer explicitly to redirect active work, rather than accidentally resuming it.
 Serialize follow-ups to one session: the native API has no atomic idle-only start,
 so another sender can start a turn between the busy check and submission.
+
+A provider refusal (spend, usage or rate limit, quota, or auth failure) exits 75
+with a `refusal: <limit|auth>: ...` line. `--failover` then retries the same
+model through its other harnesses (Devin first), then the rest of its tier from
+tiers.toml (JAMSESSION_TIERS overrides it); `--allow-lower` permits cheaper
+tiers, never costlier ones. Fallbacks whose pool `jamsession usage` shows below
+`--min-usage` percent (default 25) are skipped. Failover starts a new session,
+buffers the reply, and ends with `ran: provider=... model=... effort=...
+session=new|resumed`. `--route <name>` runs a JAMSESSION_ROUTES route the same
+way; `jamsession route <name>` prints its candidates and `jamsession tiers`
+the table or a model's failover ladder.
 EOF
       ;;
     inbox)
@@ -1257,13 +1293,30 @@ case "$command_name" in
     ;;
   run)
     WORKSHEET=""
-    if [ "${1:-}" = --worksheet ]; then worksheet_path "${2:-}"; shift 2; fi
+    failover_args=()
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --worksheet) worksheet_path "${2:-}"; shift 2 ;;
+        --failover|--allow-lower) failover_args+=("$1"); shift ;;
+        --min-usage|--route)
+          [ $# -ge 2 ] || die "$1 needs a value"
+          failover_args+=("$1" "$2"); shift 2 ;;
+        *) break ;;
+      esac
+    done
+    if [ "${#failover_args[@]}" -gt 0 ]; then
+      [ -z "$WORKSHEET" ] || failover_args+=(--worksheet "$WORKSHEET")
+      failover_exec run run "${failover_args[@]}" "$@"
+    fi
     [ $# -eq 6 ] || die "run needs [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>"
     provider="$1"; shift
     case "$4" in read|edit) ;; *) die "access must be read or edit" ;; esac
     adapter="$(require_adapter "$provider")"
     [ -n "$WORKSHEET" ] || exec "$adapter" run "$@"
     run_with_worksheet "$adapter" "$provider" "$@"
+    ;;
+  route|tiers)
+    failover_exec "$command_name" "$command_name" "$@"
     ;;
   list)
     [ $# -ge 1 ] && [ $# -le 2 ] || die "list needs <provider> [count]"

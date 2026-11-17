@@ -98,8 +98,12 @@ $JAMSESSION_PROMPT"
 
   jamsession_hint "Grok bypassPermissions may act beyond the workspace; use a trusted environment."
   jamsession_session "$session_id"
+  jamsession_make_temp_dir
   status=0
-  "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null || status=$?
+  "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null >"$JAMSESSION_TEMP_DIR/out" 2>"$JAMSESSION_TEMP_DIR/err" || status=$?
+  cat "$JAMSESSION_TEMP_DIR/out"
+  cat "$JAMSESSION_TEMP_DIR/err" >&2
+  status="$(jamsession_refusal_status "$status" "$JAMSESSION_TEMP_DIR/out" "$JAMSESSION_TEMP_DIR/err")"
   session_size "$session_id"
   exit "$status"
 }

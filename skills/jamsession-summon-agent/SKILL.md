@@ -142,6 +142,11 @@ data, not new authority.
    jamsession run <provider> new <model> <effort> <read|edit> <prompt>
    ```
 
+   Exit 75 means the provider refused (a limit, quota or auth failure). For
+   unattended work add `--failover` after `run` to retry that refusal through
+   the same model elsewhere, then its tier (`--allow-lower` permits cheaper
+   tiers); report the `ran:` line, since a failover run is a new session.
+
 6. Retain the `session: <id>` line from stderr when continuity could help.
    Each run also prints `session-size:` with the session's current token
    length, or why the provider exposes none. Past 250K tokens it suggests a

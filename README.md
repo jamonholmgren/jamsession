@@ -79,6 +79,8 @@ jamsession run codex 019abc gpt-5.6-sol high read "Check the revised diff."
 
 Every part is required. Pass a session ID instead of `new` to resume, and `-` as the prompt to read stdin. The reply goes to stdout; session IDs, the session's current token size, and diagnostics go to stderr. Past 250K tokens it suggests handing off to a fresh session.
 
+A provider refusal (spend, usage or rate limit, quota, or auth failure) exits 75. `run --failover` then retries the same model through its other harnesses, Devin first, then the rest of its tier in [`tiers.toml`](tiers.toml), skipping pools that `jamsession usage` shows below 25%; `--allow-lower` permits cheaper tiers, never costlier ones. `jamsession route <name>` and `run --route <name>` read a `routes.toml` named by `JAMSESSION_ROUTES`, where a route can name a tier and effort instead of a ladder.
+
 ### Continue from a worksheet instead of compacting
 
 ```sh

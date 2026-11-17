@@ -163,11 +163,14 @@ run_agent() {
   args+=("$JAMSESSION_PROMPT")
 
   jamsession_session "$session_id"
+  jamsession_make_temp_dir
   status=0
   # Cursor is asked for JSON and parsed here on purpose. Live testing showed its
   # plain output drops the final response after the agent uses tools, so the
   # cheaper-looking plain format silently returns nothing. Do not "simplify".
-  raw="$("$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null)" || status=$?
+  raw="$("$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null 2>"$JAMSESSION_TEMP_DIR/err")" || status=$?
+  cat "$JAMSESSION_TEMP_DIR/err" >&2
+  printf '%s\n' "$raw" >"$JAMSESSION_TEMP_DIR/out"
   if result="$(jamsession_json_string "$raw" result)"; then
     printf '%s\n' "$result"
   elif [ -n "$raw" ]; then
@@ -175,6 +178,8 @@ run_agent() {
     [ "$status" -ne 0 ] || status=2
     printf 'jamsession_cursor: could not extract the final response from provider JSON\n' >&2
   fi
+  [ -z "${result:-}" ] || printf '%s\n' "$result" >"$JAMSESSION_TEMP_DIR/out"
+  status="$(jamsession_refusal_status "$status" "$JAMSESSION_TEMP_DIR/out" "$JAMSESSION_TEMP_DIR/err")"
   jamsession_session_size "" "Cursor stores sessions as encrypted blobs with no readable token count"
   exit "$status"
 }

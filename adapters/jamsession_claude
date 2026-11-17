@@ -137,6 +137,7 @@ run_agent() {
     [ "$status" -ne 0 ] || status=1
     printf 'jamsession_claude: provider unavailable: %s\n' "$(head -n 1 "$provider_output")" >&2
   fi
+  status="$(jamsession_refusal_status "$status" "$provider_output" "$provider_error")"
   if [ "$status" -ne 0 ] && [ "$JAMSESSION_MODEL" != default ] && \
     grep -Eqi 'unrecognized_model|issue with the selected model|issue with selected model|model.*(may not exist|not found|unknown|invalid)' \
       "$provider_output" "$provider_error"; then

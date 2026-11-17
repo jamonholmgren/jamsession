@@ -226,3 +226,37 @@ jamsession_json_string() {
   done
   return 1
 }
+
+# A provider refusal (spend, usage or rate limit, quota, or an auth failure)
+# exits 75 with one "refusal: <limit|auth>: <evidence>" line on stderr, so
+# callers such as `run --failover` never read provider wording themselves.
+JAMSESSION_REFUSAL_STATUS=75
+JAMSESSION_REFUSAL_LIMIT='(usage|spend|spending|rate|token|monthly|weekly|daily|hourly|5-hour|session|credit)[ _-]limit|hit your [a-z -]{0,30}limit|limit (reached|exceeded)|quota|resource[ _-]exhausted|out of (credits|tokens)|insufficient[ _-](credits|balance|quota|funds)|credit balance is too low|too many requests|exceeded your'
+JAMSESSION_REFUSAL_AUTH='not (logged|signed) in|not authenticated|unauthenticated|no authentication|please (run )?/?log ?in|(log|sign) ?in again|run [a-z-]+ (auth )?login|invalid[ _-](api[ _-]?key|token|credentials|x-api-key)|unauthori[sz]ed|authentication (required|failed|error)|(oauth )?token (has )?(expired|been revoked)'
+
+# Prints the status the adapter should exit with. A failed run is classified
+# from its error files and the reply's last lines; a "successful" run only when
+# its whole reply is a short notice, since providers print limit warnings on
+# stderr during runs that still succeed.
+# Usage: status="$(jamsession_refusal_status <status> <reply-file> [error-file...])"
+jamsession_refusal_status() {
+  local status="$1" reply="$2" text="" kind="" evidence=""
+  shift 2
+  if [ "$status" -ne 0 ]; then
+    [ $# -eq 0 ] || text="$(cat "$@" 2>/dev/null)"
+    [ ! -f "$reply" ] || text="$text"$'\n'"$(tail -n 5 "$reply")"
+  elif [ -f "$reply" ] && [ "$(grep -c . "$reply")" -le 3 ]; then
+    text="$(cat "$reply")"
+  fi
+  [ -n "$text" ] || { printf '%s\n' "$status"; return; }
+  if evidence="$(printf '%s\n' "$text" | grep -Ei -m 1 -- "$JAMSESSION_REFUSAL_LIMIT")"; then
+    kind=limit
+  elif evidence="$(printf '%s\n' "$text" | grep -Ei -m 1 -- "$JAMSESSION_REFUSAL_AUTH")"; then
+    kind=auth
+  else
+    printf '%s\n' "$status"
+    return
+  fi
+  printf 'refusal: %s: %s\n' "$kind" "$(printf '%s' "$evidence" | cut -c 1-200)" >&2
+  printf '%s\n' "$JAMSESSION_REFUSAL_STATUS"
+}

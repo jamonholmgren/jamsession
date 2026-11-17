@@ -202,8 +202,13 @@ run_agent() {
   args+=(-- "$JAMSESSION_PROMPT")
 
   jamsession_hint "Devin dangerous mode may run tools beyond the workspace; use a trusted environment."
+  jamsession_make_temp_dir
   status=0
-  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null) || status=$?
+  (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null \
+    >"$JAMSESSION_TEMP_DIR/out" 2>"$JAMSESSION_TEMP_DIR/err") || status=$?
+  cat "$JAMSESSION_TEMP_DIR/out"
+  cat "$JAMSESSION_TEMP_DIR/err" >&2
+  status="$(jamsession_refusal_status "$status" "$JAMSESSION_TEMP_DIR/out" "$JAMSESSION_TEMP_DIR/err")"
   if [ -n "$precreated" ]; then
     jamsession_session "$session_id"
     devin_acp_rename "$session_id"

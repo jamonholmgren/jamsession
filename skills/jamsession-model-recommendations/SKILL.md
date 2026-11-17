@@ -31,7 +31,7 @@ picker entry alone does not prove a requested model unavailable.
 | Building new things, ordinary task work | Opus 5.5 medium | Sol 6.1 high, native Grok high |
 | Light task work or implementation from a plan | native Grok high | Cursor Grok high |
 | Cheap limited-scope work from a good plan | SWE-2 max, SWE-2 Flash max | Luna 6 max, Haiku 5.5 xhigh |
-| Contrarian review | native Grok high | Cursor Grok high, SWE-2 max, Wonder 1.0 xhigh |
+| Contrarian review | native Grok high | Cursor Grok high, SWE-2 max, Wonder 1.0 high |
 
 Cheap work assumes a good supplied plan: SWE-2 and SWE-2 Flash are free, so
 use them as limited-scope spiders with a clear heuristic written by a stronger
@@ -45,6 +45,10 @@ fallback. Astra 6 and Fable 5.2 are best in class and expensive: use them as
 panelists for work a Sol or Opus lead manages, mostly UI work, not as leads.
 Terra 6.1 high and Sonnet 5.5 high are about Grok level; use native Grok
 instead.
+
+Jam Session's `tiers.toml` (`jamsession tiers`) ranks these models A to F and
+lists the harnesses that serve each; `jamsession run --failover` and tier routes
+follow it, so keep it in step with these recommendations.
 
 ## PPP / Noble Court
 
@@ -113,8 +117,7 @@ are grouped; use `jamsession models <provider>` for exact installed IDs.
 
 * Muse Wonder 1.0 and Muse Wonder Full 1.0 are distinct models; keep their roles
   and requested settings separate
-* As of October 12, Jamon considers Muse Wonder 1.0 at xhigh to be GPT-6.1
-  Sol-level for his interactive use; task defaults still take precedence
+* Muse Wonder 1.0 is tier C (with Grok) only at high effort; run it at high
 * Devin's top SWE-2 effort is `swe-2-max` (there is no xhigh). The cheap tier
   is SWE-2 Flash (`swe-2-flash-max`); there is no "SWE-2 light". The
   `-lightning` variants are billed, so never pick them by default

@@ -228,6 +228,8 @@ run_agent() {
   elif [ "$status" -ne 0 ] && [ -s "$temp_events" ]; then
     cat "$temp_events" >&2
   fi
+  grep -E '"type"[[:space:]]*:[[:space:]]*"(error|turn\.failed)"' "$temp_events" >"$JAMSESSION_TEMP_DIR/failures" || true
+  status="$(jamsession_refusal_status "$status" "$temp_last" "$temp_error" "$JAMSESSION_TEMP_DIR/failures")"
   [ -z "$session_id" ] || session_size "$session_id"
   exit "$status"
 }

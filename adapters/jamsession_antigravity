@@ -205,6 +205,7 @@ run_agent() {
     fi
   fi
 
+  status="$(jamsession_refusal_status "$status" "$provider_output" "$provider_error")"
   total_tokens="$(jamsession_json_number "$json_content" total_tokens || true)"
   if [ -n "$total_tokens" ]; then
     jamsession_session_size "$total_tokens"

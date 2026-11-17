@@ -984,7 +984,9 @@ for synthetic_model in synthetic-error logged-out; do
   run_command env FAKE_LOG="$LOG" JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude" \
     JAMSESSION_PYTHON_BIN="$FAKE_BIN/claude-model-reader" \
     "$ROOT/adapters/jamsession_claude" run new "$synthetic_model" high read prompt
-  check "Claude $synthetic_model reply exits nonzero" test "$status" -eq 1
+  expected_status=1
+  [ "$synthetic_model" != logged-out ] || expected_status=75  # an auth refusal, so failover can move on
+  check "Claude $synthetic_model reply exits nonzero" test "$status" -eq "$expected_status"
   check "Claude $synthetic_model reply names provider unavailable" contains "$stderr_file" "provider unavailable"
 done
 
@@ -1501,7 +1503,7 @@ RESOURCE_SKILL=jamsession-work-over-ssh
 RESOURCE_PACKAGE="$RESOURCE_SOURCE/skills/$RESOURCE_SKILL"
 RESOURCE_TARGET="$INSTALL_HOME/.agents/skills/$RESOURCE_SKILL"
 mkdir -p "$RESOURCE_SOURCE"
-cp "$ROOT/jamsession" "$RESOURCE_SOURCE/"
+cp "$ROOT/jamsession" "$ROOT/tiers.toml" "$RESOURCE_SOURCE/"
 cp -R "$ROOT/adapters" "$ROOT/usage" "$ROOT/skills" "$RESOURCE_SOURCE/"
 mkdir -p "$RESOURCE_PACKAGE/references" "$RESOURCE_PACKAGE/assets"
 printf '%s\n' references/guide.md assets/template.json >"$RESOURCE_PACKAGE/resources.txt"
@@ -2037,6 +2039,7 @@ check "Codex native control delivery and resume contracts" python3 "$ROOT/tests/
 check "Codex launch settings preserve native configuration" python3 "$ROOT/tests/test_codex_launch_settings.py"
 check "parallel adapter sessions keep independent OS-backed IDs" python3 "$ROOT/tests/test_adapter_sessions.py"
 check "quota reader process cleanup always has a deadline" python3 "$ROOT/tests/test_tui_usage.py"
+check "refusals fail over by tier, never upward" python3 "$ROOT/tests/test_failover.py"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

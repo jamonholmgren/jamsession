@@ -146,6 +146,8 @@ run_agent() {
   if [ "$status" -ne 0 ] && [ -s "$events" ] && [ -z "$final_text" ]; then
     tail -n 1 "$events" >&2
   fi
+  if [ -n "$final_text" ]; then printf '%s\n' "$final_text" >"$JAMSESSION_TEMP_DIR/reply"; else tail -n 1 "$events" >"$JAMSESSION_TEMP_DIR/reply"; fi
+  status="$(jamsession_refusal_status "$status" "$JAMSESSION_TEMP_DIR/reply" "$errors")"
   [ -z "$session_id" ] || session_size "$session_id"
   exit "$status"
 }

@@ -1,0 +1,109 @@
+# Model tiers for `jamsession run --failover` and tier routes. Edit freely; to
+# keep your own copy across updates, point JAMSESSION_TIERS at it (for example
+# in jamsession.conf).
+#
+# Tiers run best and costliest first. Failover never moves to an earlier tier,
+# and moves to a later one only with --allow-lower. Within a tier, models are
+# tried in the order listed.
+#
+# Each model's `via` lists the harnesses that serve it, in the order failover
+# tries them after the one requested: Devin first, then the native harness,
+# then Cursor. `id` is that harness's model ID; jamsession passes effort
+# separately and each adapter maps it (Devin and Cursor append it to the ID).
+# `efforts` maps a requested effort to one this harness accepts; unlisted
+# efforts pass through. `meter = false` means `jamsession usage` does not track
+# this pool (free SWE-2, Cursor's non-Grok allotment), so low usage never
+# skips it.
+
+tiers = [
+  { name = "A", models = ["fable", "astra"] },
+  { name = "B", models = ["opus", "sol"] },
+  # Grok leads tier C: model recommendations say use native Grok instead of
+  # Terra or Sonnet. Wonder is tier C only at high effort.
+  { name = "C", models = ["grok", "wonder", "sonnet", "terra"] },
+  # SWE-2 leads tier D because it is free; then routes.toml's cheap order.
+  { name = "D", models = ["swe-2", "luna", "haiku"] },
+  { name = "F", models = ["swe-2-flash", "spark"] },
+]
+
+[model.fable]
+via = [
+  { harness = "devin", id = "claude-fable-5-2" },
+  { harness = "claude", id = "claude-fable-5-2" },
+  { harness = "cursor", id = "claude-fable-5-2", meter = false },
+]
+
+[model.astra]
+via = [
+  { harness = "devin", id = "gpt-6-astra" },
+  { harness = "codex", id = "gpt-6-astra" },
+]
+
+[model.opus]
+via = [
+  { harness = "devin", id = "claude-opus-5-5" },
+  { harness = "claude", id = "claude-opus-5-5" },
+  { harness = "cursor", id = "claude-opus-5-5", meter = false },
+]
+
+[model.sol]
+via = [
+  { harness = "devin", id = "gpt-6.1-sol" },
+  { harness = "codex", id = "gpt-6.1-sol" },
+]
+
+[model.grok]
+via = [
+  { harness = "devin", id = "grok-4.7", efforts = { max = "xhigh" } },
+  { harness = "grok", id = "grok-4.7", efforts = { xhigh = "high", max = "high" } },
+  { harness = "cursor", id = "grok-4.7", efforts = { max = "xhigh" } },
+]
+
+[model.sonnet]
+via = [
+  { harness = "devin", id = "claude-sonnet-5-5" },
+  { harness = "claude", id = "claude-sonnet-5-5" },
+  { harness = "cursor", id = "claude-sonnet-5-5", meter = false },
+]
+
+[model.terra]
+via = [
+  { harness = "devin", id = "gpt-6.1-terra" },
+  { harness = "codex", id = "gpt-6.1-terra" },
+]
+
+[model.swe-2]
+via = [
+  { harness = "devin", id = "swe-2", meter = false, efforts = { low = "medium", xhigh = "max" } },
+]
+
+[model.luna]
+via = [
+  { harness = "devin", id = "gpt-6-luna" },
+  { harness = "codex", id = "gpt-6-luna" },
+]
+
+[model.haiku]
+via = [
+  { harness = "devin", id = "claude-haiku-5-5" },
+  { harness = "claude", id = "claude-haiku-5-5" },
+  { harness = "cursor", id = "claude-haiku-5-5", meter = false },
+]
+
+[model.wonder]  # always high: Wonder is tier C only at high effort
+via = [
+  { harness = "devin", id = "muse-wonder-1.0", efforts = { default = "high", none = "high", minimal = "high", low = "high", medium = "high", xhigh = "high", max = "high" } },
+  { harness = "muse", id = "muse-wonder-1.0", efforts = { default = "high", none = "high", minimal = "high", low = "high", medium = "high", xhigh = "high", max = "high" } },
+  { harness = "cursor", id = "muse-wonder-1.0", meter = false, efforts = { default = "high", none = "high", minimal = "high", low = "high", medium = "high", xhigh = "high", max = "high" } },
+]
+
+[model.swe-2-flash]
+via = [
+  { harness = "devin", id = "swe-2-flash", meter = false, efforts = { low = "medium", xhigh = "max" } },
+]
+
+[model.spark]
+via = [
+  { harness = "muse", id = "muse-spark-1.3" },
+  { harness = "cursor", id = "muse-spark-1.3", meter = false },
+]
