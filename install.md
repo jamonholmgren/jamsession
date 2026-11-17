@@ -46,14 +46,14 @@ jamsession run <provider> <new|session> <model> <effort> <read|edit> <prompt>
 For example:
 
 ```sh
-jamsession run codex new gpt-5.6-sol high read "Review the current diff."
+jamsession run codex new sol@latest high read "Review the current diff."
 ```
 
 Agent output goes to stdout. The provider-native session ID, hints, warnings,
 and diagnostics go to stderr. Retain the printed session ID to continue:
 
 ```sh
-jamsession run codex <session-id> gpt-5.6-sol high read "Check the revision."
+jamsession run codex <session-id> sol@latest high read "Check the revision."
 ```
 
 To inspect retained session data without resuming an agent, run:
