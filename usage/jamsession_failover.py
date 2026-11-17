@@ -129,17 +129,25 @@ def via_candidates(table: dict, name: str, effort: str) -> list[Candidate]:
             for via in table["model"][name]["via"]]
 
 
-def tier_models(table: dict, start: str, allow_lower: bool) -> list[str]:
-    """`start`, the rest of its tier in order, then later tiers when allowed. Never earlier tiers."""
+def tier_models(table: dict, start: str, allow_lower: bool, lowest_tier: str = "") -> list[str]:
+    """`start`, the rest of its tier in order, then later tiers when allowed, down to
+    `lowest_tier` (which alone also allows them). Never earlier tiers."""
     index, _ = tier_of(table)[start]
     names = [start] + [name for name in table["tiers"][index]["models"] if name != start]
-    if allow_lower:
+    if lowest_tier and lowest_tier not in [tier["name"] for tier in table["tiers"]]:
+        raise Failure(f"unknown lowest tier '{lowest_tier}'")
+    if allow_lower or lowest_tier:
         for tier in table["tiers"][index + 1:]:
+            if lowest_tier and [t["name"] for t in table["tiers"]].index(lowest_tier) <= index:
+                break
             names.extend(tier["models"])
+            if tier["name"] == lowest_tier:
+                break
     return names
 
 
-def ladder(table: dict, provider: str, model: str, effort: str, allow_lower: bool = False) -> list[Candidate]:
+def ladder(table: dict, provider: str, model: str, effort: str, allow_lower: bool = False,
+           lowest_tier: str = "") -> list[Candidate]:
     """The requested run first, then same model elsewhere, then the same tier."""
     first = Candidate(provider, model, effort)
     name = find_model(table, provider, model)
@@ -152,20 +160,21 @@ def ladder(table: dict, provider: str, model: str, effort: str, allow_lower: boo
     for via in table["model"][name]["via"]:
         if via["harness"] == provider:
             first.meter = via.get("meter", True)
-    rest = [candidate for other in tier_models(table, name, allow_lower)
+    rest = [candidate for other in tier_models(table, name, allow_lower, lowest_tier)
             for candidate in via_candidates(table, other, effort)
             if not (other == name and candidate.provider == provider)]
     return [first] + rest
 
 
-def tier_ladder(table: dict, tier: str, effort: str, prefer: str = "", allow_lower: bool = False) -> list[Candidate]:
+def tier_ladder(table: dict, tier: str, effort: str, prefer: str = "", allow_lower: bool = False,
+                lowest_tier: str = "") -> list[Candidate]:
     names = next((t["models"] for t in table["tiers"] if t["name"] == tier), None)
     if names is None:
         raise Failure(f"unknown tier '{tier}'")
     start = prefer or names[0]
     if start not in names:
         raise Failure(f"model '{start}' is not in tier {tier}")
-    return [candidate for name in tier_models(table, start, allow_lower)
+    return [candidate for name in tier_models(table, start, allow_lower, lowest_tier)
             for candidate in via_candidates(table, name, effort)]
 
 
@@ -198,7 +207,8 @@ def expand_route(name: str, table: dict | None = None) -> dict:
         table = table or load_tiers()
         result.update(kind="ladder", candidates=tier_ladder(
             table, str(route["tier"]), str(route.get("effort", "default")),
-            str(route.get("prefer", "")), bool(route.get("allow_lower", False))))
+            str(route.get("prefer", "")), bool(route.get("allow_lower", False)),
+            str(route.get("lowest_tier", ""))))
     else:
         raise Failure(f"route '{name}' needs rungs, from, or tier")
     return result
@@ -306,7 +316,7 @@ def run(candidates: list[Candidate], session: str, access: str, prompt: bytes, *
               + (f" requested={requested.provider}/{requested.model}/{requested.effort}" if moved else ""),
               file=sys.stderr)
         return status
-    print("failover: every candidate refused or was skipped", file=sys.stderr)
+    print("failover: all routes refused or were skipped; there is no answer", file=sys.stderr)
     return REFUSAL
 
 
@@ -315,7 +325,7 @@ def read_prompt(prompt: str) -> bytes:
 
 
 def parse_options(args: list[str]) -> tuple[dict, list[str]]:
-    options = {"allow_lower": False, "min_usage": None, "worksheet": "", "route": "", "json": False}
+    options = {"allow_lower": False, "lowest_tier": "", "min_usage": None, "worksheet": "", "route": "", "json": False}
     rest: list[str] = []
     iterator = iter(args)
     for arg in iterator:
@@ -323,7 +333,7 @@ def parse_options(args: list[str]) -> tuple[dict, list[str]]:
             options["allow_lower"] = True
         elif arg == "--json":
             options["json"] = True
-        elif arg in ("--min-usage", "--worksheet", "--route"):
+        elif arg in ("--min-usage", "--worksheet", "--route", "--lowest-tier"):
             value = next(iterator, None)
             if value is None:
                 raise Failure(f"{arg} needs a value")
@@ -372,7 +382,7 @@ def main(argv: list[str]) -> int:
             return 0
         if len(rest) != 3:
             raise Failure("tiers takes [<provider> <model> <effort>] [--allow-lower] [--json]")
-        candidates = ladder(table, *rest, allow_lower=options["allow_lower"])
+        candidates = ladder(table, *rest, allow_lower=options["allow_lower"], lowest_tier=options["lowest_tier"])
         if options["json"]:
             print(json.dumps([candidate_json(c) for c in candidates]))
         else:
@@ -394,7 +404,7 @@ def main(argv: list[str]) -> int:
             if len(rest) != 6:
                 raise Failure("run --failover needs <provider> <new|session> <model> <effort> <read|edit> <prompt>")
             provider, session, model, effort, access, prompt = rest
-            candidates = ladder(load_tiers(), provider, model, effort, options["allow_lower"])
+            candidates = ladder(load_tiers(), provider, model, effort, options["allow_lower"], options["lowest_tier"])
             min_usage = DEFAULT_MIN_USAGE if options["min_usage"] is None else options["min_usage"]
             check_first = False
         if access not in ("read", "edit"):

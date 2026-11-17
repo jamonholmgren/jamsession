@@ -18,8 +18,8 @@
 tiers = [
   { name = "A", models = ["fable", "astra"] },
   { name = "B", models = ["opus", "sol"] },
-  # Grok leads tier C: model recommendations say use native Grok instead of
-  # Terra or Sonnet. Wonder is tier C only at high effort.
+  # Grok leads tier C; Wonder is tier C only at high effort; Sonnet and Terra
+  # are last-resort failover, never a first choice.
   { name = "C", models = ["grok", "wonder", "sonnet", "terra"] },
   # SWE-2 leads tier D because it is free; then routes.toml's cheap order.
   { name = "D", models = ["swe-2", "luna", "haiku"] },

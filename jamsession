@@ -35,7 +35,7 @@ jamsession — one small interface for coding-agent CLIs
 
 Usage:
   jamsession run [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
-  jamsession run --failover [--allow-lower] [--min-usage <percent>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
+  jamsession run --failover [--allow-lower | --lowest-tier <tier>] [--min-usage <percent>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
   jamsession run --route <name> <new|session> <read|edit> <prompt>
   jamsession route <name> [--json]
   jamsession tiers [<provider> <model> <effort>] [--allow-lower] [--json]
@@ -481,7 +481,7 @@ uninstall_command() {
 
 compact_usage() {
   cat >&2 <<'EOF'
-Usage: jamsession run [--worksheet <path>] [--failover [--allow-lower] [--min-usage <n>]] <provider> <new|session> <model> <effort> <read|edit> <prompt>
+Usage: jamsession run [--worksheet <path>] [--failover [--allow-lower | --lowest-tier <tier>] [--min-usage <n>]] <provider> <new|session> <model> <effort> <read|edit> <prompt>
        jamsession run [--worksheet <path>] --route <name> <new|session> <read|edit> <prompt>
        jamsession route <name> [--json]
        jamsession tiers [<provider> <model> <effort>] [--allow-lower] [--json]
@@ -1063,13 +1063,16 @@ so another sender can start a turn between the busy check and submission.
 A provider refusal (spend, usage or rate limit, quota, or auth failure) exits 75
 with a `refusal: <limit|auth>: ...` line. `--failover` then retries the same
 model through its other harnesses (Devin first), then the rest of its tier from
-tiers.toml (JAMSESSION_TIERS overrides it); `--allow-lower` permits cheaper
-tiers, never costlier ones. Fallbacks whose pool `jamsession usage` shows below
-`--min-usage` percent (default 25) are skipped. Failover starts a new session,
-buffers the reply, and ends with `ran: provider=... model=... effort=...
-session=new|resumed`. `--route <name>` runs a JAMSESSION_ROUTES route the same
-way; `jamsession route <name>` prints its candidates and `jamsession tiers`
-the table or a model's failover ladder.
+tiers.toml (JAMSESSION_TIERS overrides it). `--allow-lower` permits cheaper
+tiers and `--lowest-tier <tier>` only down to that tier; never costlier ones.
+A route takes `allow_lower` or `lowest_tier` the same way. Fallbacks whose pool
+`jamsession usage` shows below `--min-usage` percent (default 25) are skipped.
+When every candidate refuses or is skipped, it exits 75 with "all routes
+refused" and prints no answer. Failover starts a new session, buffers the
+reply, and ends with `ran: provider=... model=... effort=... session=new|resumed`.
+`--route <name>` runs a JAMSESSION_ROUTES route the same way; `jamsession route
+<name>` prints its candidates and `jamsession tiers` the table or a model's
+failover ladder.
 EOF
       ;;
     inbox)
@@ -1298,7 +1301,7 @@ case "$command_name" in
       case "$1" in
         --worksheet) worksheet_path "${2:-}"; shift 2 ;;
         --failover|--allow-lower) failover_args+=("$1"); shift ;;
-        --min-usage|--route)
+        --min-usage|--route|--lowest-tier)
           [ $# -ge 2 ] || die "$1 needs a value"
           failover_args+=("$1" "$2"); shift 2 ;;
         *) break ;;

@@ -146,6 +146,10 @@ class LadderTests(unittest.TestCase):
         self.assertNotIn("C", {c.tier for c in failover.ladder(tiers, "codex", "gpt-6.1-sol", "high")})
         self.assertIn("C", {c.tier for c in failover.ladder(tiers, "codex", "gpt-6.1-sol", "high", True)})
 
+    def test_lowest_tier_caps_how_far_failover_falls(self):
+        tiers = failover.ladder(table(), "codex", "gpt-6.1-sol", "high", lowest_tier="C")
+        self.assertEqual({c.tier for c in tiers}, {"B", "C"})
+
     def test_an_unknown_model_has_no_fallbacks(self):
         self.assertEqual(len(failover.ladder(table(), "copilot", "gpt-4.1", "high")), 1)
 
@@ -222,12 +226,23 @@ class FailoverRunTests(unittest.TestCase):
         reply, calls = self.run_helper(plan, "run", "claude", "new", "claude-opus-5-5", "medium", "edit", "do it")
         self.assertEqual(reply.returncode, REFUSAL)
         self.assertEqual(reply.stdout, "")
+        self.assertIn("all routes refused", reply.stderr)
         self.assertEqual(len(calls), 5)
 
     def test_read_runs_skip_edit_only_harnesses(self):
         reply, calls = self.run_helper({"claude": [REFUSAL, ""]},
                                        "run", "claude", "new", "claude-opus-5-5", "medium", "read", "look")
         self.assertEqual([call[1] for call in calls], ["claude", "cursor"])
+
+    def test_a_route_capped_at_tier_c_never_reaches_d_or_f(self):
+        self.routes.write_text('[route.night]\ntier = "B"\neffort = "medium"\nlowest_tier = "C"\n')
+        plan = {name: [REFUSAL, "limit reached"] for name in ("claude", "devin", "cursor", "codex", "grok", "muse")}
+        reply, calls = self.run_helper(plan, "run", "--route", "night", "new", "edit", "fix")
+        self.assertEqual(reply.returncode, REFUSAL)
+        self.assertIn("all routes refused", reply.stderr)
+        tried = {failover.find_model(table(), call[1], call[3]) for call in calls}
+        self.assertIn("grok", tried)
+        self.assertEqual({failover.tier_of(table())[name][1] for name in tried}, {"B", "C"})
 
     def test_a_tier_route_expands_and_fails_over(self):
         self.routes.write_text('[defaults]\nskip_below_usage = 25\n[route.doctor]\ntier = "B"\neffort = "medium"\n')

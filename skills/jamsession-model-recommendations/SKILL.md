@@ -93,7 +93,8 @@ General interactive preferences, when no task-specific route applies:
 ## Do not use
 
 * Claude Fable 5.1: superseded by Fable 5.2, which is a panelist only (above)
-* GPT-6.1 Terra and Claude Sonnet 5.5: use native Grok instead
+* GPT-6.1 Terra and Claude Sonnet 5.5 as a first choice: use native Grok; they
+  remain last-resort tier C failover targets
 
 ## Known native models
 
