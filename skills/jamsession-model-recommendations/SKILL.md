@@ -25,8 +25,8 @@ picker entry alone does not prove a requested model unavailable.
 
 | Work | Default | Alternatives |
 | --- | --- | --- |
-| Difficult planning or diagnosis | Opus 5.5 high, Sol 6.1 xhigh | Opus 5.5 xhigh; Astra 6 xhigh or Fable 5.2 as panelists |
-| UI work | Astra 6 or Fable 5.2, as panelists under a Sol or Opus lead | Opus 5.5 high |
+| Difficult planning or diagnosis | Opus 5.5 high, Sol 6.1 xhigh | Opus 5.5 xhigh; latest Astra xhigh or Fable 5.2 as panelists |
+| UI work | Latest Astra or Fable 5.2, as panelists under a Sol or Opus lead | Opus 5.5 high |
 | Analysis, planning, diagnosis, performance work | Sol 6.1 high | Opus 5.5 medium, native Grok high |
 | Building new things, ordinary task work | Opus 5.5 medium | Sol 6.1 high, native Grok high |
 | Light task work or implementation from a plan | native Grok high | Cursor Grok high |
@@ -41,7 +41,7 @@ needed; review and verification still belong to the task's workflow.
 Opus 5.5 at medium or high is the best mix of power and efficiency, so do not
 spend it on routine interactions unless the human asks. Spend Opus from Devin's
 bucket first, then native Claude, then Cursor's included Opus as a last
-fallback. Astra 6 and Fable 5.2 are best in class and expensive: use them as
+fallback. The latest Astra and Fable 5.2 are best in class and expensive: use them as
 panelists for work a Sol or Opus lead manages, mostly UI work, not as leads.
 Terra 6.1 high and Sonnet 5.5 high are about Grok level; use native Grok
 instead.
@@ -52,7 +52,7 @@ follow it, so keep it in step with these recommendations.
 
 ## PPP / Noble Court
 
-Ordinary PPP uses two independent model families and one challenge/integration round, with task-appropriate defaults or listed alternatives. Add a premium third reviewer (Noble Court: Astra 6 xhigh, Opus 5.5 xhigh, native Grok 4.7 high contrarian) only when explicitly requested or justified by a concrete unresolved high-risk question. Follow the ping-pong planning workflow without expanding the agreed roster or round count.
+Ordinary PPP uses two independent model families and one challenge/integration round, with task-appropriate defaults or listed alternatives. Add a premium third reviewer (Noble Court: latest Astra xhigh, Opus 5.5 xhigh, native Grok 4.7 high contrarian) only when explicitly requested or justified by a concrete unresolved high-risk question. Follow the ping-pong planning workflow without expanding the agreed roster or round count.
 
 ## Peasant Mob
 
@@ -105,7 +105,7 @@ are grouped; use `jamsession models <provider>` for exact installed IDs.
 
 | Native agent | Known models and families |
 | --- | --- |
-| Codex / OpenAI | GPT-6.1 Sol and Terra; GPT-6 Astra, Sol and Luna; GPT-5.6 Sol, Terra and Luna. Other harness catalogs retain GPT-5.5, GPT-5.4 and Mini, GPT-5.3 Codex, GPT-5.2, GPT-5.1 and GPT-4.1; these are legacy, not necessarily available in Codex. |
+| Codex / OpenAI | GPT-6.2 Astra (latest); GPT-6.1 Sol and Terra; GPT-6 Astra, Sol and Luna; GPT-5.6 Sol, Terra and Luna. Other harness catalogs retain GPT-5.5, GPT-5.4 and Mini, GPT-5.3 Codex, GPT-5.2, GPT-5.1 and GPT-4.1; these are legacy, not necessarily available in Codex. |
 | Claude / Anthropic | Opus 5.5, 5, 4.8, 4.7, 4.6 and 4.5; Fable 5.2, 5.1 and 5; Sonnet 5.5, 5 and 4.6; Haiku 5.5 and 4.5. Some known families are omitted by the installed picker. |
 | Grok / xAI | Grok 4.7 (including build-fast), 4.6 and 4.5. Crok/Croc uses these through Cursor; do not duplicate their catalog under Cursor. |
 | Cursor | Composer 2.5 (including fast). Cursor also has access to other providers' models. |

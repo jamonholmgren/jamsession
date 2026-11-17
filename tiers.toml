@@ -33,10 +33,9 @@ via = [
   { harness = "cursor", id = "claude-fable-5-2", meter = false },
 ]
 
-[model.astra]
+[model.astra]  # latest Astra; Devin still offers only 6.0, so it is left out until it serves 6.2
 via = [
-  { harness = "devin", id = "gpt-6-astra" },
-  { harness = "codex", id = "gpt-6-astra" },
+  { harness = "codex", id = "gpt-6.2-astra" },
 ]
 
 [model.opus]
