@@ -166,6 +166,19 @@ jamsession_native_message_settings() {
     printf 'warning: --resume-with ignored; native delivery keeps the session\047s model/effort/access\n' >&2
 }
 
+# A running session with no native messaging reads an inbox note after its next
+# tool call, but only if its project wires the hook (`jamsession hooks install`).
+jamsession_inbox_message() {
+  local helper
+  for helper in "${JAMSESSION_HOME:-}/bin/jamsession_hooks.py" "${JAMSESSION_HOME:-}/usage/jamsession_hooks.py" \
+    "$ADAPTER_DIR/../usage/jamsession_hooks.py"; do
+    [ -f "$helper" ] && break
+  done
+  [ -f "$helper" ] || jamsession_unsupported message
+  command -v "${JAMSESSION_PYTHON_BIN:-python3}" >/dev/null 2>&1 || jamsession_unsupported message
+  exec "${JAMSESSION_PYTHON_BIN:-python3}" "$helper" deliver "$JAMSESSION_PROVIDER" "$JAMSESSION_MESSAGE_SESSION" "$JAMSESSION_PROMPT"
+}
+
 # Only adapters without native messaging call this. A native send's exit code
 # never selects fallback: an error may occur after its message was accepted.
 jamsession_resume_message() {

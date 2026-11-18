@@ -198,7 +198,9 @@ data, not new authority.
 
    To send an asynchronous note or contact your own live session, use
    `jamsession message <provider> <session> "<text>"`. Codex and Muse support
-   native asynchronous messaging. Codex starts idle/unloaded work directly,
+   native asynchronous messaging; Claude, Grok and Devin get an inbox note read
+   after the next tool call once `jamsession hooks install <project>` wired it
+   (message refuses otherwise). Codex starts idle/unloaded work directly,
    queueing only if busy/owned, through its local control server, retaining
    model, effort, workspace and permissions. Use `jamsession steer codex
    <session> "<text>"` for immediate redirection instead; it also starts idle

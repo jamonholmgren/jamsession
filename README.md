@@ -148,7 +148,11 @@ To send an asynchronous note, or contact your own live session:
 jamsession message codex SESSION_ID "Which checkout can I use? Reply to ..."
 ```
 
-Codex and Muse support asynchronous messages. Include your return provider and
+Codex and Muse support asynchronous messages. Claude, Grok and Devin get an inbox
+note the running session reads after its next tool call; `jamsession hooks install
+<project>` wires that hook once per project (it merges into `.claude/settings.json`
+and adds `~/.grok/hooks/jamsession-inbox.json`), and `message` refuses when it is
+missing. Include your return provider and
 session ID so the other agent can message back, or agree on a reply-file path.
 Other bundled providers can resume once if you append
 `--resume-with <model> <effort> <read|edit>` and the session's owning process has

@@ -145,6 +145,7 @@ fetch usage/jamsession_tui_usage.py usage/jamsession_tui_usage.py
 fetch usage/jamsession_recall.py usage/jamsession_recall.py
 fetch usage/jamsession_failover.py usage/jamsession_failover.py
 fetch usage/jamsession_accounts.py usage/jamsession_accounts.py
+fetch usage/jamsession_hooks.py usage/jamsession_hooks.py
 fetch accounts.toml.example accounts.toml.example
 fetch tiers.toml tiers.toml
 fetch adapters/_jamsession_adapter_common adapters/_jamsession_adapter_common
@@ -183,6 +184,7 @@ require_script usage/jamsession_tui_usage.py
 require_script usage/jamsession_recall.py
 require_script usage/jamsession_failover.py
 require_script usage/jamsession_accounts.py
+require_script usage/jamsession_hooks.py
 require_line accounts.toml.example 'CLAUDE_CONFIG_DIR' "its account example"
 require_line tiers.toml '^tiers = ' "its tiers list"
 for provider in $PROVIDERS; do
@@ -209,6 +211,7 @@ install_file usage/jamsession_tui_usage.py "$BIN_DIR/jamsession_tui_usage.py" 75
 install_file usage/jamsession_recall.py "$BIN_DIR/jamsession_recall.py" 755
 install_file usage/jamsession_failover.py "$BIN_DIR/jamsession_failover.py" 755
 install_file usage/jamsession_accounts.py "$BIN_DIR/jamsession_accounts.py" 755
+install_file usage/jamsession_hooks.py "$BIN_DIR/jamsession_hooks.py" 755
 install_file accounts.toml.example "$INSTALL_ROOT/accounts.toml.example" 644
 install_file tiers.toml "$INSTALL_ROOT/tiers.toml" 644
 install_file adapters/_jamsession_adapter_common "$ADAPTER_DIR/_jamsession_adapter_common" 644

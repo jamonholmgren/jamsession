@@ -32,8 +32,9 @@ jamsession_grok
 Run:    jamsession_grok run <new|session> <model> <effort> <read|edit> <prompt>
 Other:  jamsession_grok <list|which|models|message|usage|status|doctor|help>
 
-Message: message <session> <text> --resume-with <model> <effort> <read|edit>
-resumes once, not queued. Stop the owning process first; ownership cannot be
+Message: message <session> <text> leaves an inbox note the running session reads
+after its next tool call (needs `jamsession hooks install`).
+--resume-with <model> <effort> <read|edit> instead resumes once, not queued. Stop the owning process first; ownership cannot be
 verified. See `jamsession help message` and `jamsession help watch`.
 
 Grok edit mode uses bypassPermissions because headless approval modes can end a
@@ -111,7 +112,7 @@ $JAMSESSION_PROMPT"
 case "${1:-help}" in
   message)
     shift; jamsession_validate_message "$@"
-    [ "$JAMSESSION_MESSAGE_RESUME" -eq 1 ] || jamsession_unsupported message
+    [ "$JAMSESSION_MESSAGE_RESUME" -eq 1 ] || jamsession_inbox_message
     if [ -n "${GROK_SESSION_ID:-}" ] && [ "$JAMSESSION_MESSAGE_SESSION" = "$GROK_SESSION_ID" ]; then
       jamsession_die "cannot resume your own Grok session; use foreground watch"
     fi

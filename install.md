@@ -75,7 +75,7 @@ pre-input busy/ownership refusal falls back to native delivery, once. Queued
 work keeps the owner's settings; `read` runs refuse queue fallback. Denials and
 uncertain sends never retry.
 
-To send an asynchronous note to Codex or Muse, or contact your own live session:
+To send an asynchronous note to a running session, or contact your own live session:
 
 ```sh
 jamsession message <provider> <session-id> "<message>"
@@ -89,7 +89,9 @@ steer also starts idle work. Both keep existing execution settings. A different
 owning process receives messages in its own queue; it cannot be steered through
 an unrelated controller. Muse may not wake an idle session. Acceptance is not
 an answer. Unloaded custom Codex permission policies fail before sending if they
-cannot be restored safely. Other bundled providers can resume once with explicitly appended
+cannot be restored safely. Claude, Grok and Devin get an inbox note read after
+the session's next tool call, once `jamsession hooks install <project>` has wired
+the hook (it merges settings and refuses otherwise). Any of them can resume once with explicitly appended
 `--resume-with <model> <effort> <read|edit>`, only after the owning process exits.
 Native delivery errors never trigger resume. Run `jamsession help message`.
 `delivery: queued; execution unconfirmed` means the work may not have started.

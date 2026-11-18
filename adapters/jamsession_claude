@@ -14,8 +14,10 @@ jamsession_claude
 Run:    jamsession_claude run <new|session> <model> <effort> <read|edit> <prompt>
 Other:  jamsession_claude <list|which|models|message|usage|status|doctor|help>
 
-Message: message <session> <text> --resume-with <model> <effort> <read|edit>
-resumes once, not queued; the owning process must have exited. Active-session
+Message: message <session> <text> writes an inbox note the running session reads
+after its next tool call; it refuses unless the session's project wires the hook
+(`jamsession hooks install`). --resume-with <model> <effort> <read|edit> instead
+resumes once; the owning process must have exited. Active-session
 checks are best-effort. See `jamsession help message` and `jamsession help watch`.
 
 Claude read mode uses plan permission mode. Edit mode uses bypassPermissions
@@ -185,7 +187,7 @@ run_agent() {
 case "${1:-help}" in
   message)
     shift; jamsession_validate_message "$@"
-    [ "$JAMSESSION_MESSAGE_RESUME" -eq 1 ] || jamsession_unsupported message
+    [ "$JAMSESSION_MESSAGE_RESUME" -eq 1 ] || jamsession_inbox_message
     jamsession_require_binary
     active_sessions="$("$JAMSESSION_PROVIDER_BIN" agents --json)" || \
       jamsession_die "cannot check active Claude sessions; use foreground watch or explicit run"

@@ -2064,6 +2064,7 @@ check "parallel adapter sessions keep independent OS-backed IDs" python3 "$ROOT/
 check "quota reader process cleanup always has a deadline" python3 "$ROOT/tests/test_tui_usage.py"
 check "refusals fail over by tier, never upward" python3 "$ROOT/tests/test_failover.py"
 check "named accounts stay on one run, one session and one usage pool" python3 "$ROOT/tests/test_accounts.py"
+check "inbox hooks merge, refuse unwired projects and deliver to the recipient" python3 "$ROOT/tests/test_hooks.py"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]
