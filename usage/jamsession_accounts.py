@@ -90,6 +90,13 @@ def spend_path() -> Path:
     return Path.home() / ".agents" / "jamsession" / "spend.json"
 
 
+def usage_cache_path() -> Path:
+    override = os.environ.get("JAMSESSION_USAGE_CACHE")
+    if override:
+        return Path(override)
+    return Path.home() / ".cache" / "jamsession" / "usage.json"
+
+
 def env_var(provider: str) -> str:
     return f"JAMSESSION_{provider.upper()}_ACCOUNT"
 
@@ -476,6 +483,161 @@ def money(value: float) -> str:
     return f"${number:.2f}"
 
 
+def _load_usage_cache() -> dict:
+    try:
+        data = json.loads(usage_cache_path().read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def cached_weekly_remaining(provider: str, account: str) -> float | None:
+    """Remaining percent of the longest cached window, or None when unknown.
+
+    Reads the usage cache only. It never runs `jamsession usage`.
+    """
+    provider = canonical(provider)
+    rows = _load_usage_cache().get("providers")
+    if not isinstance(rows, list):
+        return None
+    matched: list[dict] = []
+    untagged: list[dict] = []
+    for row in rows:
+        if not isinstance(row, dict) or row.get("agent") != provider or row.get("status") != "ok":
+            continue
+        label = row.get("account") or ""
+        if not isinstance(label, str):
+            continue
+        if label == account:
+            matched.append(row)
+        elif not label:
+            untagged.append(row)
+    chosen = matched
+    if not chosen and account == default_account(provider):
+        chosen = untagged
+    windows = [window for row in chosen for window in (row.get("windows") or []) if isinstance(window, dict)]
+    if not chosen:
+        return None
+    import jamsession_failover as failover
+    return failover.governing_remaining(windows)
+
+
+def _below_account_floor(provider: str, item: Account) -> bool:
+    """True when the cached weekly remaining is below this account's own floor.
+
+    No floor, a floor of 0, or an unknown cache does not skip. Remaining equal
+    to the floor is still usable.
+    """
+    floor = item.min_usage
+    if floor is None or floor <= 0:
+        return False
+    left = cached_weekly_remaining(provider, item.name)
+    return left is not None and left < floor
+
+
+def first_eligible(provider: str) -> str:
+    """First account in file order still above its min_usage and budget.
+
+    An unknown weekly figure does not skip. "" means none qualify.
+    """
+    provider = canonical(provider)
+    for item in load().get(provider, []):
+        try:
+            reason = unavailable_reason(provider, item.name)
+        except AccountError:
+            continue
+        if reason or _below_account_floor(provider, item):
+            continue
+        return item.name
+    return ""
+
+
+def _usage_bit(provider: str, item: Account) -> str:
+    if item.monthly_budget_usd is not None:
+        try:
+            spent = month_spend(provider, item.name)
+        except AccountError:
+            return f"{item.name} ?"
+        return f"{item.name} {money(spent)} of {money(item.monthly_budget_usd)}"
+    left = cached_weekly_remaining(provider, item.name)
+    if left is None:
+        return f"{item.name} ?"
+    return f"{item.name} {left:g}%"
+
+
+def warn_bare(provider: str, named: str, session: str) -> str:
+    """Warn when a bare provider has several accounts. Return the one to run.
+
+    "" means do not change the caller's selection. A named account, a single
+    account, a recorded session, and an internal failover step stay quiet.
+    The returned name is not an explicit choice.
+    """
+    provider = canonical(provider)
+    named = "" if named in ("", "-") else named
+    if os.environ.get("JAMSESSION_FAILOVER_STEP"):
+        return ""
+    if named or os.environ.get(env_var(provider), ""):
+        return ""
+    group = load().get(provider, [])
+    if len(group) < 2:
+        return ""
+    if session and session != "new" and lookup(provider, session):
+        return ""
+    chosen = first_eligible(provider) or group[0].name
+    names = ", ".join(f"{provider}:{item.name}" for item in group)
+    bits = ", ".join(_usage_bit(provider, item) for item in group)
+    print(
+        f"jamsession: several {provider} accounts are set up; "
+        f"name one next time ({names}). "
+        f"Weekly usage left: {bits}. "
+        f"Using {provider}:{chosen}.",
+        file=sys.stderr,
+    )
+    return chosen
+
+
+def store_usage_report(raw: str) -> None:
+    """Merge one usage report into the cache. A failure leaves the old cache.
+
+    `jamsession usage` writes this so a later run can warn without a live read.
+    Rows for providers in the new report replace older rows for those providers.
+    """
+    try:
+        incoming = json.loads(raw)
+    except json.JSONDecodeError:
+        return
+    if not isinstance(incoming, dict):
+        return
+    new_rows = incoming.get("providers")
+    if not isinstance(new_rows, list):
+        return
+    path = usage_cache_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        old_rows: list = []
+        try:
+            old = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(old, dict) and isinstance(old.get("providers"), list):
+                old_rows = old["providers"]
+        except (OSError, json.JSONDecodeError, UnicodeError):
+            old_rows = []
+        replaced = {
+            row.get("agent") for row in new_rows
+            if isinstance(row, dict) and isinstance(row.get("agent"), str)
+        }
+        kept = [row for row in old_rows if not (isinstance(row, dict) and row.get("agent") in replaced)]
+        fresh = [row for row in new_rows if isinstance(row, dict)]
+        status = incoming.get("status") if isinstance(incoming.get("status"), str) else "partial"
+        payload = {"schema_version": 1, "status": status, "providers": kept + fresh}
+        temporary = path.with_name(path.name + ".tmp")
+        temporary.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+        os.chmod(temporary, 0o600)
+        temporary.replace(path)
+        os.chmod(path, 0o600)
+    except OSError:
+        return
+
+
 def unavailable_reason(provider: str, account: str) -> str:
     """Why this account cannot run, or "" when it can. Never a secret."""
     provider = canonical(provider)
@@ -539,6 +701,12 @@ def prepare(kind: str, provider: str, session: str, named: str) -> tuple[str, bo
         latch = False
     else:
         account = chosen or default_account(provider)
+        # A bare provider with several accounts runs the first one still above
+        # its floor and budget. That pick is not an explicit name, so it does
+        # not latch onto an unrecorded session.
+        hinted = warn_bare(provider, named, session)
+        if hinted:
+            account = hinted
         latch = bool(explicit and account and kind != "new" and session not in ("", "new"))
     if latch:
         record(provider, session, account)
@@ -903,7 +1071,7 @@ def command_add(args: list[str]) -> None:
 
 def main(argv: list[str]) -> int:
     if not argv:
-        raise AccountError("usage: jamsession_accounts.py <prepare|record|names|list|env|add>")
+        raise AccountError("usage: jamsession_accounts.py <prepare|record|names|list|env|add|store-usage>")
     command, args = argv[0], argv[1:]
     if command == "prepare":
         if len(args) != 4:
@@ -951,6 +1119,11 @@ def main(argv: list[str]) -> int:
         except ValueError:
             raise AccountError("spend needs a number of usd") from None
         add_spend(args[0], args[1], amount)
+        return 0
+    if command == "store-usage":
+        if args:
+            raise AccountError("store-usage reads the report on stdin")
+        store_usage_report(sys.stdin.read())
         return 0
     if command == "claude-cost":
         if len(args) != 4:

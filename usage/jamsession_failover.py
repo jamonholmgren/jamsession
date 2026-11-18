@@ -567,6 +567,9 @@ def attempt(cli: str, worksheet: str, candidate: Candidate, session: str, access
     # The selector that chose the first account must not veto a later account.
     env = os.environ.copy()
     env.pop(accounts.env_var(candidate.provider), None)
+    # This child is the ladder, not the caller's choice. A bare default pool
+    # must not warn again or switch to a later account.
+    env["JAMSESSION_FAILOVER_STEP"] = "1"
     with tempfile.TemporaryFile() as reply:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=reply, stderr=subprocess.PIPE, env=env)
 
@@ -749,6 +752,9 @@ def main(argv: list[str]) -> int:
             try:
                 provider, named = accounts.split_spec(provider)
                 account = accounts.resolve(provider, named)
+                # Warn once for the caller's bare provider. Do not pin the
+                # argument; the ladder still walks every account.
+                accounts.warn_bare(provider, named, session)
             except accounts.AccountError as error:
                 raise Failure(str(error)) from None
             candidates = ladder(load_tiers(), provider, model, effort, options["allow_lower"],

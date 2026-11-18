@@ -52,8 +52,10 @@ class AccountHarness(unittest.TestCase):
         for name in ("JAMSESSION_HOME", "JAMSESSION_ADAPTER_DIR", "JAMSESSION_CLAUDE_ACCOUNT",
                      "JAMSESSION_CODEX_ACCOUNT", "CLAUDE_CONFIG_DIR", "CODEX_HOME",
                      "TEST_ACCOUNT_MARKER", "JAMSESSION_USAGE_JSON", "JAMSESSION_TIERS",
-                     "JAMSESSION_USAGE_FIXTURE_DIR", "JAMSESSION_LATEST_CACHE"):
+                     "JAMSESSION_USAGE_FIXTURE_DIR", "JAMSESSION_LATEST_CACHE",
+                     "JAMSESSION_USAGE_CACHE", "JAMSESSION_FAILOVER_STEP"):
             self.env.pop(name, None)
+        self.usage_cache = self.root / "usage-cache.json"
         self.env.update({
             "HOME": str(self.home),
             "JAMSESSION_CONFIG": str(self.config),
@@ -63,6 +65,7 @@ class AccountHarness(unittest.TestCase):
             "JAMSESSION_CWD": str(self.root),
             "ACCOUNT_LOG": str(self.log),
             "CLAUDE_CONFIG_DIR": "/ambient/claude",
+            "JAMSESSION_USAGE_CACHE": str(self.usage_cache),
         })
 
     def tearDown(self):
@@ -475,7 +478,9 @@ class FailoverOrderTests(AccountHarness):
         self.assertEqual(reply.returncode, 0, reply.stderr)
         self.assertEqual(self.launches(), ["run work", "run personal", "run api"])
         self.assertIn("failover: claude opus-test high refused", reply.stderr)
-        self.assertNotIn("claude:work", reply.stderr)
+        self.assertNotIn("failover: claude:work", reply.stderr)
+        self.assertNotIn("ran: provider=claude:work", reply.stderr)
+        self.assertEqual(reply.stderr.count("several claude accounts"), 1)
         self.assertIn("ran: provider=claude:api", reply.stderr)
 
 
@@ -810,6 +815,9 @@ class AccountsCommandTests(AccountHarness):
         self.assertEqual(rows[1]["account"], "api")
         self.assertEqual(rows[1]["spend"]["usd"], 12.5)
         self.assertEqual(rows[1]["spend"]["budget_usd"], 500)
+        cached = json.loads(self.usage_cache.read_text())
+        self.assertEqual(cached["providers"][0]["windows"][0]["remaining_percent"], 90)
+        self.assertEqual(cached["providers"][0]["windows"][0]["bucket_id"], "weekly_all")
 
 
 def usage_report(*windows):
@@ -874,6 +882,211 @@ class UsageThresholdTests(AccountHarness):
         self.assertEqual(plain.returncode, 75, plain.stderr)
         self.assertEqual(self.launches(), [])
         self.assertIn("usage 10% left, below 25%", plain.stderr)
+
+
+def window(remaining, minutes, bucket):
+    return {"bucket_id": bucket, "remaining_percent": remaining, "window_minutes": minutes}
+
+
+class BareProviderWarningTests(AccountHarness):
+    def setUp(self):
+        super().setUp()
+        self.spend = self.root / "spend.json"
+        self.env["JAMSESSION_SPEND"] = str(self.spend)
+        self.env["JAMSESSION_CLAUDE_BIN"] = str(self.root / "missing-claude")
+        self.env["JAMSESSION_CODEX_BIN"] = str(self.root / "missing-codex")
+        self.env["JAMSESSION_USAGE_TIMEOUT"] = "1"
+
+    def write_cache(self, providers):
+        self.usage_cache.write_text(json.dumps({"schema_version": 1, "providers": providers}))
+
+    def three_accounts(self):
+        self.write_accounts(
+            "[claude.work]\n"
+            "min_usage = 5\n"
+            'env = { TEST_ACCOUNT_MARKER = "work" }\n\n'
+            "[claude.personal]\n"
+            "min_usage = 5\n"
+            'env = { TEST_ACCOUNT_MARKER = "personal" }\n\n'
+            "[claude.api]\n"
+            'kind = "api"\n'
+            'backend = "claude-cli"\n'
+            "monthly_budget_usd = 500\n"
+            'env = { TEST_ACCOUNT_MARKER = "api" }\n'
+        )
+
+    def seed_spend(self, amount):
+        seeded = subprocess.run(
+            [sys.executable, str(ROOT / "usage" / "jamsession_accounts.py"),
+             "spend", "claude", "api", str(amount)],
+            env=self.env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(seeded.returncode, 0, seeded.stderr)
+
+    def test_a_bare_provider_warns_lists_usage_and_still_runs(self):
+        self.three_accounts()
+        self.seed_spend(498)
+        self.write_cache([
+            {"agent": "claude", "account": "work", "status": "ok", "windows": [
+                window(2, 300, "current_session"), window(28, 10080, "weekly_all")]},
+            {"agent": "claude", "account": "personal", "status": "ok", "windows": [
+                window(91, 10080, "weekly_all")]},
+            {"agent": "claude", "account": "api", "status": "ok", "windows": [
+                window(50, 10080, "weekly_all")]},
+        ])
+        reply = self.jam("run", "claude", "new", "default", "default", "edit", "hi")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertIn(
+            "jamsession: several claude accounts are set up; "
+            "name one next time (claude:work, claude:personal, claude:api). "
+            "Weekly usage left: work 28%, personal 91%, api $498 of $500. "
+            "Using claude:work.",
+            reply.stderr)
+        self.assertIn("MARKER=work", reply.stdout)
+        self.assertEqual(self.launches(), ["run work"])
+        self.assertEqual(json.loads(self.sessions.read_text())["claude"]["sess-work"], "work")
+
+        self.write_cache([
+            {"agent": "claude", "account": "work", "status": "ok", "windows": [
+                window(4, 10080, "weekly_all")]},
+            {"agent": "claude", "account": "personal", "status": "ok", "windows": [
+                window(91, 10080, "weekly_all")]},
+        ])
+        self.log.write_text("")
+        low = self.jam("run", "claude", "new", "default", "default", "edit", "hi")
+        self.assertEqual(low.returncode, 0, low.stderr)
+        self.assertIn("work 4%, personal 91%, api $498 of $500", low.stderr)
+        self.assertIn("Using claude:personal.", low.stderr)
+        self.assertIn("MARKER=personal", low.stdout)
+        self.assertEqual(self.launches(), ["run personal"])
+
+        self.write_cache([
+            {"agent": "claude", "account": "work", "status": "ok", "windows": [
+                window(5, 10080, "weekly_all")]},
+        ])
+        self.log.write_text("")
+        exact = self.jam("run", "claude", "new", "default", "default", "edit", "hi")
+        self.assertEqual(exact.returncode, 0, exact.stderr)
+        self.assertIn("Using claude:work.", exact.stderr)
+        self.assertIn("work 5%, personal ?, api $498 of $500", exact.stderr)
+        self.assertEqual(self.launches(), ["run work"])
+
+    def test_a_named_account_does_not_warn(self):
+        self.three_accounts()
+        self.write_cache([
+            {"agent": "claude", "account": "work", "status": "ok", "windows": [
+                window(4, 10080, "weekly_all")]},
+            {"agent": "claude", "account": "personal", "status": "ok", "windows": [
+                window(91, 10080, "weekly_all")]},
+        ])
+        named = self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi")
+        self.assertEqual(named.returncode, 0, named.stderr)
+        self.assertNotIn("several", named.stderr)
+        self.assertIn("MARKER=personal", named.stdout)
+        selected = self.jam("run", "claude", "new", "default", "default", "edit", "hi",
+                            extra={"JAMSESSION_CLAUDE_ACCOUNT": "personal"})
+        self.assertEqual(selected.returncode, 0, selected.stderr)
+        self.assertNotIn("several", selected.stderr)
+        self.assertIn("MARKER=personal", selected.stdout)
+        self.assertNotIn("MARKER=work", selected.stdout)
+
+    def test_a_single_account_does_not_warn(self):
+        self.write_accounts('[claude.only]\nenv = { TEST_ACCOUNT_MARKER = "only" }\n')
+        self.write_cache([
+            {"agent": "claude", "status": "ok", "windows": [window(40, 10080, "weekly_all")]},
+        ])
+        reply = self.jam("run", "claude", "new", "default", "default", "edit", "hi")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertNotIn("several", reply.stderr)
+        self.assertIn("MARKER=only", reply.stdout)
+
+    def test_resuming_a_recorded_session_does_not_warn(self):
+        self.three_accounts()
+        self.write_cache([
+            {"agent": "claude", "account": "work", "status": "ok", "windows": [
+                window(28, 10080, "weekly_all")]},
+            {"agent": "claude", "account": "personal", "status": "ok", "windows": [
+                window(91, 10080, "weekly_all")]},
+        ])
+        started = self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi")
+        self.assertEqual(started.returncode, 0, started.stderr)
+        self.assertNotIn("several", started.stderr)
+        resumed = self.jam("run", "claude", "sess-personal", "default", "default", "edit", "again")
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        self.assertNotIn("several", resumed.stderr)
+        self.assertIn("MARKER=personal", resumed.stdout)
+        message = self.jam("message", "claude", "sess-personal", "hello")
+        self.assertEqual(message.returncode, 0, message.stderr)
+        self.assertNotIn("several", message.stderr)
+        self.assertIn("MARKER=personal", message.stdout)
+        steer = self.jam("steer", "claude", "sess-personal", "continue")
+        self.assertEqual(steer.returncode, 0, steer.stderr)
+        self.assertNotIn("several", steer.stderr)
+        self.assertEqual(self.launches(),
+                         ["run personal", "run personal", "message personal", "steer personal"])
+
+    def test_unknown_usage_and_a_bare_codex_provider(self):
+        self.three_accounts()
+        missing = self.jam("run", "claude", "new", "default", "default", "edit", "hi")
+        self.assertEqual(missing.returncode, 0, missing.stderr)
+        self.assertIn("Weekly usage left: work ?, personal ?, api $0 of $500.", missing.stderr)
+        self.assertIn("Using claude:work.", missing.stderr)
+        self.assertIn("MARKER=work", missing.stdout)
+        self.write_accounts(
+            "[codex.work]\n"
+            'env = { CODEX_HOME = "~/codex-work", TEST_ACCOUNT_MARKER = "codex-work" }\n\n'
+            "[codex.other]\n"
+            'env = { CODEX_HOME = "~/codex-other", TEST_ACCOUNT_MARKER = "codex-other" }\n'
+        )
+        self.write_cache([
+            {"agent": "codex", "account": "work", "status": "ok", "windows": [
+                window(12, 300, "session"), window(60, 10080, "weekly")]},
+            {"agent": "codex", "account": "other", "status": "ok", "windows": [
+                window(70, 10080, "weekly")]},
+        ])
+        self.log.write_text("")
+        codex = self.jam("run", "codex", "new", "default", "default", "edit", "hi")
+        self.assertEqual(codex.returncode, 0, codex.stderr)
+        self.assertIn(
+            "jamsession: several codex accounts are set up; "
+            "name one next time (codex:work, codex:other). "
+            "Weekly usage left: work 60%, other 70%. Using codex:work.",
+            codex.stderr)
+        self.assertNotIn("12%", codex.stderr)
+        self.assertIn("MARKER=codex-work", codex.stdout)
+        quiet = self.jam("run", "codex", "new", "default", "default", "edit", "hi",
+                         extra={"JAMSESSION_FAILOVER_STEP": "1"})
+        self.assertEqual(quiet.returncode, 0, quiet.stderr)
+        self.assertNotIn("several", quiet.stderr)
+        self.assertIn("MARKER=codex-work", quiet.stdout)
+
+    def test_an_internal_failover_step_does_not_switch_accounts(self):
+        self.write_accounts(
+            "[claude.work]\n"
+            "min_usage = 5\n"
+            'env = { TEST_ACCOUNT_MARKER = "work" }\n\n'
+            "[claude.personal]\n"
+            "min_usage = 5\n"
+            'env = { TEST_ACCOUNT_MARKER = "personal" }\n'
+        )
+        self.write_cache([
+            {"agent": "claude", "account": "work", "status": "ok", "windows": [
+                window(4, 10080, "weekly_all")]},
+            {"agent": "claude", "account": "personal", "status": "ok", "windows": [
+                window(90, 10080, "weekly_all")]},
+        ])
+        tiers = self.root / "tiers.toml"
+        tiers.write_text(opus_tiers(
+            '  { harness = "claude", id = "opus-test" },',
+            '  { harness = "claude", account = "personal", id = "opus-test" },',
+        ))
+        reply = self.jam(
+            "run", "--failover", "--min-usage", "0", "claude", "new", "opus-test", "high", "edit", "hi",
+            extra={"JAMSESSION_TIERS": str(tiers), "JAMSESSION_LATEST_CACHE": str(self.root / "latest.json")})
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(reply.stderr.count("several claude accounts"), 1)
+        self.assertIn("Using claude:personal.", reply.stderr)
+        self.assertIn("MARKER=work", reply.stdout)
+        self.assertEqual(self.launches(), ["run work"])
 
 
 if __name__ == "__main__":

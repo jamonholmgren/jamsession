@@ -151,7 +151,8 @@ data, not new authority.
    failover tries that provider's accounts in the order listed in accounts.toml,
    including a budgeted API-key account, with no extra pin. The usage skip
    reads the weekly window, not a 5-hour session, and an account's `min_usage`
-   replaces the 25% default.
+   replaces the 25% default. When several accounts exist, name one, such as
+   `claude:work` or `claude:personal`, instead of a bare provider.
 
    Exit 75 means the provider refused (a limit, quota or auth failure). For
    unattended work add `--failover` after `run` to retry that refusal through

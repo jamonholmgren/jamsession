@@ -618,6 +618,11 @@ $requested_account
     printf "%-${width}s %-30s %-12s %s\n" Provider Window Remaining Reset
     cat "$human_file"
   fi
+  # The bare-provider warning reads this later. A failed write still prints usage.
+  helper="$(accounts_py 2>/dev/null || true)"
+  if [ -n "$helper" ]; then
+    printf '%s' "$report" | "${JAMSESSION_PYTHON_BIN:-python3}" "$helper" store-usage >/dev/null 2>&1 || true
+  fi
   cleanup
   [ "$failures" -eq 0 ] && return 0
   [ "$successes" -eq 0 ] && return 1
