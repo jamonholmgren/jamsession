@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
 import re
 import subprocess
 import sys
@@ -18,7 +19,12 @@ import tempfile
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
+
+# Accounts live beside this file when installed (bin/) and in the repo (usage/).
+_ACCOUNTS_DIR = str(Path(__file__).resolve().parent)
+if _ACCOUNTS_DIR not in sys.path:
+    sys.path.insert(0, _ACCOUNTS_DIR)
+import jamsession_accounts as accounts  # noqa: E402
 
 REFUSAL = 75
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
@@ -162,9 +168,13 @@ class Candidate:
     meter: bool = True
     name: str = ""  # tiers-table model name, when known
     tier: str = ""
+    account: str = ""  # empty means the provider's default account, if it has one
+
+    def provider_arg(self) -> str:
+        return f"{self.provider}:{self.account}" if self.account else self.provider
 
     def label(self) -> str:
-        return f"{self.provider} {self.model} {self.effort}"
+        return f"{self.provider_arg()} {self.model} {self.effort}"
 
 
 def load_toml(path: Path) -> dict:
@@ -200,8 +210,13 @@ def load_tiers(path: Path | None = None) -> dict:
         for name in tier.get("models", []):
             if name in seen:
                 raise Failure(f"{path}: model '{name}' is in more than one tier")
-            if not models.get(name, {}).get("via"):
+            vias = models.get(name, {}).get("via")
+            if not vias:
                 raise Failure(f"{path}: model '{name}' has no [model.{name}] via list")
+            for via in vias:
+                account = via.get("account", "")
+                if account and (not isinstance(account, str) or not re.fullmatch(r"[A-Za-z0-9_-]+", account)):
+                    raise Failure(f"{path}: model '{name}' has an invalid via account '{account}'")
             seen.add(name)
     extra = set(models) - seen
     if extra:
@@ -244,7 +259,7 @@ def find_model(table: dict, provider: str, model: str) -> str:
 def via_candidates(table: dict, name: str, effort: str) -> list[Candidate]:
     _, tier = tier_of(table)[name]
     return [Candidate(via["harness"], via["id"], via.get("efforts", {}).get(effort, effort),
-                      via.get("meter", True), name, tier)
+                      via.get("meter", True), name, tier, str(via.get("account") or ""))
             for via in table["model"][name]["via"]]
 
 
@@ -266,9 +281,14 @@ def tier_models(table: dict, start: str, allow_lower: bool, lowest_tier: str = "
 
 
 def ladder(table: dict, provider: str, model: str, effort: str, allow_lower: bool = False,
-           lowest_tier: str = "") -> list[Candidate]:
-    """The requested run first, then same model elsewhere, then the same tier."""
-    first = Candidate(provider, model, effort)
+           lowest_tier: str = "", account: str = "") -> list[Candidate]:
+    """The requested run first, then same model elsewhere, then the same tier.
+
+    Two vias are the same pool when their harness and account match. An empty
+    account is the provider's default account, so a plain `claude` request is
+    not tried again as an explicit default-account via.
+    """
+    first = Candidate(provider, model, effort, account=account)
     name = find_model(table, provider, model)
     if not name:
         return [first]
@@ -277,11 +297,13 @@ def ladder(table: dict, provider: str, model: str, effort: str, allow_lower: boo
         effort = folded
     first.name, first.tier = name, tier_of(table)[name][1]
     for via in table["model"][name]["via"]:
-        if via["harness"] == provider:
+        if via["harness"] == provider and accounts.pools_match(account, str(via.get("account") or ""), provider):
             first.meter = via.get("meter", True)
+            break
     rest = [candidate for other in tier_models(table, name, allow_lower, lowest_tier)
             for candidate in via_candidates(table, other, effort)
-            if not (other == name and candidate.provider == provider)]
+            if not (other == name and candidate.provider == provider
+                    and accounts.pools_match(account, candidate.account, provider))]
     return [first] + rest
 
 
@@ -311,7 +333,8 @@ def load_route(name: str) -> tuple[dict, dict]:
 
 
 def rung(entry: dict) -> Candidate:
-    return Candidate(entry["provider"], entry["model"], entry.get("effort", "default"), entry.get("meter", True))
+    return Candidate(entry["provider"], entry["model"], entry.get("effort", "default"), entry.get("meter", True),
+                     account=str(entry.get("account") or ""))
 
 
 def expand_route(name: str, table: dict | None = None) -> dict:
@@ -356,23 +379,36 @@ class Usage:
                 print("failover: usage unreadable; treating every pool as available", file=sys.stderr)
         return self.report
 
-    def lowest(self, provider: str) -> float | None:
-        """Lowest remaining percent across the provider's windows; None when unread."""
-        for row in self.load().get("providers", []):
-            if row.get("agent") == provider and row.get("status") == "ok":
-                values = [w.get("remaining_percent") for w in row.get("windows", [])]
-                values = [float(v) for v in values if isinstance(v, (int, float))]
-                return min(values) if values else None
-        return None
+    def lowest(self, provider: str, account: str = "") -> float | None:
+        """Lowest remaining percent for one account's windows; None when unread.
+
+        An empty account is the default account when usage rows are tagged,
+        and the untagged provider row when they are not.
+        """
+        rows = [row for row in self.load().get("providers", [])
+                if row.get("agent") == provider and row.get("status") == "ok"]
+        if account:
+            chosen = [row for row in rows if (row.get("account") or "") == account]
+        else:
+            default = accounts.default_account(provider)
+            tagged = [row for row in rows if default and (row.get("account") or "") == default]
+            chosen = tagged or [row for row in rows if not (row.get("account") or "")]
+        values = [float(window["remaining_percent"])
+                  for row in chosen for window in row.get("windows", [])
+                  if isinstance(window.get("remaining_percent"), (int, float))]
+        return min(values) if values else None
 
 
 # --- run -------------------------------------------------------------------
 
 def attempt(cli: str, worksheet: str, candidate: Candidate, session: str, access: str, prompt: bytes) -> tuple[int, bytes]:
     command = [cli, "run"] + (["--worksheet", worksheet] if worksheet else []) + [
-        candidate.provider, session, candidate.model, candidate.effort, access, "-"]
+        candidate.provider_arg(), session, candidate.model, candidate.effort, access, "-"]
+    # The selector that chose the first account must not veto a later account.
+    env = os.environ.copy()
+    env.pop(accounts.env_var(candidate.provider), None)
     with tempfile.TemporaryFile() as reply:
-        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=reply, stderr=subprocess.PIPE)
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=reply, stderr=subprocess.PIPE, env=env)
 
         def feed() -> None:
             try:
@@ -396,14 +432,14 @@ def skip_reason(candidate: Candidate, access: str, usage: Usage, min_usage: floa
     if access == "read" and candidate.provider in EDIT_ONLY:
         return "read access unsupported"
     if candidate.meter and min_usage > 0:
-        left = usage.lowest(candidate.provider)
+        left = usage.lowest(candidate.provider, candidate.account)
         if left is not None and left < min_usage:
             return f"usage {left:g}% left, below {min_usage:g}%"
     return ""
 
 
 def run(candidates: list[Candidate], session: str, access: str, prompt: bytes, *, cli: str, worksheet: str,
-        min_usage: float, check_first: bool, latest: "Latest | None" = None) -> int:
+        min_usage: float, latest: "Latest | None" = None) -> int:
     usage = Usage(cli)
     latest = latest or Latest()
     requested = candidates[0]
@@ -416,11 +452,10 @@ def run(candidates: list[Candidate], session: str, access: str, prompt: bytes, *
         except Unresolved as error:
             print(f"failover: skipping {candidate.label()} ({error})", file=sys.stderr)
             continue
-        if index > 0 or check_first:
-            reason = skip_reason(candidate, access, usage, min_usage)
-            if reason:
-                print(f"failover: skipping {candidate.label()} ({reason})", file=sys.stderr)
-                continue
+        reason = skip_reason(candidate, access, usage, min_usage)
+        if reason:
+            print(f"failover: skipping {candidate.label()} ({reason})", file=sys.stderr)
+            continue
         this_session = session if index == 0 else "new"
         if tried > 0:
             print(f"failover: trying {candidate.label()}", file=sys.stderr)
@@ -436,9 +471,9 @@ def run(candidates: list[Candidate], session: str, access: str, prompt: bytes, *
         sys.stdout.buffer.write(reply)
         sys.stdout.buffer.flush()
         moved = candidate is not requested
-        print(f"ran: provider={candidate.provider} model={candidate.model} effort={candidate.effort} "
+        print(f"ran: provider={candidate.provider_arg()} model={candidate.model} effort={candidate.effort} "
               f"session={'resumed' if this_session != 'new' else 'new'}"
-              + (f" requested={requested.provider}/{requested.model}/{requested.effort}" if moved else ""),
+              + (f" requested={requested.provider_arg()}/{requested.model}/{requested.effort}" if moved else ""),
               file=sys.stderr)
         return status
     print("failover: all routes refused or were skipped; there is no answer", file=sys.stderr)
@@ -507,7 +542,9 @@ def main(argv: list[str]) -> int:
         if not rest:
             for tier in table["tiers"]:
                 for name in tier["models"]:
-                    vias = ", ".join(f"{v['harness']}:{v['id']}" for v in table["model"][name]["via"])
+                    vias = ", ".join(
+                        f"{v['harness']}:{v['id']}" + (f" account={v['account']}" if v.get("account") else "")
+                        for v in table["model"][name]["via"])
                     print(f"{tier['name']}  {name:<12} {vias}")
             return 0
         if len(rest) != 3:
@@ -529,18 +566,22 @@ def main(argv: list[str]) -> int:
                 raise Failure(f"route '{options['route']}' is a panel; run its members with `jamsession route`")
             candidates = route["candidates"]
             min_usage = route["skip_below_usage"] if options["min_usage"] is None else options["min_usage"]
-            check_first = True
         else:
             if len(rest) != 6:
                 raise Failure("run --failover needs <provider> <new|session> <model> <effort> <read|edit> <prompt>")
             provider, session, model, effort, access, prompt = rest
-            candidates = ladder(load_tiers(), provider, model, effort, options["allow_lower"], options["lowest_tier"])
+            try:
+                provider, named = accounts.split_spec(provider)
+                account = accounts.resolve(provider, named)
+            except accounts.AccountError as error:
+                raise Failure(str(error)) from None
+            candidates = ladder(load_tiers(), provider, model, effort, options["allow_lower"],
+                                options["lowest_tier"], account)
             min_usage = DEFAULT_MIN_USAGE if options["min_usage"] is None else options["min_usage"]
-            check_first = False
         if access not in ("read", "edit"):
             raise Failure("access must be read or edit")
         return run(candidates, session, access, read_prompt(prompt), cli=cli, worksheet=options["worksheet"],
-                   min_usage=min_usage, check_first=check_first)
+                   min_usage=min_usage)
     raise Failure(f"unknown command '{command}'")
 
 

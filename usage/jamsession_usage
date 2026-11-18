@@ -378,70 +378,175 @@ provider_usage() {
 }
 
 collect_provider() {
-  local provider="$1" windows
+  local provider="$1" slot="${2:-$1}" account="${3:-}" windows identity
+  if [ -n "$account" ]; then
+    identity="$(printf '{"agent":"%s","account":"%s"' "$provider" "$(json_escape "$account")")"
+  else
+    identity="$(printf '{"agent":"%s"' "$provider")"
+  fi
   if provider_usage "$provider"; then
     windows="$PROVIDER_WINDOWS"
-    printf '%s' "$windows" >"$TEMP_DIR/$provider.windows"
-    printf '{"agent":"%s","status":"ok","windows":[%s],"error":null}' \
-      "$provider" "$windows" >"$TEMP_DIR/$provider.json"
-    printf 'ok' >"$TEMP_DIR/$provider.result"
+    printf '%s' "$windows" >"$TEMP_DIR/$slot.windows"
+    printf '%s,"status":"ok","windows":[%s],"error":null}' \
+      "$identity" "$windows" >"$TEMP_DIR/$slot.json"
+    printf 'ok' >"$TEMP_DIR/$slot.result"
   else
-    printf '{"agent":"%s","status":"unavailable","windows":[],"error":{"code":"%s","message":"%s"}}' \
-      "$provider" "$PROVIDER_ERROR_CODE" "$(json_escape "$PROVIDER_ERROR_MESSAGE")" >"$TEMP_DIR/$provider.json"
-    printf 'unavailable' >"$TEMP_DIR/$provider.result"
+    printf '%s,"status":"unavailable","windows":[],"error":{"code":"%s","message":"%s"}}' \
+      "$identity" "$PROVIDER_ERROR_CODE" "$(json_escape "$PROVIDER_ERROR_MESSAGE")" >"$TEMP_DIR/$slot.json"
+    printf 'unavailable' >"$TEMP_DIR/$slot.result"
   fi
 }
 
+accounts_py() {
+  if [ -f "$SCRIPT_DIR/jamsession_accounts.py" ]; then
+    printf '%s\n' "$SCRIPT_DIR/jamsession_accounts.py"
+    return 0
+  fi
+  if [ -f "$SCRIPT_DIR/../usage/jamsession_accounts.py" ]; then
+    printf '%s\n' "$SCRIPT_DIR/../usage/jamsession_accounts.py"
+    return 0
+  fi
+  return 1
+}
+
+accounts_toml() {
+  if [ -n "${JAMSESSION_ACCOUNTS+x}" ]; then
+    printf '%s\n' "$JAMSESSION_ACCOUNTS"
+  else
+    printf '%s\n' "$HOME/.agents/jamsession/accounts.toml"
+  fi
+}
+
+# Exports one account's env inside the caller's subshell, so the next account
+# does not inherit it.
+apply_account_env() {
+  local provider="$1" account="$2" helper output line key value status=0
+  [ -n "$account" ] || return 0
+  helper="$(accounts_py)" || return 1
+  output="$("${JAMSESSION_PYTHON_BIN:-python3}" "$helper" env "$provider" "$account" 2>"$TEMP_DIR/$provider.$account.env.err")" || status=$?
+  [ "$status" -eq 0 ] || return "$status"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    key=${line%%=*}
+    value=${line#*=}
+    printf -v "$key" '%s' "$value"
+    export "$key"
+  done <<<"$output"
+}
+
 main() {
-  local json=0 requested="" provider windows row first=1 successes=0 failures=0 rows="" human_file
+  local json=0 requested="" requested_account="" spec provider account windows row
+  local first=1 successes=0 failures=0 rows="" human_file account_list slot label width=9 saw_account=0
   while [ $# -gt 0 ]; do
     case "$1" in
       --json) json=1 ;;
-      copilot|codex|claude|cursor|grok|devin|muse|antigravity|agy|gemini)
+      *)
         [ -z "$requested" ] || fail "choose at most one provider"
-        requested="$1"
-        case "$requested" in agy|gemini) requested=antigravity ;; esac
+        spec="$1"
+        requested_account=""
+        case "$spec" in
+          *:*)
+            requested_account="${spec#*:}"
+            spec="${spec%%:*}"
+            [ -n "$requested_account" ] && [ "$requested_account" = "${requested_account%%:*}" ] || fail "invalid account '$1'"
+            ;;
+        esac
+        case "$spec" in
+          copilot|codex|claude|cursor|grok|devin|muse|antigravity|agy|gemini)
+            requested="$spec"
+            case "$requested" in agy|gemini) requested=antigravity ;; esac
+            ;;
+          *) fail "unknown argument '$1'" ;;
+        esac
         ;;
-      *) fail "unknown argument '$1'" ;;
     esac
     shift
   done
   make_temp
   human_file="$TEMP_DIR/human"
   : >"$human_file"
+  : >"$TEMP_DIR/manifest"
   [ -n "$requested" ] && providers="$requested" || providers="$PROVIDERS"
   for provider in $providers; do
-    collect_provider "$provider" 2>"$TEMP_DIR/$provider.collect.err" &
+    account_list=""
+    if [ -f "$(accounts_toml)" ]; then
+      account_list="$("${JAMSESSION_PYTHON_BIN:-python3}" "$(accounts_py)" list "$provider")" || fail "could not read accounts for $provider"
+    elif [ -n "$requested_account" ]; then
+      fail "$provider has no account '$requested_account'; $(accounts_toml) is missing"
+    fi
+    if [ -n "$requested_account" ]; then
+      case "
+$account_list
+" in
+        *"
+$requested_account
+"*) ;;
+        *) fail "$provider has no account '$requested_account'" ;;
+      esac
+      account_list="$requested_account"
+    fi
+    if [ -z "$account_list" ]; then
+      printf '%s %s %s\n' "$provider" "$provider" "" >>"$TEMP_DIR/manifest"
+      collect_provider "$provider" "$provider" "" 2>"$TEMP_DIR/$provider.collect.err" &
+    else
+      saw_account=1
+      # One provider's accounts run in series so each env stays inside its own
+      # subshell and they do not share a capture file. Providers still overlap.
+      (
+        while IFS= read -r account; do
+          [ -n "$account" ] || continue
+          slot="$provider.$account"
+          (
+            if apply_account_env "$provider" "$account"; then
+              collect_provider "$provider" "$slot" "$account"
+            else
+              printf '{"agent":"%s","account":"%s","status":"unavailable","windows":[],"error":{"code":"usage_unavailable","message":"could not read account env"}}' \
+                "$provider" "$account" >"$TEMP_DIR/$slot.json"
+              printf 'unavailable' >"$TEMP_DIR/$slot.result"
+            fi
+          ) 2>"$TEMP_DIR/$slot.collect.err"
+        done <<<"$account_list"
+      ) &
+      while IFS= read -r account; do
+        [ -n "$account" ] || continue
+        printf '%s %s %s\n' "$provider.$account" "$provider" "$account" >>"$TEMP_DIR/manifest"
+      done <<<"$account_list"
+    fi
   done
   wait
-  for provider in $providers; do
-    row="$(cat "$TEMP_DIR/$provider.json")"
-    if [ "$(cat "$TEMP_DIR/$provider.result")" = ok ]; then
-      windows="$(cat "$TEMP_DIR/$provider.windows")"
+  [ "$saw_account" -eq 0 ] || width=18
+  while read -r slot provider account; do
+    [ -n "$slot" ] || continue
+    [ -f "$TEMP_DIR/$slot.json" ] || continue
+    row="$(cat "$TEMP_DIR/$slot.json")"
+    label="$provider"
+    [ -z "$account" ] || label="$provider/$account"
+    if [ "$(cat "$TEMP_DIR/$slot.result")" = ok ]; then
+      windows="$(cat "$TEMP_DIR/$slot.windows")"
       successes=$((successes + 1))
       printf '%s\n' "$windows" | sed 's/},{/}\n{/g' | while IFS= read -r window; do
-        label="$(field_string "$window" label || true)"
+        window_label="$(field_string "$window" label || true)"
         remaining="$(field_number "$window" remaining_percent || true)"
         reset="$(field_string "$window" reset_display || true)"
         observed="$(field_string "$window" observed_at || true)"
         [ -z "$observed" ] || reset="$reset [usage as of $observed]"
-        printf '%-9s %-30s %-12s %s\n' "$provider" "$label" "${remaining}%" "$reset" >>"$human_file"
-        provider=""
+        printf "%-${width}s %-30s %-12s %s\n" "$label" "$window_label" "${remaining}%" "$reset" >>"$human_file"
+        label=""
       done
     else
       failures=$((failures + 1))
-      printf '%-9s unavailable (%s)\n' "$provider" "$(field_string "$row" message || true)" >>"$human_file"
+      printf "%-${width}s unavailable (%s)\n" "$label" "$(field_string "$row" message || true)" >>"$human_file"
     fi
     [ "$first" -eq 1 ] || rows="$rows,"
     rows="$rows$row"; first=0
-  done
+  done <"$TEMP_DIR/manifest"
   [ "$failures" -eq 0 ] && status=complete || { [ "$successes" -eq 0 ] && status=failed || status=partial; }
   report="{\"schema_version\":1,\"status\":\"$status\",\"providers\":[$rows]}"
   if [ "$json" -eq 1 ]; then
     printf '%s\n' "$report"
   else
     printf 'Jam Session usage (%s)\n\n' "$status"
-    printf '%-9s %-30s %-12s %s\n' Provider Window Remaining Reset
+    printf "%-${width}s %-30s %-12s %s\n" Provider Window Remaining Reset
     cat "$human_file"
   fi
   cleanup

@@ -10,7 +10,11 @@ unset JAMSESSION_HOME JAMSESSION_ADAPTER_DIR JAMSESSION_CONFIG JAMSESSION_SKILL_
   JAMSESSION_CODEX_BIN JAMSESSION_CLAUDE_BIN JAMSESSION_CURSOR_BIN \
   JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN JAMSESSION_MUSE_BIN \
   JAMSESSION_ANTIGRAVITY_BIN \
-  JAMSESSION_CODEX_CONTROL_SOCKET JAMSESSION_PYTHON_BIN
+  JAMSESSION_CODEX_CONTROL_SOCKET JAMSESSION_PYTHON_BIN \
+  CLAUDE_CONFIG_DIR CODEX_HOME \
+  JAMSESSION_CLAUDE_ACCOUNT JAMSESSION_CODEX_ACCOUNT JAMSESSION_CURSOR_ACCOUNT \
+  JAMSESSION_GROK_ACCOUNT JAMSESSION_COPILOT_ACCOUNT JAMSESSION_DEVIN_ACCOUNT \
+  JAMSESSION_MUSE_ACCOUNT JAMSESSION_ANTIGRAVITY_ACCOUNT
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/jamsession-test.XXXXXX")"
@@ -19,6 +23,11 @@ trap '[ -z "$control_fixture_pid" ] || kill "$control_fixture_pid" 2>/dev/null; 
 JAMSESSION_CONFIG="$TEMP_ROOT/jamsession.conf"
 export JAMSESSION_CONFIG
 : >"$JAMSESSION_CONFIG"
+# A real accounts.toml would retag usage JSON and change every claude run.
+# These paths are intentionally missing.
+JAMSESSION_ACCOUNTS="$TEMP_ROOT/no-accounts.toml"
+JAMSESSION_SESSION_ACCOUNTS="$TEMP_ROOT/no-session-accounts.json"
+export JAMSESSION_ACCOUNTS JAMSESSION_SESSION_ACCOUNTS
 
 passed=0
 failed=0
@@ -1450,6 +1459,10 @@ check "installer installs Muse's adapter" test -x "$INSTALL_HOME/.agents/jamsess
 check "installer installs Antigravity's adapter" test -x "$INSTALL_HOME/.agents/jamsession/adapters/jamsession_antigravity"
 check "installer includes Codex's native control helper" test -f "$INSTALL_HOME/.agents/jamsession/adapters/_jamsession_codex_control.py"
 check "installer links the command" test -L "$INSTALL_HOME/.local/bin/jamsession"
+check "installer installs the accounts helper" test -x "$INSTALL_HOME/.agents/jamsession/bin/jamsession_accounts.py"
+check "installer ships the accounts example" contains "$INSTALL_HOME/.agents/jamsession/accounts.toml.example" CLAUDE_CONFIG_DIR
+check "installer does not create accounts.toml" test ! -e "$INSTALL_HOME/.agents/jamsession/accounts.toml"
+check "installer does not create session-accounts.json" test ! -e "$INSTALL_HOME/.agents/jamsession/session-accounts.json"
 run_command env HOME="$INSTALL_HOME" JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" \
   "$INSTALL_HOME/.local/bin/jamsession" usage codex --json
 check "the installed symlink finds its usage helper" contains "$stdout_file" '"agent":"codex"'
@@ -1503,7 +1516,7 @@ RESOURCE_SKILL=jamsession-work-over-ssh
 RESOURCE_PACKAGE="$RESOURCE_SOURCE/skills/$RESOURCE_SKILL"
 RESOURCE_TARGET="$INSTALL_HOME/.agents/skills/$RESOURCE_SKILL"
 mkdir -p "$RESOURCE_SOURCE"
-cp "$ROOT/jamsession" "$ROOT/tiers.toml" "$RESOURCE_SOURCE/"
+cp "$ROOT/jamsession" "$ROOT/tiers.toml" "$ROOT/accounts.toml.example" "$RESOURCE_SOURCE/"
 cp -R "$ROOT/adapters" "$ROOT/usage" "$ROOT/skills" "$RESOURCE_SOURCE/"
 mkdir -p "$RESOURCE_PACKAGE/references" "$RESOURCE_PACKAGE/assets"
 printf '%s\n' references/guide.md assets/template.json >"$RESOURCE_PACKAGE/resources.txt"
@@ -1699,6 +1712,7 @@ printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-work-over-ssh/SKILL.md"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-use-agent-worksheet/SKILL.md"
 printf '%s\n' stale >"$INSTALLED_SKILLS/jamsession-use-agent-worksheet/agents/openai.yaml"
 printf '%s\n' 'JAMSESSION_CUSTOM_SETTING=kept' >>"$INSTALLED/jamsession.conf"
+printf '%s\n' 'user-accounts = true' >"$INSTALLED/accounts.toml"
 
 run_command env HOME="$INSTALL_HOME" JAMSESSION_SOURCE_URL="file://$ROOT" sh "$ROOT/install.sh"
 check "a second install succeeds" test "$status" -eq 0
@@ -1716,6 +1730,9 @@ check "second install refreshes an installed optional skill" contains "$INSTALLE
 check "second install refreshes the worksheet skill" contains "$INSTALLED_SKILLS/jamsession-use-agent-worksheet/SKILL.md" "name: jamsession-use-agent-worksheet"
 check "second install refreshes worksheet metadata" contains "$INSTALLED_SKILLS/jamsession-use-agent-worksheet/agents/openai.yaml" "interface:"
 check "second install preserves configuration" contains "$INSTALLED/jamsession.conf" JAMSESSION_CUSTOM_SETTING=kept
+check "second install leaves the user's accounts.toml alone" equals "$INSTALLED/accounts.toml" 'user-accounts = true'
+check "second install refreshes the accounts example" contains "$INSTALLED/accounts.toml.example" CLAUDE_CONFIG_DIR
+check "installed accounts helper stays executable" test -x "$INSTALLED/bin/jamsession_accounts.py"
 check "second install preserves a custom adapter" equals "$INSTALLED/adapters/jamsession_custom" custom
 check "second install leaves uninstalled optional skills absent" test ! -e "$INSTALLED_SKILLS/jamsession-ask-agent-panel/SKILL.md"
 check "second install leaves no staging files behind" sh -c "! ls '$INSTALLED/bin/'*.jamsession-new '$INSTALLED/adapters/'*.jamsession-new >/dev/null 2>&1"
@@ -2040,6 +2057,7 @@ check "Codex launch settings preserve native configuration" python3 "$ROOT/tests
 check "parallel adapter sessions keep independent OS-backed IDs" python3 "$ROOT/tests/test_adapter_sessions.py"
 check "quota reader process cleanup always has a deadline" python3 "$ROOT/tests/test_tui_usage.py"
 check "refusals fail over by tier, never upward" python3 "$ROOT/tests/test_failover.py"
+check "named accounts stay on one run, one session and one usage pool" python3 "$ROOT/tests/test_accounts.py"
 
 printf '\n%d passed, %d failed\n' "$passed" "$failed"
 [ "$failed" -eq 0 ]

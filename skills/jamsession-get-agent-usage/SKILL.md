@@ -16,6 +16,10 @@ description: "Report provider usage, quotas, remaining capacity and reset times;
    | Provider | Window | Remaining | Resets |
    | --- | --- | ---: | --- |
 
+   When a row includes `account`, show that login in the Provider cell
+   (`Claude (personal)`) and keep each account's windows separate. Accounts are
+   different quota pools. Do not add them together.
+
 4. Use title-case provider names, concise window labels, and percentage signs on
    `remaining_percent`. Do not show `used_percent`. Keep `gpt-reserve`; it is the
    Codex `base_model_inference` weekly bucket, although Codex does not expose which

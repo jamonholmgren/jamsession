@@ -79,7 +79,27 @@ jamsession run codex 019abc sol@latest high read "Check the revised diff."
 
 Every part is required. Pass a session ID instead of `new` to resume, and `-` as the prompt to read stdin. The reply goes to stdout; session IDs, the session's current token size, and diagnostics go to stderr. Past 250K tokens it suggests handing off to a fresh session.
 
-A provider refusal (spend, usage or rate limit, quota, or auth failure) exits 75. `run --failover` then retries the same model through its other harnesses, Devin first, then the rest of its tier in [`tiers.toml`](tiers.toml), skipping pools that `jamsession usage` shows below 25%; `--allow-lower` permits cheaper tiers and `--lowest-tier C` only down to tier C, never costlier ones; if all refuse it exits 75 with no answer. `jamsession route <name>` and `run --route <name>` read a `routes.toml` named by `JAMSESSION_ROUTES`, where a route can name a tier and effort instead of a ladder.
+A provider refusal (spend, usage or rate limit, quota, or auth failure) exits 75. `run --failover` then retries the same model through its other harnesses, Devin first, then the rest of its tier in [`tiers.toml`](tiers.toml), skipping pools that `jamsession usage` shows below 25% before trying them, including the one named in the command (`--min-usage 0` tries every pool); `--allow-lower` permits cheaper tiers and `--lowest-tier C` only down to tier C, never costlier ones; if all refuse it exits 75 with no answer. `jamsession route <name>` and `run --route <name>` read a `routes.toml` named by `JAMSESSION_ROUTES`, where a route can name a tier and effort instead of a ladder.
+
+### Named accounts
+
+One provider can have several logins. Copy [`accounts.toml.example`](accounts.toml.example) to `~/.agents/jamsession/accounts.toml` and edit it. Jam Session never writes that file. Each `[provider.name]` table has an `env` map, applied to that one run only. The first account listed for a provider is the default.
+
+```sh
+jamsession run claude:personal new opus@latest high edit "Use the personal login."
+JAMSESSION_CLAUDE_ACCOUNT=personal jamsession run claude new opus@latest high edit "Same selection."
+```
+
+A new session records its account in `~/.agents/jamsession/session-accounts.json`. Resume, message and steer use that account again. Naming a different account for a recorded session is refused. `jamsession usage claude` reports each account on its own rows.
+
+Codex accounts set `CODEX_HOME` the same way. `recall` searches every account's history directory.
+
+Failover can treat accounts as separate pools. In your own tiers copy (`JAMSESSION_TIERS`), add the account only for work you have decided may run there. The shipped `tiers.toml` does not name a personal account:
+
+```toml
+{ harness = "claude", account = "work", id = "opus@latest" },
+{ harness = "claude", account = "personal", id = "opus@latest" },
+```
 
 ### Continue from a worksheet instead of compacting
 

@@ -1,0 +1,23 @@
+# Copy to ~/.agents/jamsession/accounts.toml and uncomment the accounts you use.
+# Jam Session never writes that file. The first account for a provider is the
+# default. Each env map applies to that one run only.
+#
+# [claude.work]
+# env = { CLAUDE_CONFIG_DIR = "~/.claude" }
+#
+# [claude.personal]
+# env = { CLAUDE_CONFIG_DIR = "~/.claude-personal" }
+#
+# [codex.work]
+# env = { CODEX_HOME = "~/.codex" }
+#
+# Select one with `jamsession run claude:personal ...` or
+# JAMSESSION_CLAUDE_ACCOUNT=personal. Resume, message and steer keep the account
+# the session started with.
+#
+# Failover can use an account as its own usage pool. The shipped tiers.toml does
+# not name a personal account. In your own copy (JAMSESSION_TIERS), add a via
+# only for work you have decided may run there:
+#
+# { harness = "claude", account = "work", id = "opus@latest" },
+# { harness = "claude", account = "personal", id = "opus@latest" },

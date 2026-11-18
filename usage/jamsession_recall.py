@@ -19,6 +19,11 @@ import sqlite3
 import subprocess
 import sys
 
+_ACCOUNTS_DIR = str(Path(__file__).resolve().parent)
+if _ACCOUNTS_DIR not in sys.path:
+    sys.path.insert(0, _ACCOUNTS_DIR)
+import jamsession_accounts as accounts  # noqa: E402
+
 LOG_HEADING = "## Jam Session log"
 LOG_ENTRY = re.compile(r"^- (\S+ \S+) (run|message|steer) (\S+) (\S+)(?: (.*))?$")
 TEXT_LIMIT = 4000
@@ -170,15 +175,34 @@ def devin_entries(path, session):
 
 
 def locate(provider, session):
+    """Find a transcript, searching every account's history directory."""
     cli = os.environ.get("JAMSESSION_CLI") or str(Path(__file__).resolve().parent / "jamsession")
-    reply = subprocess.run([cli, "which", provider, session], capture_output=True, text=True)
-    if reply.returncode != 0:
-        die((reply.stderr or reply.stdout).strip() or f"cannot locate {provider} session {session}")
-    fields = {}
-    for line in reply.stdout.splitlines():
-        key, _, value = line.partition(": ")
-        fields.setdefault(key, value)
-    return fields.get("path", ""), fields.get("format", "")
+    errors = []
+    seen = set()
+    try:
+        found = accounts.overlays(provider, session)
+    except accounts.AccountError as error:
+        die(str(error))
+    for overlay in found:
+        key = tuple(sorted(overlay.items()))
+        if key in seen:
+            continue
+        seen.add(key)
+        env = os.environ.copy()
+        env.update(overlay)
+        reply = subprocess.run([cli, "which", provider, session], capture_output=True, text=True, env=env)
+        if reply.returncode != 0:
+            errors.append((reply.stderr or reply.stdout).strip())
+            continue
+        fields = {}
+        for line in reply.stdout.splitlines():
+            field, _, value = line.partition(": ")
+            fields.setdefault(field, value)
+        path = fields.get("path", "")
+        if path and Path(path).is_file():
+            return path, fields.get("format", "")
+        errors.append(f"no transcript file for {provider} session {session}")
+    die(errors[-1] if errors else f"cannot locate {provider} session {session}")
 
 
 def entries(provider, session):

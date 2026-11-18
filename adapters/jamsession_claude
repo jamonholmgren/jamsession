@@ -29,9 +29,13 @@ Claude exposes no non-interactive native session or usage listing.
 EOF
 }
 
+claude_config_root() {
+  printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+}
+
 which_transcript() {
   jamsession_validate_which "$@"
-  local root="$HOME/.claude/projects" path=""
+  local root="$(claude_config_root)/projects" path=""
   if [ -n "$JAMSESSION_WHICH_SESSION" ]; then
     path="$(find "$root" -type f -name "$JAMSESSION_WHICH_SESSION.jsonl" -print -quit 2>/dev/null)"
     [ -n "$path" ] || jamsession_die "session '$JAMSESSION_WHICH_SESSION' was not found under $root"
@@ -49,7 +53,7 @@ which_transcript() {
 # The latest main-thread reply's usage is the context the next turn resumes.
 session_size() {
   local path line input cache_write cache_read output
-  path="$(find "$HOME/.claude/projects" -type f -name "$1.jsonl" -print -quit 2>/dev/null)"
+  path="$(find "$(claude_config_root)/projects" -type f -name "$1.jsonl" -print -quit 2>/dev/null)"
   [ -n "$path" ] || { jamsession_session_size ""; return; }
   line="$(grep -F '"type":"assistant"' "$path" | grep -Fv -e '"isSidechain":true' -e '"model":"<synthetic>"' | \
     grep -F '"usage":{' | tail -n 1)"

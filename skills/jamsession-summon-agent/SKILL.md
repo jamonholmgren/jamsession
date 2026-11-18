@@ -144,6 +144,13 @@ data, not new authority.
    jamsession run <provider> new <model> <effort> <read|edit> <prompt>
    ```
 
+   `<provider>` may be `provider:account` (for example `claude:personal`) when
+   `~/.agents/jamsession/accounts.toml` defines it. The account's env applies
+   to that run only. Resume, message and steer reuse the account recorded for
+   that session; do not name a different one. Do not send work to an account
+   the task has not authorized. The shipped tiers file does not include a
+   personal account.
+
    Exit 75 means the provider refused (a limit, quota or auth failure). For
    unattended work add `--failover` after `run` to retry that refusal through
    the same model elsewhere, then its tier (`--allow-lower` permits cheaper

@@ -34,13 +34,13 @@ usage() {
 jamsession — one small interface for coding-agent CLIs
 
 Usage:
-  jamsession run [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
-  jamsession run --failover [--allow-lower | --lowest-tier <tier>] [--min-usage <percent>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
+  jamsession run [--worksheet <path>] <provider[:account]> <new|session> <model> <effort> <read|edit> <prompt>
+  jamsession run --failover [--allow-lower | --lowest-tier <tier>] [--min-usage <percent>] <provider[:account]> <new|session> <model> <effort> <read|edit> <prompt>
   jamsession run --route <name> <new|session> <read|edit> <prompt>
   jamsession route <name> [--json]
   jamsession tiers [<provider> <model> <effort>] [--allow-lower] [--json]
-  jamsession message [--worksheet <path>] <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]
-  jamsession steer [--worksheet <path>] <provider> <session> <text>
+  jamsession message [--worksheet <path>] <provider[:account]> <session> <text> [--resume-with <model> <effort> <read|edit>]
+  jamsession steer [--worksheet <path>] <provider[:account]> <session> <text>
   jamsession recall <provider> <session> [query] [options]
   jamsession recall --worksheet <path> [query] [options]
   jamsession inbox <recipient-id> <read|write <sender-id> <note>>
@@ -48,7 +48,7 @@ Usage:
   jamsession list <provider> [count]
   jamsession which <provider> [session]
   jamsession models <provider>
-  jamsession usage [provider] [--json]
+  jamsession usage [provider[:account]] [--json]
   jamsession status [provider]
   jamsession doctor [provider]
   jamsession providers
@@ -64,8 +64,15 @@ IDs, session sizes, hints, warnings, and diagnostics go to stderr. Past 250K
 tokens, the size line suggests handing off to a fresh session.
 
 `--worksheet` logs each run's session and each message's exact text in the
-worksheet's "## Jam Session log". `recall` searches transcripts for exact lines;
-with `--worksheet` it searches every logged session, oldest first.
+worksheet's "## Jam Session log". `recall` searches transcripts for exact lines,
+including every named account's history directory; with `--worksheet` it
+searches every logged session, oldest first.
+
+`provider:account` (or `JAMSESSION_<PROVIDER>_ACCOUNT`) selects a login from
+`~/.agents/jamsession/accounts.toml`. That account's env applies to the one
+run. The first account listed for a provider is the default. A session keeps
+the account it started with; resume, message and steer reuse it, and naming
+a different account for that session is refused. See `jamsession help accounts`.
 
 `providers` lists the installed provider adapters. `adapters` is an exact alias.
 `antigravity` runs Google's agy CLI; `agy` and `gemini` are aliases for it.
@@ -694,6 +701,7 @@ worksheet_tap() {
   local line logged=0
   while IFS= read -r line || [ -n "$line" ]; do
     printf '%s\n' "$line" >&2
+    note_session_line "$line"
     if [ "$logged" -eq 0 ] && [[ $line =~ ^session:\ ([^[:space:]]+)$ ]]; then
       worksheet_log "$1" run "$2" "${BASH_REMATCH[1]}" "$3" <"$4"
       logged=1
@@ -709,10 +717,10 @@ run_with_worksheet() {
   if [ "$5" = - ]; then cat >"$prompt_file"; else printf '%s' "$5" >"$prompt_file"; fi
   detail="$([ "$1" = new ] && printf new || printf resume) $2 $3 $4 in ${JAMSESSION_CWD:-$PWD}"
   if [ "$5" = - ]; then
-    { "$adapter" run "$@" <"$prompt_file" 2>&1 1>&3 3>&- | worksheet_tap "$WORKSHEET" "$provider" "$detail" "$prompt_file"
+    { with_account_env "$adapter" run "$@" <"$prompt_file" 2>&1 1>&3 3>&- | worksheet_tap "$WORKSHEET" "$provider" "$detail" "$prompt_file"
       status=${PIPESTATUS[0]}; } 3>&1
   else
-    { "$adapter" run "$@" 2>&1 1>&3 3>&- | worksheet_tap "$WORKSHEET" "$provider" "$detail" "$prompt_file"
+    { with_account_env "$adapter" run "$@" 2>&1 1>&3 3>&- | worksheet_tap "$WORKSHEET" "$provider" "$detail" "$prompt_file"
       status=${PIPESTATUS[0]}; } 3>&1
   fi
   exit "$status"
@@ -725,9 +733,9 @@ message_with_worksheet() {
   text_file="$JAMSESSION_TEMP_DIR/text"
   if [ "$1" = - ]; then cat >"$text_file"; else printf '%s' "$1" >"$text_file"; fi
   if [ "$1" = - ]; then
-    "$adapter" "$intent" "$session" "$@" <"$text_file" || status=$?
+    with_account_env "$adapter" "$intent" "$session" "$@" <"$text_file" || status=$?
   else
-    "$adapter" "$intent" "$session" "$@" || status=$?
+    with_account_env "$adapter" "$intent" "$session" "$@" || status=$?
   fi
   worksheet_log "$WORKSHEET" "$intent" "$provider" "$session" \
     "$([ "$status" -eq 0 ] || printf '(delivery failed, exit %s)' "$status")" <"$text_file"
@@ -761,9 +769,123 @@ usage_helper() {
   fi
 }
 
+accounts_file() {
+  if [ -n "${JAMSESSION_ACCOUNTS+x}" ]; then
+    printf '%s\n' "$JAMSESSION_ACCOUNTS"
+  else
+    printf '%s\n' "$HOME/.agents/jamsession/accounts.toml"
+  fi
+}
+
+accounts_helper() {
+  local candidate
+  for candidate in "$JAMSESSION_HOME/bin/jamsession_accounts.py" "$JAMSESSION_HOME/usage/jamsession_accounts.py" \
+    "$SCRIPT_DIR/jamsession_accounts.py" "$SCRIPT_DIR/usage/jamsession_accounts.py"; do
+    [ -f "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  die "accounts helper is not installed; run jamsession update"
+}
+
+account_env_name() {
+  local upper
+  upper="$(printf '%s' "$1" | tr '[:lower:]' '[:upper:]')"
+  printf 'JAMSESSION_%s_ACCOUNT\n' "$upper"
+}
+
+# provider or provider:account. Sets PROVIDER, provider and ACCOUNT_NAME.
+split_provider() {
+  local raw="$1"
+  ACCOUNT_NAME=""
+  case "$raw" in
+    *:*)
+      PROVIDER="${raw%%:*}"
+      ACCOUNT_NAME="${raw#*:}"
+      case "$ACCOUNT_NAME" in
+        ""|*:*|-*|*[!a-zA-Z0-9_-]*) die "invalid account in '$raw'" ;;
+      esac
+      ;;
+    *) PROVIDER="$raw" ;;
+  esac
+  case "$PROVIDER" in
+    agy|gemini) PROVIDER=antigravity ;;
+  esac
+  valid_provider "$PROVIDER" || die "invalid provider '$PROVIDER'"
+  provider="$PROVIDER"
+}
+
+# Sets ACCOUNT_ENV, RESOLVED_ACCOUNT and ACCOUNT_RECORD for this invocation.
+# The env is passed only to the adapter process, not exported here.
+prepare_account() {
+  local kind="$1" session="$2" output line status=0 file env_name env_value=""
+  ACCOUNT_ENV=()
+  RESOLVED_ACCOUNT=""
+  ACCOUNT_RECORD=0
+  SESSION_RECORDED=0
+  file="$(accounts_file)"
+  env_name="$(account_env_name "$PROVIDER")"
+  # printenv keeps spaces in the value; a missing variable is an empty selection.
+  env_value="$(printenv "$env_name" 2>/dev/null || true)"
+  if [ ! -f "$file" ] && [ -z "${ACCOUNT_NAME:-}" ] && [ -z "$env_value" ]; then
+    return 0
+  fi
+  command -v "${JAMSESSION_PYTHON_BIN:-python3}" >/dev/null 2>&1 || die "named accounts need python3"
+  output="$("${JAMSESSION_PYTHON_BIN:-python3}" "$(accounts_helper)" prepare "$kind" "$PROVIDER" "$session" "${ACCOUNT_NAME:--}")" || status=$?
+  [ "$status" -eq 0 ] || exit "$status"
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    case "$line" in
+      "account "*) RESOLVED_ACCOUNT="${line#account }" ;;
+      "record 1") ACCOUNT_RECORD=1 ;;
+      "record 0") ACCOUNT_RECORD=0 ;;
+      "env "*) ACCOUNT_ENV+=("${line#env }") ;;
+      *) die "accounts helper returned an unexpected line" ;;
+    esac
+  done <<<"$output"
+}
+
+with_account_env() {
+  if [ "${#ACCOUNT_ENV[@]}" -eq 0 ]; then
+    "$@"
+  else
+    env "${ACCOUNT_ENV[@]}" "$@"
+  fi
+}
+
+note_session_line() {
+  [[ $1 =~ ^session:\ ([^[:space:]]+)$ ]] || return 0
+  [ "${ACCOUNT_RECORD:-0}" -eq 1 ] || return 0
+  [ "${SESSION_RECORDED:-0}" -eq 1 ] && return 0
+  SESSION_RECORDED=1
+  "${JAMSESSION_PYTHON_BIN:-python3}" "$(accounts_helper)" record "$PROVIDER" "${BASH_REMATCH[1]}" "$RESOLVED_ACCOUNT" || \
+    printf 'warning: could not record the session account\n' >&2
+}
+
+launch_exec() {
+  if [ "${#ACCOUNT_ENV[@]}" -eq 0 ]; then
+    exec "$@"
+  fi
+  exec env "${ACCOUNT_ENV[@]}" "$@"
+}
+
+account_session_tap() {
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    printf '%s\n' "$line" >&2
+    note_session_line "$line"
+  done
+}
+
+launch_recorded() {
+  local status=0
+  { with_account_env "$@" 2>&1 1>&3 3>&- | account_session_tap
+    status=${PIPESTATUS[0]}; } 3>&1
+  exit "$status"
+}
+
 validate_message_args() {
   [ $# -eq 3 ] || [ $# -eq 7 ] || die "message needs <provider> <session> <text> [--resume-with <model> <effort> <read|edit>]"
-  require_adapter "$1" >/dev/null
+  split_provider "$1"
+  require_adapter "$PROVIDER" >/dev/null
   case "$2" in ''|new|-*) die "message needs an existing provider-native session ID" ;; esac
   [ -n "$3" ] || die "message text must not be empty"
   if [ $# -eq 7 ]; then
@@ -929,6 +1051,31 @@ inbox_command() {
 help_topic() {
   case "${1:-}" in
     "") usage ;;
+    accounts)
+      cat <<EOF
+Usage: accounts in $(accounts_file)
+
+Copy accounts.toml.example to that path and edit it. Jam Session never writes
+over it. Each [provider.name] table has an env map, applied to that one run.
+The first account listed for a provider is the default.
+
+  jamsession run claude:personal new opus@latest high edit "..."
+  JAMSESSION_CLAUDE_ACCOUNT=personal jamsession run claude new ...
+
+A new session records its account in ~/.agents/jamsession/session-accounts.json.
+Resume, message and steer use that account. Naming a different one is refused.
+
+In your own tiers file (JAMSESSION_TIERS), a via entry may name an account so
+failover treats it as its own usage pool:
+
+  { harness = "claude", account = "work", id = "opus@latest" },
+  { harness = "claude", account = "personal", id = "opus@latest" },
+
+The shipped tiers.toml does not name a personal account. Add one only for work
+you have decided may run there. jamsession usage claude reports each account
+separately. jamsession recall searches every account's history.
+EOF
+      ;;
     configure)
       cat <<EOF
 Configuration: $JAMSESSION_CONFIG
@@ -960,6 +1107,11 @@ Explicit launch overrides choose native CLI resume before any control connection
 Codex validates config and restores its session. Busy queues keep owner settings.
 PROFILE requires a readable \$CODEX_HOME/<name>.config.toml (default ~/.codex).
 Native launches use --strict-config and fail on unsupported config or CLI versions.
+
+Named accounts live in ~/.agents/jamsession/accounts.toml (see accounts.toml.example).
+Each [provider.name] table's env map applies to that account's run only. The
+first account for a provider is the default. JAMSESSION_<PROVIDER>_ACCOUNT
+selects one when the command does not. Jam Session does not rewrite that file.
 EOF
       ;;
     make-adapter)
@@ -1037,7 +1189,7 @@ EOF
       ;;
     run)
       cat <<'EOF'
-Usage: jamsession run [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>
+Usage: jamsession run [--worksheet <path>] <provider[:account]> <new|session> <model> <effort> <read|edit> <prompt>
 
 Use `new` to create a session or pass an exact provider-native session ID to
 resume. Use `default` to let the provider choose its model or effort. A model
@@ -1063,16 +1215,26 @@ Use steer explicitly to redirect active work, rather than accidentally resuming 
 Serialize follow-ups to one session: the native API has no atomic idle-only start,
 so another sender can start a turn between the busy check and submission.
 
+A provider may name an account, as in `claude:personal`. The account comes from
+~/.agents/jamsession/accounts.toml. Its env applies to that run only. The first
+account listed for a provider is the default, also selected by
+JAMSESSION_<PROVIDER>_ACCOUNT when the command does not name one. A new session
+records the account. Resume reuses it, and naming a different account for that
+session is refused. See `jamsession help accounts`.
+
 A provider refusal (spend, usage or rate limit, quota, or auth failure) exits 75
 with a `refusal: <limit|auth>: ...` line. `--failover` then retries the same
 model through its other harnesses (Devin first), then the rest of its tier from
 tiers.toml (JAMSESSION_TIERS overrides it). `--allow-lower` permits cheaper
 tiers and `--lowest-tier <tier>` only down to that tier; never costlier ones.
-A route takes `allow_lower` or `lowest_tier` the same way. Fallbacks whose pool
-`jamsession usage` shows below `--min-usage` percent (default 25) are skipped.
-When every candidate refuses or is skipped, it exits 75 with "all routes
-refused" and prints no answer. Failover starts a new session, buffers the
-reply, and ends with `ran: provider=... model=... effort=... session=new|resumed`.
+A route takes `allow_lower` or `lowest_tier` the same way. A pool `jamsession
+usage` shows below `--min-usage` percent (default 25) is skipped before it is
+tried, including the one you named. `--min-usage 0` tries every pool. A via
+entry may set `account` so each login is its own pool. When every candidate
+refuses or is skipped, it exits 75 with "all routes refused" and prints no
+answer. Failover starts a new session, buffers the reply, and ends with
+`ran: provider=... model=... effort=... session=new|resumed`. The provider
+field includes `:account` when one was selected.
 `--route <name>` runs a JAMSESSION_ROUTES route the same way; `jamsession route
 <name>` prints its candidates and `jamsession tiers` the table or a model's
 failover ladder.
@@ -1175,6 +1337,8 @@ Options:
 oldest first. Reads JSONL transcripts (Claude, Codex, Grok, Copilot, Muse and
 Antigravity's JSONL brain) and Devin's database read-only; Cursor and
 Antigravity SQLite stores are reported as unsupported. Exit 1 means no match.
+When accounts.toml names more than one login, recall searches each account's
+history directory. Claude follows CLAUDE_CONFIG_DIR; Codex follows CODEX_HOME.
 EOF
       ;;
     watch)
@@ -1216,10 +1380,12 @@ EOF
       ;;
     usage)
       cat <<'EOF'
-Usage: jamsession usage [provider] [--json]
+Usage: jamsession usage [provider[:account]] [--json]
 
 Shows subscription usage for the eight bundled providers, or one provider.
-The collector uses Bash and system tools; some readers need system Python 3.
+Each named account is reported on its own rows; the JSON `account` field
+names the login. The collector uses Bash and system tools; some readers need
+system Python 3. Account env applies only while that account is read.
 Exit 0 means complete, 2 means partial, and 1 means no requested usage was read.
 Devin reads its startup subscription screen. Muse reads last-observed quota
 through its official CLI protocol, falling back to its local /usage screen.
@@ -1283,11 +1449,15 @@ case "$command_name" in
       die "steer needs [--worksheet <path>] <provider> <session> <text>"
     fi
     validate_message_args "$@"
-    provider="$1"; shift
-    adapter="$(require_adapter "$provider")"
-    [ -n "$WORKSHEET" ] || exec "$adapter" "$command_name" "$@"
-    session="$1"; shift
-    message_with_worksheet "$adapter" "$command_name" "$provider" "$session" "$@"
+    shift
+    adapter="$(require_adapter "$PROVIDER")"
+    session="$1"
+    prepare_account "$command_name" "$session"
+    if [ -z "$WORKSHEET" ]; then
+      launch_exec "$adapter" "$command_name" "$@"
+    fi
+    shift
+    message_with_worksheet "$adapter" "$command_name" "$PROVIDER" "$session" "$@"
     ;;
   recall)
     command -v "${JAMSESSION_PYTHON_BIN:-python3}" >/dev/null 2>&1 || die "recall needs python3"
@@ -1314,12 +1484,19 @@ case "$command_name" in
       [ -z "$WORKSHEET" ] || failover_args+=(--worksheet "$WORKSHEET")
       failover_exec run run "${failover_args[@]}" "$@"
     fi
-    [ $# -eq 6 ] || die "run needs [--worksheet <path>] <provider> <new|session> <model> <effort> <read|edit> <prompt>"
-    provider="$1"; shift
+    [ $# -eq 6 ] || die "run needs [--worksheet <path>] <provider[:account]> <new|session> <model> <effort> <read|edit> <prompt>"
+    split_provider "$1"
+    shift
     case "$4" in read|edit) ;; *) die "access must be read or edit" ;; esac
-    adapter="$(require_adapter "$provider")"
-    [ -n "$WORKSHEET" ] || exec "$adapter" run "$@"
-    run_with_worksheet "$adapter" "$provider" "$@"
+    adapter="$(require_adapter "$PROVIDER")"
+    if [ "$1" = new ]; then prepare_account new "$1"; else prepare_account resume "$1"; fi
+    if [ -n "$WORKSHEET" ]; then
+      run_with_worksheet "$adapter" "$PROVIDER" "$@"
+    elif [ "$ACCOUNT_RECORD" -eq 1 ]; then
+      launch_recorded "$adapter" run "$@"
+    else
+      launch_exec "$adapter" run "$@"
+    fi
     ;;
   route|tiers)
     failover_exec "$command_name" "$command_name" "$@"
@@ -1414,7 +1591,8 @@ case "$command_name" in
       [ "$delivery_intent" != steer ] || [ $# -eq 3 ] || die "steer needs <provider> <session> <text>"
       session="$1"; shift 2
       validate_message_args "$command_name" "$session" "$@"
-      exec "$(require_adapter "$command_name")" "$delivery_intent" "$session" "$@"
+      prepare_account "$delivery_intent" "$session"
+      launch_exec "$(require_adapter "$PROVIDER")" "$delivery_intent" "$session" "$@"
     fi
     die "unknown command '$command_name'"
     ;;
