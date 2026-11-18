@@ -22,7 +22,9 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote
 
-HOOK_MARKERS = ("jamsession_hooks.py", "jamsession_inbox")
+HOOK_MARKER = "jamsession_hooks.py"
+# Older in-repo copies (jamsession_inbox.py) read CLAUDE_PROJECT_DIR, so they deliver only to Claude.
+LEGACY_MARKER = "jamsession_inbox"
 HOOK_COMMAND = 'f="$HOME/.agents/jamsession/bin/jamsession_hooks.py"; [ ! -f "$f" ] || python3 "$f" run; exit 0'
 UNAVAILABLE = 3
 GROK_HOOK = Path.home() / ".grok" / "hooks" / "jamsession-inbox.json"
@@ -53,7 +55,8 @@ def hook_run():
     session = str(payload.get("session_id") or payload.get("sessionId") or "")
     start = (os.environ.get("CLAUDE_PROJECT_DIR") or os.environ.get("DEVIN_PROJECT_DIR")
              or payload.get("workspaceRoot") or payload.get("cwd") or os.getcwd())
-    if not session:
+    # A subagent's tool call carries the parent's session id; leave the note for the parent.
+    if not session or payload.get("agent_id"):
         return 0
     try:
         root = project_root(start)
@@ -81,6 +84,7 @@ def hook_run():
 
 def wired(project, provider="claude"):
     files = [GROK_HOOK] if provider == "grok" else [project / ".claude" / n for n in ("settings.json", "settings.local.json")]
+    markers = (HOOK_MARKER, LEGACY_MARKER) if provider == "claude" else (HOOK_MARKER,)
     for path in files:
         try:
             data = json.loads(path.read_text())
@@ -88,7 +92,7 @@ def wired(project, provider="claude"):
             commands = [h.get("command", "") for g in groups for h in g.get("hooks", [])]
         except (OSError, ValueError, AttributeError, TypeError):
             continue
-        if any(marker in c for c in commands if isinstance(c, str) for marker in HOOK_MARKERS):
+        if any(marker in c for c in commands if isinstance(c, str) for marker in markers):
             return True
     return False
 
@@ -105,7 +109,7 @@ def install(project):
         GROK_HOOK.parent.mkdir(exist_ok=True)
         GROK_HOOK.write_text(json.dumps({"hooks": {"PostToolUse": [hook_entry()]}}, indent=2) + "\n")
         print(f"hooks: added the inbox hook for Grok at {GROK_HOOK}")
-    if wired(project):
+    if wired(project, "devin"):
         print(f"hooks: already wired in {project}/.claude")
         return 0
     path = project / ".claude" / "settings.json"

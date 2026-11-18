@@ -85,6 +85,31 @@ class HookHarness(unittest.TestCase):
         self.assertIn("PELICAN", json.loads(hook.stdout)["hookSpecificOutput"]["additionalContext"])
         self.assertEqual(self.notes(), [])
 
+    def test_legacy_wiring_counts_for_claude_only(self):
+        settings = self.project / ".claude" / "settings.json"
+        settings.parent.mkdir()
+        legacy = {"type": "command", "command": 'python3 "${CLAUDE_PROJECT_DIR}/hooks/jamsession_inbox.py"'}
+        settings.write_text(json.dumps({"hooks": {"PostToolUse": [{"hooks": [legacy]}]}}))
+        db = self.home / ".local/share/devin/cli/sessions.db"
+        db.parent.mkdir(parents=True)
+        import sqlite3
+        with sqlite3.connect(db) as connection:
+            connection.execute("CREATE TABLE sessions (id TEXT, working_directory TEXT)")
+            connection.execute("INSERT INTO sessions VALUES ('devin-a', ?)", (str(self.project),))
+        self.assertEqual(self.run_cli("message", "devin", "devin-a", "hello").returncode, 3)
+        self.assertEqual(self.notes(), [])
+        self.assertEqual(self.run_cli("message", "claude", SESSION, "hello").returncode, 0)
+        self.run_cli("hooks", "install", str(self.project))
+        self.assertEqual(len(json.loads(settings.read_text())["hooks"]["PostToolUse"]), 2)
+
+    def test_subagent_tool_calls_leave_the_note_for_the_parent(self):
+        self.assertEqual(self.run_cli("hooks", "install", str(self.project)).returncode, 0)
+        self.assertEqual(self.run_cli("message", "claude", SESSION, "for the parent").returncode, 0)
+        payload = json.dumps({"session_id": SESSION, "cwd": str(self.project), "agent_id": "a1"})
+        result = self.run_cli(command=["python3", HELPER, "run"], cwd=self.project, stdin=payload)
+        self.assertEqual((result.returncode, result.stdout), (0, ""))
+        self.assertEqual(len(self.notes()), 1)
+
     def test_hook_is_silent_without_notes_helper_or_valid_payload(self):
         installed = 'f="$HOME/.agents/jamsession/bin/jamsession_hooks.py"; [ ! -f "$f" ] || python3 "$f" run; exit 0'
         for command, stdin in ((["sh", "-c", installed], "{}"), (["python3", HELPER, "run"], "not json"),

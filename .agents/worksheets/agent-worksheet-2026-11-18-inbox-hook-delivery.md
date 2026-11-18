@@ -11,4 +11,5 @@ Request (Jamon via Performance Team Lead): make the post-tool inbox hook the def
 ## Shipped
 - `usage/jamsession_hooks.py`: `run` (hook), `install`, `check`, `deliver`. Hook command guards the installed file and always exits 0 (~50 ms when idle).
 - `jamsession hooks <install|check> [project]`; claude/grok/devin `message` without `--resume-with` writes the note in the recipient's project (from its transcript/session record) only when wired, else exits 3.
-- Existing in-repo `jamsession_inbox.py` wiring (jambot, GunshipOrigins) counts as wired.
+- Existing in-repo `jamsession_inbox.py` wiring (jambot, GunshipOrigins) counts as wired for Claude only: it reads CLAUDE_PROJECT_DIR. `install` adds the shipped entry beside it.
+- Subagent tool calls (payload `agent_id`) leave notes for the parent session.
