@@ -72,16 +72,7 @@ Use native latest Grok high or latest Luna xhigh to babysit external implementer
 
 ## New autonomous assignments
 
-For a new autonomous lead or implementer, prefer **latest Opus medium**, through
-Devin, then native Claude, then Cursor. Prefer **latest Sol high** for analysis,
-diagnosis and performance work. A repository's own routing (Gunship:
-`gso-complete-task` model routing) chooses reviewers and panels. These role-specific choices override the general
-implementation rows and native-harness preference for these roles only;
-they do not change Noble Court's roster
-or Peasant Mob's LOW synthesizer. Verify installed IDs and supported effort
-before launching; never silently substitute. Apply at new assignments or
-natural handoffs, not by restarting productive workers. Explicit task/provider
-restrictions and actual approvals always win.
+For a new autonomous lead or implementer, prefer latest Sol through Codex first, then latest Opus through Devin, then Cursor, with native Claude last. In-process Claude Code subagents (the Agent tool) never default to Opus: hand the work to a jamsession Codex or Grok session, or use latest Sonnet or Haiku when it must stay in-process. Repository routing still chooses reviewers and panels; these choices do not change Noble Court's roster or Peasant Mob's LOW synthesizer, apply at new assignments or natural handoffs rather than by restarting productive workers, and explicit restrictions always win.
 
 ## Daily drivers
 
