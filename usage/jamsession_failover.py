@@ -373,8 +373,17 @@ def load_route(name: str) -> tuple[dict, dict]:
 
 
 def rung(entry: dict) -> Candidate:
-    return Candidate(entry["provider"], entry["model"], entry.get("effort", "default"), entry.get("meter", True),
-                     account=str(entry.get("account") or ""))
+    """One ladder step. `provider` may be `provider:account` (for example `claude:personal`)."""
+    provider = str(entry["provider"])
+    account = str(entry.get("account") or "")
+    if ":" in provider:
+        if account:
+            raise Failure("route rung names an account twice")
+        try:
+            provider, account = accounts.split_spec(provider)
+        except accounts.AccountError as error:
+            raise Failure(str(error)) from None
+    return Candidate(provider, entry["model"], entry.get("effort", "default"), entry.get("meter", True), account=account)
 
 
 def expand_route(name: str, table: dict | None = None) -> dict:

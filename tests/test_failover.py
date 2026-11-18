@@ -339,6 +339,29 @@ class FailoverRunTests(unittest.TestCase):
         self.assertEqual(reply.returncode, 0, reply.stderr)
         self.assertEqual([call[1] for call in calls], ["devin", "claude"])
 
+    def test_a_route_rung_accepts_provider_account(self):
+        self.routes.write_text(
+            '[route.project-lead]\nrungs = [\n'
+            '  { provider = "claude:personal", model = "opus@latest", effort = "medium" },\n'
+            ']\n')
+        reply, _calls = self.run_helper({}, "route", "project-lead")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertIn("claude:personal opus@latest medium", reply.stdout)
+        reply, _calls = self.run_helper({}, "route", "--json", "project-lead")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        candidate = json.loads(reply.stdout)["candidates"][0]
+        self.assertEqual(candidate["provider"], "claude")
+        self.assertEqual(candidate["account"], "personal")
+
+    def test_a_route_rung_refuses_an_account_named_twice(self):
+        self.routes.write_text(
+            '[route.project-lead]\nrungs = [\n'
+            '  { provider = "claude:personal", model = "opus@latest", effort = "medium", account = "work" },\n'
+            ']\n')
+        reply, _calls = self.run_helper({}, "route", "project-lead")
+        self.assertNotEqual(reply.returncode, 0)
+        self.assertIn("names an account twice", reply.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
