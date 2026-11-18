@@ -99,11 +99,39 @@ clean_text() {
 }
 
 window_json() {
-  local bucket="$1" label="$2" used="$3" reset="$4" observed="${5:-}"
+  local bucket="$1" label="$2" used="$3" reset="$4" observed="${5:-}" minutes="${6:-}"
   printf '{"bucket_id":"%s","label":"%s","used_percent":%s,"remaining_percent":%s,"reset_display":"%s"' \
     "$(json_escape "$bucket")" "$(json_escape "$label")" "$used" "$(percent_left "$used")" "$(json_escape "$reset")"
+  [ -z "$minutes" ] || printf ',"window_minutes":%s' "$minutes"
   [ -z "$observed" ] || printf ',"observed_at":"%s"' "$(json_escape "$observed")"
   printf '}'
+}
+
+# Weekly first, then other long windows, then a 5-hour session window.
+order_usage_windows() {
+  local python_bin="${JAMSESSION_PYTHON_BIN:-python3}" ordered=""
+  [ -n "$1" ] || return 0
+  if ordered="$(printf '%s' "$1" | "$python_bin" -c '
+import sys
+sys.path.insert(0, sys.argv[1])
+import jamsession_failover as failover
+sys.stdout.write(failover.order_window_text(sys.stdin.read()))
+' "$SCRIPT_DIR")"; then
+    if [ -n "$ordered" ]; then
+      printf '%s' "$ordered"
+      return 0
+    fi
+  fi
+  printf '%s' "$1"
+}
+
+known_window_minutes() {
+  case "$1" in
+    current_session) printf '300' ;;
+    weekly|weekly_all|weekly_fable|subscription_weekly) printf '10080' ;;
+    monthly_included|monthly_auto|monthly_api|monthly_credits|monthly_premium|monthly_plan) printf '43200' ;;
+    *) printf '' ;;
+  esac
 }
 
 field_number() {
@@ -173,7 +201,8 @@ codex_usage() {
       [ "$first" -eq 1 ] || windows="$windows,"
       [ "$slot" = primary ] || slot_label="$label secondary"
       [ "$slot" != primary ] || slot_label="$label"
-      windows="$windows$(window_json "$key:$slot" "$slot_label" "$used" "$(format_epoch "$reset")")"
+      duration="$(field_number "$part" windowDurationMins || true)"
+      windows="$windows$(window_json "$key:$slot" "$slot_label" "$used" "$(format_epoch "$reset")" "" "$duration")"
       first=0
     done
     rest="${rest#*"$object"}"; rest="${rest#,}"
@@ -272,7 +301,7 @@ text_windows() {
       reset="$(clean_text "$reset")"
       bucket="${heading%%|*}"; label="${heading#*|}"
       [ "$first" -eq 1 ] || windows="$windows,"
-      windows="$windows$(window_json "$bucket" "$label" "$used" "$reset" "$observed")"
+      windows="$windows$(window_json "$bucket" "$label" "$used" "$reset" "$observed" "$(known_window_minutes "$bucket")")"
       seen="$seen$bucket|"; first=0; heading=""; used=""; reset="not exposed"
       continue
     fi
@@ -316,7 +345,7 @@ text_windows() {
       continue
     fi
     [ "$first" -eq 1 ] || windows="$windows,"
-    windows="$windows$(window_json "$bucket" "$label" "$used" "$reset" "$observed")"
+    windows="$windows$(window_json "$bucket" "$label" "$used" "$reset" "$observed" "$(known_window_minutes "$bucket")")"
     seen="$seen$bucket|"
     first=0
     heading=""; used=""; reset="not exposed"
@@ -405,7 +434,7 @@ collect_provider() {
   fi
   fragment="$(spend_fragment "$provider" "$spend_account")"
   if provider_usage "$provider"; then
-    windows="$PROVIDER_WINDOWS"
+    windows="$(order_usage_windows "$PROVIDER_WINDOWS")"
     printf '%s' "$windows" >"$TEMP_DIR/$slot.windows"
     printf '%s%s,"status":"ok","windows":[%s],"error":null}' \
       "$identity" "$fragment" "$windows" >"$TEMP_DIR/$slot.json"

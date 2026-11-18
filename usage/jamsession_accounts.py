@@ -64,6 +64,7 @@ class Account:
     env: dict[str, str]
     keychain_env: dict[str, str]
     monthly_budget_usd: float | None = None
+    min_usage: float | None = None
     kind: str = ""
     backend: str = ""
 
@@ -142,6 +143,16 @@ def _budget(path: Path, label: str, raw) -> float | None:
     return float(raw)
 
 
+def _min_usage(path: Path, label: str, raw) -> float | None:
+    if raw is None:
+        return None
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        raise AccountError(f"{path}: {label}.min_usage must be a number")
+    if raw < 0 or raw > 100:
+        raise AccountError(f"{path}: {label}.min_usage must be from 0 to 100")
+    return float(raw)
+
+
 def load() -> dict[str, list[Account]]:
     """Accounts in file order. A missing file is no accounts."""
     path = accounts_path()
@@ -177,6 +188,7 @@ def load() -> dict[str, list[Account]]:
                 env=_string_map(path, f"{label}.env", body.get("env"), expand=True),
                 keychain_env=_string_map(path, f"{label}.keychain_env", body.get("keychain_env"), expand=False),
                 monthly_budget_usd=_budget(path, label, body.get("monthly_budget_usd")),
+                min_usage=_min_usage(path, label, body.get("min_usage")),
                 kind=kind,
                 backend=backend,
             ))
@@ -190,6 +202,23 @@ def names(provider: str) -> list[str]:
 def default_account(provider: str) -> str:
     found = names(provider)
     return found[0] if found else ""
+
+
+def min_usage_for(provider: str, account: str) -> float | None:
+    """Per-account usage floor, or None when this account does not set one.
+
+    An empty account is the provider's default. A missing accounts file is None.
+    """
+    provider = canonical(provider)
+    group = load().get(provider, [])
+    if not group:
+        return None
+    if not account:
+        account = group[0].name
+    for item in group:
+        if item.name == account:
+            return item.min_usage
+    return None
 
 
 def _account(provider: str, account: str) -> Account:

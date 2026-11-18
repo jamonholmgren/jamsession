@@ -3,9 +3,11 @@
 # account for a provider is the default. Each env map applies to that one run.
 #
 # [claude.work]
+# min_usage = 5
 # env = { CLAUDE_CONFIG_DIR = "~/.claude" }
 #
 # [claude.personal]
+# min_usage = 5
 # env = { CLAUDE_CONFIG_DIR = "~/.claude-personal" }
 #
 # [claude.api]
@@ -20,7 +22,10 @@
 #
 # With two or more accounts, failover tries them in this order. One account,
 # or no accounts file, leaves the provider argument unchanged. A tiers via
-# may still name an account, and those vias then set the order.
+# may still name an account, and those vias then set the order. min_usage
+# replaces the 25% skip for that account. The skip reads the longest window,
+# not a 5-hour session window. Adding an account is `accounts add` plus, when
+# tiers name accounts, one via in that order.
 #
 # Select one with `jamsession run claude:personal ...` or
 # JAMSESSION_CLAUDE_ACCOUNT=personal. Resume, message and steer keep the account

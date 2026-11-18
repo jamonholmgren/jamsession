@@ -31,6 +31,10 @@ EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 # Adapters that refuse read access outright; failover skips them for read runs.
 EDIT_ONLY = {"devin", "copilot", "antigravity"}
 DEFAULT_MIN_USAGE = 25.0
+# A 5-hour Claude session is 300 minutes. Anything up to 6 hours is that short
+# window. Weekly is 7 days; a monthly window is longer than that.
+SHORT_WINDOW_MINUTES = 360
+WEEKLY_WINDOW_MINUTES = 10080
 
 try:
     import tomllib
@@ -393,6 +397,126 @@ def expand_route(name: str, table: dict | None = None) -> dict:
     return result
 
 
+# --- usage windows ---------------------------------------------------------
+
+def window_minutes(window: dict) -> int | None:
+    """Duration in minutes when the window names one, else a known class."""
+    raw = window.get("window_minutes")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool) and raw > 0:
+        return int(raw)
+    blob = f"{window.get('bucket_id') or ''} {window.get('label') or ''}".lower()
+    if "current_session" in blob or "current session" in blob:
+        return 300
+    if "week" in blob:
+        return WEEKLY_WINDOW_MINUTES
+    if "month" in blob:
+        return 43200
+    return None
+
+
+def is_short_window(window: dict) -> bool:
+    """A 5-hour session window. It never makes an account unavailable."""
+    minutes = window_minutes(window)
+    if minutes is not None and minutes <= SHORT_WINDOW_MINUTES:
+        return True
+    return str(window.get("bucket_id") or "") == "current_session"
+
+
+def governing_remaining(windows) -> float | None:
+    """Remaining percent of the longest window, ignoring a short session window.
+
+    When several windows share that longest duration, the lowest of them counts.
+    A report that has only a short window does not skip the account.
+    """
+    known: list[tuple[int, float]] = []
+    unknown: list[float] = []
+    for window in windows:
+        if not isinstance(window, dict):
+            continue
+        remaining = window.get("remaining_percent")
+        if isinstance(remaining, bool) or not isinstance(remaining, (int, float)):
+            continue
+        if is_short_window(window):
+            continue
+        minutes = window_minutes(window)
+        if minutes is None:
+            unknown.append(float(remaining))
+        else:
+            known.append((minutes, float(remaining)))
+    if known:
+        longest = max(item[0] for item in known)
+        return min(item[1] for item in known if item[0] == longest)
+    if unknown:
+        return min(unknown)
+    return None
+
+
+def _window_rank(window) -> int:
+    """0 weekly, 1 other long windows, 2 a short session window."""
+    if not isinstance(window, dict):
+        return 1
+    minutes = window_minutes(window)
+    blob = f"{window.get('bucket_id') or ''} {window.get('label') or ''}".lower()
+    if "week" in blob or (minutes is not None and 1440 < minutes <= 20160):
+        return 0
+    if is_short_window(window):
+        return 2
+    return 1
+
+
+def order_windows(windows: list) -> list:
+    """Weekly windows first, then other long windows, then a short session window."""
+    indexed = list(enumerate(windows))
+    indexed.sort(key=lambda item: (_window_rank(item[1]), item[0]))
+    return [window for _, window in indexed]
+
+
+def order_window_text(raw: str) -> str:
+    """Reorder a comma-separated JSON object list without rewriting numbers.
+
+    `json.dumps` would turn `0.000001` into `1e-06`.
+    """
+    parts = _split_json_objects(raw)
+    if len(parts) < 2:
+        return raw.strip()
+    try:
+        parsed = [json.loads(part) for part in parts]
+    except json.JSONDecodeError:
+        return raw.strip()
+    order = sorted(range(len(parts)), key=lambda index: (_window_rank(parsed[index]), index))
+    return ",".join(parts[index] for index in order)
+
+
+def _split_json_objects(raw: str) -> list[str]:
+    parts: list[str] = []
+    depth = 0
+    quoted = False
+    escaped = False
+    start = None
+    for index, char in enumerate(raw):
+        if escaped:
+            escaped = False
+            continue
+        if char == "\\" and quoted:
+            escaped = True
+            continue
+        if char == '"':
+            quoted = not quoted
+            continue
+        if quoted:
+            continue
+        if char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0 and start is not None:
+                parts.append(raw[start:index + 1])
+                start = None
+    return parts
+
+
 # --- usage -----------------------------------------------------------------
 
 class Usage:
@@ -417,10 +541,11 @@ class Usage:
         return self.report
 
     def lowest(self, provider: str, account: str = "") -> float | None:
-        """Lowest remaining percent for one account's windows; None when unread.
+        """Remaining percent of the longest window; None when unread or only short.
 
         An empty account is the default account when usage rows are tagged,
-        and the untagged provider row when they are not.
+        and the untagged provider row when they are not. A 5-hour session
+        window does not count when a weekly or monthly window is present.
         """
         rows = [row for row in self.load().get("providers", [])
                 if row.get("agent") == provider and row.get("status") == "ok"]
@@ -430,10 +555,8 @@ class Usage:
             default = accounts.default_account(provider)
             tagged = [row for row in rows if default and (row.get("account") or "") == default]
             chosen = tagged or [row for row in rows if not (row.get("account") or "")]
-        values = [float(window["remaining_percent"])
-                  for row in chosen for window in row.get("windows", [])
-                  if isinstance(window.get("remaining_percent"), (int, float))]
-        return min(values) if values else None
+        windows = [window for row in chosen for window in row.get("windows", [])]
+        return governing_remaining(windows)
 
 
 # --- run -------------------------------------------------------------------
@@ -468,10 +591,19 @@ def attempt(cli: str, worksheet: str, candidate: Candidate, session: str, access
 def skip_reason(candidate: Candidate, access: str, usage: Usage, min_usage: float) -> str:
     if access == "read" and candidate.provider in EDIT_ONLY:
         return "read access unsupported"
-    if candidate.meter and min_usage > 0:
+    # --min-usage 0 tries every pool. A per-account floor replaces any other value.
+    floor = min_usage
+    if min_usage > 0:
+        try:
+            override = accounts.min_usage_for(candidate.provider, candidate.account)
+        except accounts.AccountError:
+            override = None
+        if override is not None:
+            floor = override
+    if candidate.meter and floor > 0:
         left = usage.lowest(candidate.provider, candidate.account)
-        if left is not None and left < min_usage:
-            return f"usage {left:g}% left, below {min_usage:g}%"
+        if left is not None and left < floor:
+            return f"usage {left:g}% left, below {floor:g}%"
     return ""
 
 

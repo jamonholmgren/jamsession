@@ -16,6 +16,8 @@ description: "Report provider usage, quotas, remaining capacity and reset times;
    | Provider | Window | Remaining | Resets |
    | --- | --- | ---: | --- |
 
+   The command lists a weekly window before a 5-hour session window. Failover
+   uses that longer window for its threshold.
    When a row includes `account`, show that login in the Provider cell
    (`Claude (personal)`) and keep each account's windows separate. Accounts are
    different quota pools. Do not add them together. When a row includes

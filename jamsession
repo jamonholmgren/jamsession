@@ -1081,6 +1081,11 @@ Resume, message and steer use that account. Naming a different one is refused.
 With two or more accounts, failover tries them in the order listed. No pin is
 required. A tiers via may still name an account, and those vias then set the
 order. One account, or no accounts file, leaves the provider argument unchanged.
+min_usage on an account replaces the 25% usage skip for that account.
+The skip reads the longest window. A 5-hour session window does not make an
+account unavailable when a weekly or monthly window is present. usage and
+accounts list show the weekly window first. Another account is accounts add,
+plus a tiers via when the tiers file names accounts.
 Codex accounts set CODEX_HOME the same way Claude sets CLAUDE_CONFIG_DIR.
 jamsession recall searches every account's history.
 

@@ -13,7 +13,9 @@
 # that provider's accounts in the order listed, each as its own usage pool.
 # A via may still name an account, for example
 # `{ harness = "claude", account = "personal", id = "opus@latest" }`; those
-# vias then set the order. This shipped file names no account. `id` is
+# vias then set the order. This shipped file names no account. An account's
+# `min_usage` replaces the 25% skip for that account, using the longest
+# window rather than a 5-hour session window. `id` is
 # `<family>@latest`: each harness's newest listed ID in that family, so this
 # table always means the latest model. jamsession passes effort separately and
 # each adapter maps it (Devin and Cursor append it to the ID).

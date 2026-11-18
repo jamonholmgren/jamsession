@@ -51,7 +51,7 @@ instead.
 Jam Session's `tiers.toml` (`jamsession tiers`) ranks these models A to F and
 lists the harnesses that serve each; `jamsession run --failover` and tier routes
 follow it, so keep it in step with these recommendations. With two or more
-Claude or Codex accounts, failover tries them in `accounts.toml` order, including a budgeted API-key account.
+Claude or Codex accounts, failover tries them in `accounts.toml` order, including a budgeted API-key account. A login account's `min_usage` replaces the 25% skip, and that check uses the weekly window rather than the 5-hour session.
 
 ## PPP / Noble Court
 

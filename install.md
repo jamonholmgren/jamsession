@@ -53,7 +53,7 @@ Agent output goes to stdout. The provider-native session ID, hints, warnings,
 and diagnostics go to stderr. A provider can name an account, `claude:personal`,
 from `~/.agents/jamsession/accounts.toml` (see `accounts.toml.example`). That
 account's env applies to the one run, and the session keeps it for resume.
-With two or more accounts, failover tries them in the order listed in that file.
+With two or more accounts, failover tries them in the order listed in that file. The usage skip reads the longest window, so a 5-hour session window does not block an account that still has weekly room. `min_usage` on an account replaces the 25% default.
 Retain the printed session ID to continue:
 
 ```sh

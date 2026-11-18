@@ -769,7 +769,10 @@ class AccountsCommandTests(AccountHarness):
         api = self.root / "api-fixture"
         work.mkdir()
         api.mkdir()
-        (work / "claude.txt").write_text("Current week (all models)\n10% used\nResets Sep 7 at 7am\n")
+        (work / "claude.txt").write_text(
+            "Current session\n98% used\nResets 4:30pm\n"
+            "Current week (all models)\n10% used\nResets Sep 7 at 7am\n"
+        )
         (api / "claude.txt").write_text("Current week (all models)\n80% used\nResets Sep 7 at 7am\n")
         self.write_accounts(
             "[claude.work]\n"
@@ -794,14 +797,83 @@ class AccountsCommandTests(AccountHarness):
         self.assertEqual(listed.returncode, 0, listed.stderr)
         self.assertIn("claude work", listed.stdout)
         self.assertIn("90% remaining", listed.stdout)
+        self.assertLess(
+            listed.stdout.index("90% remaining, Current week (all models)"),
+            listed.stdout.index("2% remaining, Current session"))
         self.assertIn("claude api", listed.stdout)
         self.assertIn("spend: $12.50 of $500 this month", listed.stdout)
         usage = self.jam("usage", "claude", "--json", extra=extra)
         self.assertEqual(usage.returncode, 0, usage.stderr)
         rows = json.loads(usage.stdout)["providers"]
+        self.assertEqual(rows[0]["windows"][0]["bucket_id"], "weekly_all")
+        self.assertEqual(rows[0]["windows"][1]["bucket_id"], "current_session")
         self.assertEqual(rows[1]["account"], "api")
         self.assertEqual(rows[1]["spend"]["usd"], 12.5)
         self.assertEqual(rows[1]["spend"]["budget_usd"], 500)
+
+
+def usage_report(*windows):
+    return json.dumps({"providers": [{"agent": "claude", "status": "ok", "windows": list(windows)}]})
+
+
+def session_and_week(session_left, week_left):
+    return usage_report(
+        {"bucket_id": "current_session", "label": "Current session",
+         "remaining_percent": session_left, "window_minutes": 300},
+        {"bucket_id": "weekly_all", "label": "Current week (all models)",
+         "remaining_percent": week_left, "window_minutes": 10080},
+    )
+
+
+class UsageThresholdTests(AccountHarness):
+    def setUp(self):
+        super().setUp()
+        self.tiers = self.root / "tiers.toml"
+        self.tiers.write_text(opus_tiers('  { harness = "claude", id = "opus-test" },'))
+        self.usage = self.root / "usage.json"
+        self.extra = {
+            "JAMSESSION_TIERS": str(self.tiers),
+            "JAMSESSION_LATEST_CACHE": str(self.root / "latest.json"),
+            "JAMSESSION_USAGE_JSON": str(self.usage),
+        }
+
+    def fail_over(self):
+        return self.jam(
+            "run", "--failover", "claude", "new", "opus-test", "high", "edit", "hi",
+            extra=self.extra)
+
+    def test_two_percent_session_and_forty_percent_weekly_stays_available(self):
+        self.usage.write_text(session_and_week(2, 40))
+        reply = self.fail_over()
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(self.launches(), ["run none"])
+        self.assertNotIn("usage 2% left", reply.stderr)
+        self.log.write_text("")
+        self.usage.write_text(session_and_week(90, 10))
+        skipped = self.fail_over()
+        self.assertEqual(skipped.returncode, 75, skipped.stderr)
+        self.assertEqual(self.launches(), [])
+        self.assertIn("usage 10% left, below 25%", skipped.stderr)
+
+    def test_account_min_usage_overrides_the_global_threshold(self):
+        self.write_accounts('[claude.work]\nmin_usage = 5\nenv = { TEST_ACCOUNT_MARKER = "work" }\n')
+        self.usage.write_text(session_and_week(2, 10))
+        reply = self.fail_over()
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(self.launches(), ["run work"])
+        self.assertNotIn("below 25%", reply.stderr)
+        self.log.write_text("")
+        self.usage.write_text(session_and_week(90, 4))
+        skipped = self.fail_over()
+        self.assertEqual(skipped.returncode, 75, skipped.stderr)
+        self.assertEqual(self.launches(), [])
+        self.assertIn("usage 4% left, below 5%", skipped.stderr)
+        self.write_accounts('[claude.work]\nenv = { TEST_ACCOUNT_MARKER = "work" }\n')
+        self.usage.write_text(session_and_week(90, 10))
+        plain = self.fail_over()
+        self.assertEqual(plain.returncode, 75, plain.stderr)
+        self.assertEqual(self.launches(), [])
+        self.assertIn("usage 10% left, below 25%", plain.stderr)
 
 
 if __name__ == "__main__":

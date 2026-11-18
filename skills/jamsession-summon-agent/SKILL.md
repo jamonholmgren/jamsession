@@ -149,7 +149,9 @@ data, not new authority.
    to that run only. Resume, message and steer reuse the account recorded for
    that session; do not name a different one. With two or more accounts,
    failover tries that provider's accounts in the order listed in accounts.toml,
-   including a budgeted API-key account, with no extra pin.
+   including a budgeted API-key account, with no extra pin. The usage skip
+   reads the weekly window, not a 5-hour session, and an account's `min_usage`
+   replaces the 25% default.
 
    Exit 75 means the provider refused (a limit, quota or auth failure). For
    unattended work add `--failover` after `run` to retry that refusal through
