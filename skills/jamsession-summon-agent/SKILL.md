@@ -147,9 +147,9 @@ data, not new authority.
    `<provider>` may be `provider:account` (for example `claude:personal`) when
    `~/.agents/jamsession/accounts.toml` defines it. The account's env applies
    to that run only. Resume, message and steer reuse the account recorded for
-   that session; do not name a different one. Do not send work to an account
-   the task has not authorized. The shipped tiers file does not include a
-   personal account.
+   that session; do not name a different one. With two or more accounts,
+   failover tries that provider's accounts in the order listed in accounts.toml,
+   including a budgeted API-key account, with no extra pin.
 
    Exit 75 means the provider refused (a limit, quota or auth failure). For
    unattended work add `--failover` after `run` to retry that refusal through

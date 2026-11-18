@@ -53,6 +53,7 @@ Agent output goes to stdout. The provider-native session ID, hints, warnings,
 and diagnostics go to stderr. A provider can name an account, `claude:personal`,
 from `~/.agents/jamsession/accounts.toml` (see `accounts.toml.example`). That
 account's env applies to the one run, and the session keeps it for resume.
+With two or more accounts, failover tries them in the order listed in that file.
 Retain the printed session ID to continue:
 
 ```sh

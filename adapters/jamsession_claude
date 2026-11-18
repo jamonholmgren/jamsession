@@ -33,6 +33,25 @@ claude_config_root() {
   printf '%s\n' "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 }
 
+claude_accounts_helper() {
+  local candidate
+  for candidate in "${JAMSESSION_HOME:-}/bin/jamsession_accounts.py" \
+    "${JAMSESSION_HOME:-}/usage/jamsession_accounts.py" \
+    "$ADAPTER_DIR/../usage/jamsession_accounts.py" \
+    "$ADAPTER_DIR/jamsession_accounts.py"; do
+    [ -f "$candidate" ] && { printf '%s\n' "$candidate"; return 0; }
+  done
+  return 1
+}
+
+# kind=api and backend claude-cli (or unset) bills this run to an API key.
+claude_api_cli() {
+  case "${JAMSESSION_ACCOUNT_KIND:-}:${JAMSESSION_ACCOUNT_BACKEND:-claude-cli}" in
+    api:claude-cli) return 0 ;;
+  esac
+  return 1
+}
+
 which_transcript() {
   jamsession_validate_which "$@"
   local root="$(claude_config_root)/projects" path=""
@@ -99,9 +118,11 @@ run_agent() {
   jamsession_validate_run "$@"
   jamsession_require_binary
 
-  local session_id status provider_output provider_error
+  local session_id status provider_output provider_error output_format text_out accounts_py
   local -a args
-  args=(-p --output-format text)
+  output_format=text
+  claude_api_cli && output_format=json
+  args=(-p --output-format "$output_format")
   [ "$JAMSESSION_MODEL" = default ] || args+=(--model "$(claude_model_id "$JAMSESSION_MODEL")")
   case "$JAMSESSION_EFFORT" in
     default) ;;
@@ -132,6 +153,15 @@ run_agent() {
   provider_error="$JAMSESSION_TEMP_DIR/claude.stderr"
   status=0
   (cd "$JAMSESSION_CWD" && "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null >"$provider_output" 2>"$provider_error") || status=$?
+  # Login sessions stay on text. An API-key run's JSON carries total_cost_usd;
+  # the reply is the result text, and the cost is added to this month's spend.
+  if [ "$output_format" = json ] && accounts_py="$(claude_accounts_helper)"; then
+    text_out="$JAMSESSION_TEMP_DIR/claude.text"
+    "${JAMSESSION_PYTHON_BIN:-python3}" "$accounts_py" claude-cost \
+      "${JAMSESSION_ACCOUNT_PROVIDER:-claude}" "${JAMSESSION_ACCOUNT_NAME:-}" \
+      "$provider_output" "$text_out" || true
+    [ -f "$text_out" ] && provider_output="$text_out"
+  fi
   cat "$provider_output"
   cat "$provider_error" >&2
   # Claude can answer a failed launch with one synthetic line. Never let that

@@ -25,6 +25,10 @@ if [ -f "$JAMSESSION_CONFIG" ]; then
   # shellcheck source=/dev/null
   source "$JAMSESSION_CONFIG"
 fi
+# A user tiers file is private. Export it only when the config set it.
+if [ -n "${JAMSESSION_TIERS:-}" ]; then
+  export JAMSESSION_TIERS
+fi
 export JAMSESSION_CODEX_BIN JAMSESSION_CLAUDE_BIN JAMSESSION_CURSOR_BIN \
   JAMSESSION_GROK_BIN JAMSESSION_COPILOT_BIN JAMSESSION_DEVIN_BIN JAMSESSION_MUSE_BIN \
   JAMSESSION_ANTIGRAVITY_BIN
@@ -49,6 +53,8 @@ Usage:
   jamsession which <provider> [session]
   jamsession models <provider>
   jamsession usage [provider[:account]] [--json]
+  jamsession accounts add <claude|codex> <name> [--link] [--kind api] [--budget <usd>] [--keychain KEY=service]
+  jamsession accounts list
   jamsession status [provider]
   jamsession doctor [provider]
   jamsession providers
@@ -72,7 +78,8 @@ searches every logged session, oldest first.
 `~/.agents/jamsession/accounts.toml`. That account's env applies to the one
 run. The first account listed for a provider is the default. A session keeps
 the account it started with; resume, message and steer reuse it, and naming
-a different account for that session is refused. See `jamsession help accounts`.
+a different account for that session is refused. With two or more accounts,
+failover tries them in that listed order. See `jamsession help accounts`.
 
 `providers` lists the installed provider adapters. `adapters` is an exact alias.
 `antigravity` runs Google's agy CLI; `agy` and `gemini` are aliases for it.
@@ -497,6 +504,7 @@ Usage: jamsession run [--worksheet <path>] [--failover [--allow-lower | --lowest
        jamsession recall --worksheet <path> [query] [options]
        jamsession watch <file> <text> [<provider> <session>] [options]
        jamsession <usage|status|doctor> [provider]
+       jamsession accounts <add|list> [arguments]
        jamsession <providers|init|make-adapter|skills|update|help>
        jamsession skills <list|install|uninstall> <name|all>
        jamsession uninstall
@@ -1053,11 +1061,16 @@ help_topic() {
     "") usage ;;
     accounts)
       cat <<EOF
-Usage: accounts in $(accounts_file)
+Usage: jamsession accounts list
+       jamsession accounts add <claude|codex> <name> [--link] [--kind api] [--budget <usd>] [--keychain KEY=service]
 
-Copy accounts.toml.example to that path and edit it. Jam Session never writes
-over it. Each [provider.name] table has an env map, applied to that one run.
-The first account listed for a provider is the default.
+Accounts file: $(accounts_file)
+
+The first account for a provider is the default. add creates ~/.claude-<name>
+or ~/.codex-<name>, writes the accounts.toml entry, and prints the one login
+command. --link symlinks Claude settings.json and skills, or Codex config.toml,
+from the default account. list shows each account, its usage, and API spend
+against a monthly budget. Jam Session does not overwrite an existing entry.
 
   jamsession run claude:personal new opus@latest high edit "..."
   JAMSESSION_CLAUDE_ACCOUNT=personal jamsession run claude new ...
@@ -1065,15 +1078,17 @@ The first account listed for a provider is the default.
 A new session records its account in ~/.agents/jamsession/session-accounts.json.
 Resume, message and steer use that account. Naming a different one is refused.
 
-In your own tiers file (JAMSESSION_TIERS), a via entry may name an account so
-failover treats it as its own usage pool:
+With two or more accounts, failover tries them in the order listed. No pin is
+required. A tiers via may still name an account, and those vias then set the
+order. One account, or no accounts file, leaves the provider argument unchanged.
+Codex accounts set CODEX_HOME the same way Claude sets CLAUDE_CONFIG_DIR.
+jamsession recall searches every account's history.
 
-  { harness = "claude", account = "work", id = "opus@latest" },
-  { harness = "claude", account = "personal", id = "opus@latest" },
-
-The shipped tiers.toml does not name a personal account. Add one only for work
-you have decided may run there. jamsession usage claude reports each account
-separately. jamsession recall searches every account's history.
+keychain_env reads a macOS Keychain item for that run only, with
+security find-generic-password -s <service> -w. The value is not logged or
+written. A missing item skips the account. kind = "api" and backend =
+"claude-cli" run headless Claude Code on an API key, in its own config
+directory, and record total_cost_usd against monthly_budget_usd.
 EOF
       ;;
     configure)
@@ -1519,6 +1534,15 @@ case "$command_name" in
   usage)
     [ $# -le 2 ] || die "usage takes [provider] [--json]"
     exec "$(usage_helper)" "$@"
+    ;;
+  accounts)
+    [ $# -ge 1 ] || die "accounts needs add or list"
+    case "$1" in
+      add|list) ;;
+      *) die "accounts needs add or list" ;;
+    esac
+    command -v "${JAMSESSION_PYTHON_BIN:-python3}" >/dev/null 2>&1 || die "accounts needs python3"
+    exec "${JAMSESSION_PYTHON_BIN:-python3}" "$(accounts_helper)" "$@"
     ;;
   status)
     [ $# -le 1 ] || die "status takes at most one provider"

@@ -30,7 +30,7 @@ def claude_record(text):
     return json.dumps({"type": "assistant", "message": {"role": "assistant", "content": text}}) + "\n"
 
 
-class AccountCLITests(unittest.TestCase):
+class AccountHarness(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="jamsession-accounts-test-")
         self.root = Path(self.temp.name)
@@ -95,6 +95,7 @@ class AccountCLITests(unittest.TestCase):
             'env = { CODEX_HOME = "~/codex-work", TEST_ACCOUNT_MARKER = "codex-work" }\n'
         )
 
+class AccountCLITests(AccountHarness):
     def test_an_accounts_env_applies_to_one_run_only(self):
         self.claude_accounts()
         self.assertNotIn("TEST_ACCOUNT_MARKER", os.environ)
@@ -317,6 +318,490 @@ class ShippedAccountFilesTests(unittest.TestCase):
         table = tomllib.loads((ROOT / "tiers.toml").read_text())
         named = [via.get("account") for entry in table["model"].values() for via in entry["via"] if via.get("account")]
         self.assertEqual(named, [])
+
+
+SECURITY_STUB = """#!/bin/sh
+service=""
+prev=""
+for arg in "$@"; do
+  if [ "$prev" = "-s" ]; then
+    service="$arg"
+  fi
+  prev="$arg"
+done
+file="$KEYCHAIN_DIR/$service"
+if [ -f "$file" ]; then
+  cat "$file"
+  exit 0
+fi
+printf 'not found\\n' >&2
+exit 44
+"""
+
+KEY_ADAPTER = """#!/bin/sh
+printf '%s %s\\n' "$1" "${TEST_ACCOUNT_MARKER:-none}" >>"$ACCOUNT_LOG"
+if [ -n "${ANTHROPIC_API_KEY:-}" ] && [ -f "${KEY_FILE:-}" ] && \
+  [ "$ANTHROPIC_API_KEY" = "$(cat "$KEY_FILE")" ]; then
+  printf 'key-received\\n' >>"$ACCOUNT_LOG"
+  printf 'key-received\\n'
+fi
+case "$1" in
+  run) printf 'session: sess-%s\\n' "${TEST_ACCOUNT_MARKER:-none}" >&2 ;;
+esac
+printf 'MARKER=%s\\n' "${TEST_ACCOUNT_MARKER:-none}"
+"""
+
+REFUSAL_ADAPTER = """#!/bin/sh
+printf '%s %s\\n' "$1" "${TEST_ACCOUNT_MARKER:-none}" >>"$ACCOUNT_LOG"
+case "$TEST_ACCOUNT_MARKER" in
+  a|b|work|personal)
+    printf 'session: sess-%s\\n' "$TEST_ACCOUNT_MARKER" >&2
+    exit 75
+    ;;
+esac
+printf 'session: sess-%s\\n' "${TEST_ACCOUNT_MARKER:-none}" >&2
+printf 'MARKER=%s\\n' "${TEST_ACCOUNT_MARKER:-none}"
+"""
+
+
+def opus_tiers(*vias):
+    body = "\n".join(vias)
+    return (
+        'tiers = [\n  { name = "A", models = ["opus-test"] },\n]\n\n'
+        "[model.opus-test]\nvia = [\n"
+        f"{body}\n]\n"
+    )
+
+
+class PlainProviderTests(AccountHarness):
+    def test_no_accounts_file_keeps_the_plain_provider(self):
+        self.assertFalse(self.accounts_path.exists())
+        reply = self.jam("run", "claude", "new", "default", "default", "edit", "hi")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertIn("MARKER=none", reply.stdout)
+        self.assertFalse(self.sessions.exists())
+        self.assertEqual(self.launches(), ["run none"])
+        fixture = self.root / "usage-fixture"
+        fixture.mkdir()
+        (fixture / "claude.txt").write_text("Current week (all models)\n10% used\nResets Sep 7 at 7am\n")
+        usage = self.jam("usage", "claude", "--json", extra={
+            "JAMSESSION_USAGE_FIXTURE_DIR": str(fixture),
+            "JAMSESSION_CLAUDE_BIN": str(self.root / "missing-claude"),
+            "JAMSESSION_USAGE_TIMEOUT": "1",
+        })
+        self.assertEqual(usage.returncode, 0, usage.stderr)
+        row = json.loads(usage.stdout)["providers"][0]
+        self.assertEqual(row["agent"], "claude")
+        self.assertNotIn("account", row)
+        tiers = self.root / "tiers.toml"
+        tiers.write_text(opus_tiers('  { harness = "claude", id = "opus-test" },'))
+        failover = self.jam(
+            "run", "--failover", "--min-usage", "0", "claude", "new", "opus-test", "high", "edit", "hi",
+            extra={"JAMSESSION_TIERS": str(tiers), "JAMSESSION_LATEST_CACHE": str(self.root / "latest.json")})
+        self.assertEqual(failover.returncode, 0, failover.stderr)
+        self.assertIn("ran: provider=claude ", failover.stderr)
+        self.assertNotIn("provider=claude:", failover.stderr)
+        self.assertFalse(self.sessions.exists())
+
+    def test_one_account_does_not_rename_the_provider(self):
+        fixture = self.root / "usage-fixture"
+        fixture.mkdir()
+        (fixture / "claude.txt").write_text("Current week (all models)\n10% used\nResets Sep 7 at 7am\n")
+        self.write_accounts(
+            "[claude.only]\n"
+            f'env = {{ TEST_ACCOUNT_MARKER = "only", JAMSESSION_USAGE_FIXTURE_DIR = "{fixture}" }}\n'
+        )
+        reply = self.jam("run", "claude", "new", "default", "default", "edit", "hi")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertIn("MARKER=only", reply.stdout)
+        tiers = self.root / "tiers.toml"
+        tiers.write_text(opus_tiers('  { harness = "claude", id = "opus-test" },'))
+        failover = self.jam(
+            "run", "--failover", "--min-usage", "0", "claude", "new", "opus-test", "high", "edit", "hi",
+            extra={"JAMSESSION_TIERS": str(tiers), "JAMSESSION_LATEST_CACHE": str(self.root / "latest.json")})
+        self.assertEqual(failover.returncode, 0, failover.stderr)
+        self.assertIn("MARKER=only", failover.stdout)
+        self.assertIn("ran: provider=claude ", failover.stderr)
+        self.assertNotIn("provider=claude:", failover.stderr)
+        usage = self.jam("usage", "claude", "--json", extra={
+            "JAMSESSION_CLAUDE_BIN": str(self.root / "missing-claude"),
+            "JAMSESSION_USAGE_TIMEOUT": "1",
+        })
+        self.assertEqual(usage.returncode, 0, usage.stderr)
+        row = json.loads(usage.stdout)["providers"][0]
+        self.assertNotIn("account", row)
+        self.assertEqual(row["windows"][0]["remaining_percent"], 90)
+
+
+class FailoverOrderTests(AccountHarness):
+    def setUp(self):
+        super().setUp()
+        adapter = self.root / "adapters" / "jamsession_claude"
+        adapter.write_text(REFUSAL_ADAPTER)
+        adapter.chmod(0o755)
+        self.tiers = self.root / "tiers.toml"
+        self.extra = {"JAMSESSION_TIERS": str(self.tiers), "JAMSESSION_LATEST_CACHE": str(self.root / "latest.json")}
+
+    def test_three_accounts_fail_over_in_file_order(self):
+        self.write_accounts(
+            '[claude.a]\nenv = { TEST_ACCOUNT_MARKER = "a" }\n\n'
+            '[claude.b]\nenv = { TEST_ACCOUNT_MARKER = "b" }\n\n'
+            '[claude.c]\nenv = { TEST_ACCOUNT_MARKER = "c" }\n'
+        )
+        self.tiers.write_text(opus_tiers('  { harness = "claude", id = "opus-test" },'))
+        reply = self.jam(
+            "run", "--failover", "--min-usage", "0", "claude", "new", "opus-test", "high", "edit", "hi",
+            extra=self.extra)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(self.launches(), ["run a", "run b", "run c"])
+        self.assertIn("ran: provider=claude:c", reply.stderr)
+        self.assertLess(reply.stderr.index("claude:a"), reply.stderr.index("claude:b"))
+        self.assertLess(reply.stderr.index("claude:b"), reply.stderr.index("claude:c"))
+
+    def test_named_vias_keep_listed_order_without_renaming_the_default(self):
+        self.write_accounts(
+            '[claude.work]\nenv = { TEST_ACCOUNT_MARKER = "work" }\n\n'
+            '[claude.personal]\nenv = { TEST_ACCOUNT_MARKER = "personal" }\n\n'
+            '[claude.api]\nenv = { TEST_ACCOUNT_MARKER = "api" }\n'
+        )
+        self.tiers.write_text(opus_tiers(
+            '  { harness = "claude", id = "opus-test" },',
+            '  { harness = "claude", account = "personal", id = "opus-test" },',
+            '  { harness = "claude", account = "api", id = "opus-test" },',
+        ))
+        reply = self.jam(
+            "run", "--failover", "--min-usage", "0", "claude", "new", "opus-test", "high", "edit", "hi",
+            extra=self.extra)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(self.launches(), ["run work", "run personal", "run api"])
+        self.assertIn("failover: claude opus-test high refused", reply.stderr)
+        self.assertNotIn("claude:work", reply.stderr)
+        self.assertIn("ran: provider=claude:api", reply.stderr)
+
+
+class CodexWorkspaceTests(AccountHarness):
+    def test_codex_workspaces_follow_codex_home(self):
+        work = self.root / "codex-work"
+        other = self.root / "codex-other"
+        self.write_accounts(
+            "[codex.work]\n"
+            f'env = {{ CODEX_HOME = "{work}", TEST_ACCOUNT_MARKER = "work" }}\n\n'
+            "[codex.other]\n"
+            f'env = {{ CODEX_HOME = "{other}", TEST_ACCOUNT_MARKER = "other" }}\n'
+        )
+        started = self.jam("run", "codex:other", "new", "default", "default", "edit", "hi")
+        self.assertEqual(started.returncode, 0, started.stderr)
+        self.assertIn("MARKER=other", started.stdout)
+        self.assertIn(f"CODEX_HOME={other}", started.stdout)
+        self.assertNotIn(str(work), started.stdout)
+        resumed = self.jam("run", "codex", "sess-other", "default", "default", "edit", "again")
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        self.assertIn(f"CODEX_HOME={other}", resumed.stdout)
+        message = self.jam("message", "codex", "sess-other", "hello")
+        self.assertEqual(message.returncode, 0, message.stderr)
+        self.assertIn("MARKER=other", message.stdout)
+        steer = self.jam("steer", "codex", "sess-other", "continue")
+        self.assertEqual(steer.returncode, 0, steer.stderr)
+        self.assertIn(f"CODEX_HOME={other}", steer.stdout)
+        refused = self.jam("message", "codex:work", "sess-other", "nope")
+        self.assertEqual(refused.returncode, 2, refused.stderr)
+        self.assertIn("refusing account", refused.stderr)
+        usage = self.root / "usage.json"
+        usage.write_text(json.dumps({"providers": [
+            {"agent": "codex", "account": "work", "status": "ok", "windows": [{"remaining_percent": 10}]},
+            {"agent": "codex", "account": "other", "status": "ok", "windows": [{"remaining_percent": 80}]},
+        ]}))
+        tiers = self.root / "tiers.toml"
+        tiers.write_text(opus_tiers('  { harness = "codex", id = "opus-test" },'))
+        failover = self.jam(
+            "run", "--failover", "codex", "new", "opus-test", "high", "edit", "hi",
+            extra={
+                "JAMSESSION_TIERS": str(tiers),
+                "JAMSESSION_USAGE_JSON": str(usage),
+                "JAMSESSION_LATEST_CACHE": str(self.root / "latest.json"),
+            })
+        self.assertEqual(failover.returncode, 0, failover.stderr)
+        self.assertIn("skipping codex:work", failover.stderr)
+        self.assertIn("ran: provider=codex:other", failover.stderr)
+        self.assertIn(f"CODEX_HOME={other}", failover.stdout)
+        self.assertNotIn(str(work), failover.stdout)
+
+
+class CodexRecallTests(unittest.TestCase):
+    def test_recall_searches_every_codex_home(self):
+        temp = tempfile.TemporaryDirectory(prefix="jamsession-codex-recall-")
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        home = root / "home"
+        work = root / "codex-work"
+        other = root / "codex-other"
+        home.mkdir()
+        record = {
+            "type": "response_item",
+            "payload": {"type": "message", "role": "assistant",
+                        "content": [{"type": "output_text", "text": "codex-other-history"}]},
+        }
+        path = other / "sessions" / "rollout-other-session.jsonl"
+        path.parent.mkdir(parents=True)
+        path.write_text(json.dumps(record) + "\n")
+        (work / "sessions").mkdir(parents=True)
+        accounts = root / "accounts.toml"
+        accounts.write_text(
+            "[codex.work]\n"
+            f'env = {{ CODEX_HOME = "{work}" }}\n\n'
+            "[codex.other]\n"
+            f'env = {{ CODEX_HOME = "{other}" }}\n'
+        )
+        env = os.environ.copy()
+        for name in ("JAMSESSION_HOME", "JAMSESSION_ADAPTER_DIR", "CODEX_HOME", "CLAUDE_CONFIG_DIR",
+                     "JAMSESSION_CODEX_ACCOUNT"):
+            env.pop(name, None)
+        env.update({
+            "HOME": str(home),
+            "JAMSESSION_CONFIG": str(root / "config"),
+            "JAMSESSION_ACCOUNTS": str(accounts),
+            "JAMSESSION_SESSION_ACCOUNTS": str(root / "sessions.json"),
+            "JAMSESSION_CWD": str(root),
+        })
+        (root / "config").write_text("")
+        reply = subprocess.run(
+            [str(ROOT / "jamsession"), "recall", "codex", "other-session", "codex-other-history"],
+            env=env, capture_output=True, text=True, timeout=30)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertIn("codex-other-history", reply.stdout)
+
+
+class KeychainAndBudgetTests(AccountHarness):
+    def setUp(self):
+        super().setUp()
+        self.secret = "sentinel-key-9f3c2a"
+        self.keychain = self.root / "keychain"
+        self.keychain.mkdir()
+        self.key_file = self.root / "expected-key"
+        self.key_file.write_text(self.secret)
+        self.stub = self.root / "security"
+        self.stub.write_text(SECURITY_STUB)
+        self.stub.chmod(0o755)
+        self.spend = self.root / "spend.json"
+        adapter = self.root / "adapters" / "jamsession_claude"
+        adapter.write_text(KEY_ADAPTER)
+        adapter.chmod(0o755)
+        self.base = {
+            "JAMSESSION_SECURITY_BIN": str(self.stub),
+            "JAMSESSION_SPEND": str(self.spend),
+            "KEYCHAIN_DIR": str(self.keychain),
+            "KEY_FILE": str(self.key_file),
+        }
+
+    def secret_is_absent(self, *chunks):
+        for chunk in chunks:
+            self.assertNotIn(self.secret, chunk)
+
+    def test_a_keychain_value_reaches_only_that_run(self):
+        (self.keychain / "jamsession-claude-api").write_text(self.secret + "\n")
+        self.write_accounts(
+            "[claude.api]\n"
+            'env = { TEST_ACCOUNT_MARKER = "api" }\n'
+            'keychain_env = { ANTHROPIC_API_KEY = "jamsession-claude-api" }\n\n'
+            "[claude.work]\n"
+            'env = { TEST_ACCOUNT_MARKER = "work" }\n'
+        )
+        api = self.jam("run", "claude:api", "new", "default", "default", "edit", "hi", extra=self.base)
+        self.assertEqual(api.returncode, 0, api.stderr)
+        self.assertIn("key-received", api.stdout)
+        self.assertIn("MARKER=api", api.stdout)
+        self.secret_is_absent(api.stdout, api.stderr, self.accounts_path.read_text(), self.log.read_text())
+        self.assertNotIn(self.secret, self.sessions.read_text())
+        if self.spend.exists():
+            self.assertNotIn(self.secret, self.spend.read_text())
+        work = self.jam("run", "claude:work", "new", "default", "default", "edit", "hi", extra=self.base)
+        self.assertEqual(work.returncode, 0, work.stderr)
+        self.assertNotIn("key-received", work.stdout)
+        self.assertIn("MARKER=work", work.stdout)
+        self.secret_is_absent(work.stdout, work.stderr)
+        self.assertNotIn("ANTHROPIC_API_KEY", os.environ)
+
+    def test_a_missing_keychain_item_skips_the_account(self):
+        self.write_accounts(
+            "[claude.api]\n"
+            'kind = "api"\n'
+            'backend = "claude-cli"\n'
+            'env = { TEST_ACCOUNT_MARKER = "api" }\n'
+            'keychain_env = { ANTHROPIC_API_KEY = "jamsession-claude-api" }\n\n'
+            "[claude.work]\n"
+            'env = { TEST_ACCOUNT_MARKER = "work" }\n'
+        )
+        tiers = self.root / "tiers.toml"
+        tiers.write_text(opus_tiers('  { harness = "claude", id = "opus-test" },'))
+        extra = dict(self.base, JAMSESSION_TIERS=str(tiers), JAMSESSION_LATEST_CACHE=str(self.root / "latest.json"))
+        failover = self.jam(
+            "run", "--failover", "--min-usage", "0", "claude", "new", "opus-test", "high", "edit", "hi",
+            extra=extra)
+        self.assertEqual(failover.returncode, 0, failover.stderr)
+        self.assertEqual(failover.stderr.count("keychain item jamsession-claude-api not found"), 1)
+        self.assertIn("ran: provider=claude:work", failover.stderr)
+        self.assertEqual(self.launches(), ["run work"])
+        self.secret_is_absent(failover.stdout, failover.stderr)
+        direct = self.jam("run", "claude:api", "new", "default", "default", "edit", "hi", extra=self.base)
+        self.assertEqual(direct.returncode, 75, direct.stderr)
+        self.assertEqual(
+            [line for line in direct.stderr.splitlines() if line.strip()],
+            ["jamsession: claude:api is unavailable: keychain item jamsession-claude-api not found"])
+        self.assertEqual(self.launches(), ["run work"])
+        self.secret_is_absent(direct.stdout, direct.stderr)
+
+    def test_an_unknown_backend_is_unavailable(self):
+        self.write_accounts(
+            "[claude.api]\n"
+            'kind = "api"\n'
+            'backend = "agent-sdk"\n'
+            'env = { TEST_ACCOUNT_MARKER = "api" }\n'
+        )
+        reply = self.jam("run", "claude:api", "new", "default", "default", "edit", "hi", extra=self.base)
+        self.assertEqual(reply.returncode, 75, reply.stderr)
+        self.assertIn("unknown backend 'agent-sdk'", reply.stderr)
+        self.assertEqual(self.launches(), [])
+
+    def test_the_budget_stops_an_account_once_spend_reaches_it(self):
+        config = self.root / "claude-api-home"
+        config.mkdir()
+        fake = self.root / "fake-claude"
+        log = self.root / "claude-launches"
+        fake.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os\n"
+            "from pathlib import Path\n"
+            "log = Path(os.environ['CLAUDE_FAKE_LOG'])\n"
+            "log.write_text(log.read_text() + 'launched\\n' if log.exists() else 'launched\\n')\n"
+            "key = os.environ.get('ANTHROPIC_API_KEY', '')\n"
+            "expected = Path(os.environ['KEY_FILE']).read_text()\n"
+            "result = 'api-ok\\nkey-received' if key and key == expected else 'api-ok'\n"
+            "json.dump({'type': 'result', 'result': result, 'total_cost_usd': 1.25}, __import__('sys').stdout)\n"
+        )
+        fake.chmod(0o755)
+        (self.keychain / "jamsession-claude-api").write_text(self.secret + "\n")
+        self.write_accounts(
+            "[claude.api]\n"
+            'kind = "api"\n'
+            'backend = "claude-cli"\n'
+            "monthly_budget_usd = 1\n"
+            f'env = {{ CLAUDE_CONFIG_DIR = "{config}", TEST_ACCOUNT_MARKER = "api" }}\n'
+            'keychain_env = { ANTHROPIC_API_KEY = "jamsession-claude-api" }\n'
+        )
+        extra = dict(self.base)
+        extra.update({
+            "JAMSESSION_ADAPTER_DIR": str(ROOT / "adapters"),
+            "JAMSESSION_CLAUDE_BIN": str(fake),
+            "CLAUDE_FAKE_LOG": str(log),
+        })
+        seeded = subprocess.run(
+            [sys.executable, str(ROOT / "usage" / "jamsession_accounts.py"), "spend", "claude", "api", "1"],
+            env=dict(self.env, **self.base), capture_output=True, text=True, timeout=30)
+        self.assertEqual(seeded.returncode, 0, seeded.stderr)
+        blocked = self.jam("run", "claude:api", "new", "default", "default", "edit", "hi", extra=extra)
+        self.assertEqual(blocked.returncode, 75, blocked.stderr)
+        self.assertIn("monthly budget reached: $1 of $1", blocked.stderr)
+        self.assertFalse(log.exists())
+        self.secret_is_absent(blocked.stdout, blocked.stderr, self.spend.read_text())
+        self.spend.unlink()
+        first = self.jam("run", "claude:api", "new", "default", "default", "edit", "hi", extra=extra)
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertIn("api-ok", first.stdout)
+        self.assertIn("key-received", first.stdout)
+        self.assertNotIn("total_cost_usd", first.stdout)
+        self.assertEqual(log.read_text().count("launched"), 1)
+        recorded = json.loads(self.spend.read_text())
+        self.assertEqual(list(recorded["claude"]["api"].values()), [1.25])
+        self.secret_is_absent(
+            first.stdout, first.stderr, self.spend.read_text(), self.accounts_path.read_text(), log.read_text())
+        if self.sessions.exists():
+            self.assertNotIn(self.secret, self.sessions.read_text())
+        second = self.jam("run", "claude:api", "new", "default", "default", "edit", "hi", extra=extra)
+        self.assertEqual(second.returncode, 75, second.stderr)
+        self.assertIn("monthly budget reached: $1.25 of $1", second.stderr)
+        self.assertEqual(log.read_text().count("launched"), 1)
+        self.secret_is_absent(second.stdout, second.stderr)
+
+
+class AccountsCommandTests(AccountHarness):
+    def test_add_writes_the_entry_and_prints_one_login_command(self):
+        source = self.home / ".claude"
+        (source / "skills").mkdir(parents=True)
+        (source / "settings.json").write_text("{}\n")
+        (source / "skills" / "demo").write_text("skill\n")
+        added = self.jam("accounts", "add", "claude", "personal", "--link")
+        self.assertEqual(added.returncode, 0, added.stderr)
+        self.assertEqual(added.stdout.strip(), "claude-personal")
+        dest = self.home / ".claude-personal"
+        self.assertTrue(dest.is_dir())
+        self.assertTrue((dest / "settings.json").is_symlink())
+        self.assertTrue((dest / "skills").is_symlink())
+        wrapper = self.home / ".local" / "bin" / "claude-personal"
+        self.assertIn("jamsession account wrapper", wrapper.read_text())
+        self.assertIn('CLAUDE_CONFIG_DIR="$HOME/.claude-personal"', wrapper.read_text())
+        self.assertEqual(self.accounts_path.stat().st_mode & 0o777, 0o600)
+        table = tomllib.loads(self.accounts_path.read_text())
+        self.assertEqual(table["claude"]["personal"]["env"]["CLAUDE_CONFIG_DIR"], "~/.claude-personal")
+        again = self.jam("accounts", "add", "claude", "personal")
+        self.assertEqual(again.returncode, 2, again.stderr)
+        self.assertIn("already has an account", again.stderr)
+        codex = self.jam("accounts", "add", "codex", "side")
+        self.assertEqual(codex.returncode, 0, codex.stderr)
+        self.assertEqual(codex.stdout.strip(), "CODEX_HOME=~/.codex-side codex login")
+        self.assertTrue((self.home / ".codex-side").is_dir())
+        api = self.jam(
+            "accounts", "add", "claude", "api", "--kind", "api", "--budget", "500",
+            "--keychain", "ANTHROPIC_API_KEY=jamsession-claude-api")
+        self.assertEqual(api.returncode, 0, api.stderr)
+        self.assertEqual(
+            api.stdout.strip(),
+            "security add-generic-password -s jamsession-claude-api -a $USER -w")
+        self.assertFalse((self.home / ".local" / "bin" / "claude-api").exists())
+        text = self.accounts_path.read_text()
+        self.assertIn('kind = "api"', text)
+        self.assertIn('backend = "claude-cli"', text)
+        self.assertIn("monthly_budget_usd = 500", text)
+        self.assertIn('CLAUDE_CONFIG_DIR = "~/.claude-api"', text)
+        self.assertNotIn("sentinel", text)
+
+    def test_list_shows_usage_and_spend_against_the_budget(self):
+        work = self.root / "work-fixture"
+        api = self.root / "api-fixture"
+        work.mkdir()
+        api.mkdir()
+        (work / "claude.txt").write_text("Current week (all models)\n10% used\nResets Sep 7 at 7am\n")
+        (api / "claude.txt").write_text("Current week (all models)\n80% used\nResets Sep 7 at 7am\n")
+        self.write_accounts(
+            "[claude.work]\n"
+            f'env = {{ JAMSESSION_USAGE_FIXTURE_DIR = "{work}" }}\n\n'
+            "[claude.api]\n"
+            "kind = \"api\"\n"
+            "backend = \"claude-cli\"\n"
+            "monthly_budget_usd = 500\n"
+            f'env = {{ JAMSESSION_USAGE_FIXTURE_DIR = "{api}" }}\n'
+        )
+        spend = self.root / "spend.json"
+        seeded = subprocess.run(
+            [sys.executable, str(ROOT / "usage" / "jamsession_accounts.py"), "spend", "claude", "api", "12.5"],
+            env=dict(self.env, JAMSESSION_SPEND=str(spend)), capture_output=True, text=True, timeout=30)
+        self.assertEqual(seeded.returncode, 0, seeded.stderr)
+        extra = {
+            "JAMSESSION_SPEND": str(spend),
+            "JAMSESSION_CLAUDE_BIN": str(self.root / "missing-claude"),
+            "JAMSESSION_USAGE_TIMEOUT": "1",
+        }
+        listed = self.jam("accounts", "list", extra=extra)
+        self.assertEqual(listed.returncode, 0, listed.stderr)
+        self.assertIn("claude work", listed.stdout)
+        self.assertIn("90% remaining", listed.stdout)
+        self.assertIn("claude api", listed.stdout)
+        self.assertIn("spend: $12.50 of $500 this month", listed.stdout)
+        usage = self.jam("usage", "claude", "--json", extra=extra)
+        self.assertEqual(usage.returncode, 0, usage.stderr)
+        rows = json.loads(usage.stdout)["providers"]
+        self.assertEqual(rows[1]["account"], "api")
+        self.assertEqual(rows[1]["spend"]["usd"], 12.5)
+        self.assertEqual(rows[1]["spend"]["budget_usd"], 500)
 
 
 if __name__ == "__main__":

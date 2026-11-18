@@ -377,22 +377,42 @@ provider_usage() {
   esac
 }
 
+# A monthly API budget, inserted before "status". Empty when the account has none.
+spend_fragment() {
+  local provider="$1" account="$2" helper fragment=""
+  [ -n "$account" ] || return 0
+  helper="$(accounts_py)" || return 0
+  fragment="$("${JAMSESSION_PYTHON_BIN:-python3}" "$helper" budget-fragment "$provider" "$account" 2>/dev/null || true)"
+  printf '%s' "$fragment"
+}
+
+append_spend() {
+  local row="$1" label="$2" usd="" budget="" month=""
+  case "$row" in *'"spend":'*) ;; *) return 0 ;; esac
+  usd="$(field_number "$row" usd || true)"
+  budget="$(field_number "$row" budget_usd || true)"
+  month="$(field_string "$row" month || true)"
+  [ -n "$usd" ] && [ -n "$budget" ] || return 0
+  printf "%-${width}s %-30s %-12s %s\n" "$label" "API spend ($month)" "$usd of $budget" "" >>"$human_file"
+}
+
 collect_provider() {
-  local provider="$1" slot="${2:-$1}" account="${3:-}" windows identity
+  local provider="$1" slot="${2:-$1}" account="${3:-}" spend_account="${4:-$3}" windows identity fragment=""
   if [ -n "$account" ]; then
     identity="$(printf '{"agent":"%s","account":"%s"' "$provider" "$(json_escape "$account")")"
   else
     identity="$(printf '{"agent":"%s"' "$provider")"
   fi
+  fragment="$(spend_fragment "$provider" "$spend_account")"
   if provider_usage "$provider"; then
     windows="$PROVIDER_WINDOWS"
     printf '%s' "$windows" >"$TEMP_DIR/$slot.windows"
-    printf '%s,"status":"ok","windows":[%s],"error":null}' \
-      "$identity" "$windows" >"$TEMP_DIR/$slot.json"
+    printf '%s%s,"status":"ok","windows":[%s],"error":null}' \
+      "$identity" "$fragment" "$windows" >"$TEMP_DIR/$slot.json"
     printf 'ok' >"$TEMP_DIR/$slot.result"
   else
-    printf '%s,"status":"unavailable","windows":[],"error":{"code":"%s","message":"%s"}}' \
-      "$identity" "$PROVIDER_ERROR_CODE" "$(json_escape "$PROVIDER_ERROR_MESSAGE")" >"$TEMP_DIR/$slot.json"
+    printf '%s%s,"status":"unavailable","windows":[],"error":{"code":"%s","message":"%s"}}' \
+      "$identity" "$fragment" "$PROVIDER_ERROR_CODE" "$(json_escape "$PROVIDER_ERROR_MESSAGE")" >"$TEMP_DIR/$slot.json"
     printf 'unavailable' >"$TEMP_DIR/$slot.result"
   fi
 }
@@ -436,7 +456,8 @@ apply_account_env() {
 
 main() {
   local json=0 requested="" requested_account="" spec provider account windows row
-  local first=1 successes=0 failures=0 rows="" human_file account_list slot label width=9 saw_account=0
+  local first=1 successes=0 failures=0 rows="" human_file account_list full_list slot label row_label width=9 saw_account=0
+  local full_count=0 only_account=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --json) json=1 ;;
@@ -470,10 +491,11 @@ main() {
   for provider in $providers; do
     account_list=""
     if [ -f "$(accounts_toml)" ]; then
-      account_list="$("${JAMSESSION_PYTHON_BIN:-python3}" "$(accounts_py)" list "$provider")" || fail "could not read accounts for $provider"
+      account_list="$("${JAMSESSION_PYTHON_BIN:-python3}" "$(accounts_py)" names "$provider")" || fail "could not read accounts for $provider"
     elif [ -n "$requested_account" ]; then
       fail "$provider has no account '$requested_account'; $(accounts_toml) is missing"
     fi
+    full_list="$account_list"
     if [ -n "$requested_account" ]; then
       case "
 $account_list
@@ -485,9 +507,25 @@ $requested_account
       esac
       account_list="$requested_account"
     fi
-    if [ -z "$account_list" ]; then
+    full_count=0
+    only_account=""
+    while IFS= read -r account; do
+      [ -n "$account" ] || continue
+      full_count=$((full_count + 1))
+      only_account="$account"
+    done <<<"$full_list"
+    # One account is the same pool as no accounts file: leave the row untagged.
+    if [ "$full_count" -le 1 ]; then
       printf '%s %s %s\n' "$provider" "$provider" "" >>"$TEMP_DIR/manifest"
-      collect_provider "$provider" "$provider" "" 2>"$TEMP_DIR/$provider.collect.err" &
+      (
+        if [ -z "$only_account" ] || apply_account_env "$provider" "$only_account"; then
+          collect_provider "$provider" "$provider" "" "$only_account"
+        else
+          printf '{"agent":"%s","status":"unavailable","windows":[],"error":{"code":"usage_unavailable","message":"could not read account env"}}' \
+            "$provider" >"$TEMP_DIR/$provider.json"
+          printf 'unavailable' >"$TEMP_DIR/$provider.result"
+        fi
+      ) 2>"$TEMP_DIR/$provider.collect.err" &
     else
       saw_account=1
       # One provider's accounts run in series so each env stays inside its own
@@ -521,6 +559,7 @@ $requested_account
     row="$(cat "$TEMP_DIR/$slot.json")"
     label="$provider"
     [ -z "$account" ] || label="$provider/$account"
+    row_label="$label"
     if [ "$(cat "$TEMP_DIR/$slot.result")" = ok ]; then
       windows="$(cat "$TEMP_DIR/$slot.windows")"
       successes=$((successes + 1))
@@ -537,6 +576,7 @@ $requested_account
       failures=$((failures + 1))
       printf "%-${width}s unavailable (%s)\n" "$label" "$(field_string "$row" message || true)" >>"$human_file"
     fi
+    append_spend "$row" "$row_label"
     [ "$first" -eq 1 ] || rows="$rows,"
     rows="$rows$row"; first=0
   done <"$TEMP_DIR/manifest"

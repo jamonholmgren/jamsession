@@ -18,7 +18,7 @@ import sys
 import tempfile
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 # Accounts live beside this file when installed (bin/) and in the repo (usage/).
 _ACCOUNTS_DIR = str(Path(__file__).resolve().parent)
@@ -280,13 +280,47 @@ def tier_models(table: dict, start: str, allow_lower: bool, lowest_tier: str = "
     return names
 
 
+def expand_accounts(candidates: list[Candidate], *, requested_first: bool) -> list[Candidate]:
+    """Walk a provider's accounts in file order when the tiers file does not name one.
+
+    Zero or one account leaves the provider argument unchanged. A via that
+    names an account keeps that order instead of expanding.
+    """
+    if not candidates:
+        return candidates
+    try:
+        loaded = accounts.load()
+    except accounts.AccountError:
+        return candidates
+    source = candidates[1:] if requested_first else candidates
+    via_explicit = {item.provider for item in source if item.account}
+    result: list[Candidate] = []
+    seen: set[tuple] = set()
+    for candidate in candidates:
+        group = loaded.get(candidate.provider, [])
+        if not candidate.account and candidate.provider not in via_explicit and len(group) >= 2:
+            clones = [replace(candidate, account=item.name) for item in group]
+        else:
+            clones = [candidate]
+        for clone in clones:
+            pool = clone.account or accounts.default_account(clone.provider)
+            key = (clone.provider, pool, clone.model, clone.effort)
+            if key in seen:
+                continue
+            seen.add(key)
+            result.append(clone)
+    return result
+
+
 def ladder(table: dict, provider: str, model: str, effort: str, allow_lower: bool = False,
            lowest_tier: str = "", account: str = "") -> list[Candidate]:
     """The requested run first, then same model elsewhere, then the same tier.
 
     Two vias are the same pool when their harness and account match. An empty
     account is the provider's default account, so a plain `claude` request is
-    not tried again as an explicit default-account via.
+    not tried again as an explicit default-account via. With two or more
+    accounts and no via naming one, each unlabeled candidate becomes one
+    candidate per account, in file order.
     """
     first = Candidate(provider, model, effort, account=account)
     name = find_model(table, provider, model)
@@ -304,7 +338,7 @@ def ladder(table: dict, provider: str, model: str, effort: str, allow_lower: boo
             for candidate in via_candidates(table, other, effort)
             if not (other == name and candidate.provider == provider
                     and accounts.pools_match(account, candidate.account, provider))]
-    return [first] + rest
+    return expand_accounts([first] + rest, requested_first=True)
 
 
 def tier_ladder(table: dict, tier: str, effort: str, prefer: str = "", allow_lower: bool = False,
@@ -315,8 +349,10 @@ def tier_ladder(table: dict, tier: str, effort: str, prefer: str = "", allow_low
     start = prefer or names[0]
     if start not in names:
         raise Failure(f"model '{start}' is not in tier {tier}")
-    return [candidate for name in tier_models(table, start, allow_lower, lowest_tier)
-            for candidate in via_candidates(table, name, effort)]
+    return expand_accounts(
+        [candidate for name in tier_models(table, start, allow_lower, lowest_tier)
+         for candidate in via_candidates(table, name, effort)],
+        requested_first=False)
 
 
 # --- routes ----------------------------------------------------------------
@@ -344,7 +380,8 @@ def expand_route(name: str, table: dict | None = None) -> dict:
         result.update(kind="panel", size=int(route.get("size", len(route["from"]))),
                       candidates=[rung(entry) for entry in route["from"]])
     elif "rungs" in route:
-        result.update(kind="ladder", candidates=[rung(entry) for entry in route["rungs"]])
+        result.update(kind="ladder", candidates=expand_accounts(
+            [rung(entry) for entry in route["rungs"]], requested_first=False))
     elif "tier" in route:
         table = table or load_tiers()
         result.update(kind="ladder", candidates=tier_ladder(
@@ -451,6 +488,13 @@ def run(candidates: list[Candidate], session: str, access: str, prompt: bytes, *
             candidate.model = latest.resolve(candidate.provider, candidate.model)
         except Unresolved as error:
             print(f"failover: skipping {candidate.label()} ({error})", file=sys.stderr)
+            continue
+        try:
+            blocked = accounts.unavailable_reason(candidate.provider, candidate.account)
+        except accounts.AccountError as error:
+            blocked = str(error)
+        if blocked:
+            print(f"failover: skipping {candidate.label()} ({blocked})", file=sys.stderr)
             continue
         reason = skip_reason(candidate, access, usage, min_usage)
         if reason:

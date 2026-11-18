@@ -18,7 +18,9 @@ description: "Report provider usage, quotas, remaining capacity and reset times;
 
    When a row includes `account`, show that login in the Provider cell
    (`Claude (personal)`) and keep each account's windows separate. Accounts are
-   different quota pools. Do not add them together.
+   different quota pools. Do not add them together. When a row includes
+   `spend`, show that calendar month's `usd` against `budget_usd` for that
+   account. Do not add spend across accounts.
 
 4. Use title-case provider names, concise window labels, and percentage signs on
    `remaining_percent`. Do not show `used_percent`. Keep `gpt-reserve`; it is the

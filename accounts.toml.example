@@ -1,6 +1,6 @@
-# Copy to ~/.agents/jamsession/accounts.toml and uncomment the accounts you use.
-# Jam Session never writes that file. The first account for a provider is the
-# default. Each env map applies to that one run only.
+# Copy to ~/.agents/jamsession/accounts.toml, or run `jamsession accounts add`.
+# Jam Session does not overwrite an entry it did not just add. The first
+# account for a provider is the default. Each env map applies to that one run.
 #
 # [claude.work]
 # env = { CLAUDE_CONFIG_DIR = "~/.claude" }
@@ -8,16 +8,22 @@
 # [claude.personal]
 # env = { CLAUDE_CONFIG_DIR = "~/.claude-personal" }
 #
+# [claude.api]
+# kind = "api"
+# backend = "claude-cli"
+# monthly_budget_usd = 500
+# env = { CLAUDE_CONFIG_DIR = "~/.claude-api" }
+# keychain_env = { ANTHROPIC_API_KEY = "jamsession-claude-api" }
+#
 # [codex.work]
 # env = { CODEX_HOME = "~/.codex" }
 #
+# With two or more accounts, failover tries them in this order. One account,
+# or no accounts file, leaves the provider argument unchanged. A tiers via
+# may still name an account, and those vias then set the order.
+#
 # Select one with `jamsession run claude:personal ...` or
 # JAMSESSION_CLAUDE_ACCOUNT=personal. Resume, message and steer keep the account
-# the session started with.
-#
-# Failover can use an account as its own usage pool. The shipped tiers.toml does
-# not name a personal account. In your own copy (JAMSESSION_TIERS), add a via
-# only for work you have decided may run there:
-#
-# { harness = "claude", account = "work", id = "opus@latest" },
-# { harness = "claude", account = "personal", id = "opus@latest" },
+# the session started with. `jamsession accounts list` shows usage and, for an
+# API account, spend against its monthly budget. A missing Keychain item skips
+# that account. Codex accounts set CODEX_HOME the same way.

@@ -8,12 +8,12 @@
 #
 # Each model's `via` lists the harnesses that serve it, in the order failover
 # tries them after the one requested: Devin first, then the native harness,
-# then Cursor, except where a harness serves a newer version. A via entry may
-# name an account from accounts.toml, for example
-# `{ harness = "claude", account = "personal", id = "opus@latest" }`. Each
-# account is its own usage pool. This shipped file does not name a personal
-# account; add one in your own JAMSESSION_TIERS copy only for work you have
-# decided may run there. `id` is
+# then Cursor, except where a harness serves a newer version. With two or more
+# accounts in accounts.toml, and no via here naming an account, failover tries
+# that provider's accounts in the order listed, each as its own usage pool.
+# A via may still name an account, for example
+# `{ harness = "claude", account = "personal", id = "opus@latest" }`; those
+# vias then set the order. This shipped file names no account. `id` is
 # `<family>@latest`: each harness's newest listed ID in that family, so this
 # table always means the latest model. jamsession passes effort separately and
 # each adapter maps it (Devin and Cursor append it to the ID).

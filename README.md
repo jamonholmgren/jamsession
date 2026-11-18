@@ -79,26 +79,34 @@ jamsession run codex 019abc sol@latest high read "Check the revised diff."
 
 Every part is required. Pass a session ID instead of `new` to resume, and `-` as the prompt to read stdin. The reply goes to stdout; session IDs, the session's current token size, and diagnostics go to stderr. Past 250K tokens it suggests handing off to a fresh session.
 
-A provider refusal (spend, usage or rate limit, quota, or auth failure) exits 75. `run --failover` then retries the same model through its other harnesses, Devin first, then the rest of its tier in [`tiers.toml`](tiers.toml), skipping pools that `jamsession usage` shows below 25% before trying them, including the one named in the command (`--min-usage 0` tries every pool); `--allow-lower` permits cheaper tiers and `--lowest-tier C` only down to tier C, never costlier ones; if all refuse it exits 75 with no answer. `jamsession route <name>` and `run --route <name>` read a `routes.toml` named by `JAMSESSION_ROUTES`, where a route can name a tier and effort instead of a ladder.
+A provider refusal (spend, usage or rate limit, quota, or auth failure) exits 75. `run --failover` then retries the same model through its other harnesses, Devin first, then the rest of its tier in [`tiers.toml`](tiers.toml), skipping pools that `jamsession usage` shows below 25% before trying them, including the one named in the command (`--min-usage 0` tries every pool). When that provider has two or more accounts, those accounts are tried in the order listed in `accounts.toml` before the run moves to another harness. `--allow-lower` permits cheaper tiers and `--lowest-tier C` only down to tier C, never costlier ones; if all refuse it exits 75 with no answer. `jamsession route <name>` and `run --route <name>` read a `routes.toml` named by `JAMSESSION_ROUTES`, where a route can name a tier and effort instead of a ladder.
 
-### Named accounts
+### Accounts
 
-One provider can have several logins. Copy [`accounts.toml.example`](accounts.toml.example) to `~/.agents/jamsession/accounts.toml` and edit it. Jam Session never writes that file. Each `[provider.name]` table has an `env` map, applied to that one run only. The first account listed for a provider is the default.
+One provider can have several logins. `jamsession accounts add claude personal` creates `~/.claude-personal`, writes `~/.agents/jamsession/accounts.toml`, and prints the one login command (`claude-personal`, then `/login` inside it). Codex is the same with `CODEX_HOME`: `jamsession accounts add codex side` prints `CODEX_HOME=~/.codex-side codex login`. `--link` symlinks Claude `settings.json` and `skills`, or Codex `config.toml`, from the default account without replacing files that already exist. `jamsession accounts list` shows each account and its usage.
+
+The first account listed for a provider is the default. Each `env` map applies to that one run only. Copy [`accounts.toml.example`](accounts.toml.example) if you would rather edit the file by hand. Jam Session does not overwrite an entry it did not just add.
 
 ```sh
 jamsession run claude:personal new opus@latest high edit "Use the personal login."
 JAMSESSION_CLAUDE_ACCOUNT=personal jamsession run claude new opus@latest high edit "Same selection."
 ```
 
-A new session records its account in `~/.agents/jamsession/session-accounts.json`. Resume, message and steer use that account again. Naming a different account for a recorded session is refused. `jamsession usage claude` reports each account on its own rows.
+A new session records its account in `~/.agents/jamsession/session-accounts.json`. Resume, message and steer use that account again. Naming a different account for a recorded session is refused. With two or more accounts, `jamsession usage claude` reports each one on its own rows. One account leaves the row untagged. `recall` searches every account's history directory. Codex accounts set `CODEX_HOME` and participate in run, resume, message, steer, usage, recall, and failover the same way.
 
-Codex accounts set `CODEX_HOME` the same way. `recall` searches every account's history directory.
+With two or more accounts, and no `account` field in the tiers file, failover tries them in the order listed, then the other harnesses. A tiers via can still name an account; those vias set the order instead. No per-repo pin is required. One account, or no accounts file, leaves the provider argument unchanged.
 
-Failover can treat accounts as separate pools. In your own tiers copy (`JAMSESSION_TIERS`), add the account only for work you have decided may run there. The shipped `tiers.toml` does not name a personal account:
+An account can take a secret from the macOS Keychain. The value is a service name, read at run time with `security find-generic-password -s <name> -w`, passed only to that run, and never logged or written. A missing item skips the account with one line.
+
+`kind = "api"` with `backend = "claude-cli"` runs headless Claude Code on an API key, in its own `CLAUDE_CONFIG_DIR` (for example `~/.claude-api`), so it does not touch a login session. Each run's `total_cost_usd` is added to that calendar month in `~/.agents/jamsession/spend.json`. `monthly_budget_usd = 500` makes the account unavailable once the month's spend reaches it. `accounts list` and `usage` show the spend against the budget. The backend name is the seam for a later runner; anything other than `claude-cli` is skipped until that runner exists.
 
 ```toml
-{ harness = "claude", account = "work", id = "opus@latest" },
-{ harness = "claude", account = "personal", id = "opus@latest" },
+[claude.api]
+kind = "api"
+backend = "claude-cli"
+monthly_budget_usd = 500
+env = { CLAUDE_CONFIG_DIR = "~/.claude-api" }
+keychain_env = { ANTHROPIC_API_KEY = "jamsession-claude-api" }
 ```
 
 ### Continue from a worksheet instead of compacting
