@@ -271,10 +271,15 @@ class FailoverRunTests(unittest.TestCase):
     def run_helper(self, plan, *args, usage=None):
         if usage is not None:
             self.usage.write_text(json.dumps({"providers": usage}))
+        root = Path(self.temp.name)
         env = dict(os.environ, JAMSESSION_CLI=str(self.cli), FAKE_CALLS=str(self.calls), FAKE_PLAN=json.dumps(plan),
                    JAMSESSION_USAGE_JSON=str(self.usage), JAMSESSION_TIERS=str(ROOT / "tiers.toml"),
                    JAMSESSION_ROUTES=str(self.routes), JAMSESSION_ADAPTER_DIR=str(self.adapters),
-                   JAMSESSION_LATEST_CACHE=str(Path(self.temp.name) / "latest.json"))
+                   JAMSESSION_LATEST_CACHE=str(root / "latest.json"),
+                   JAMSESSION_ACCOUNTS=str(root / "no-accounts.toml"),
+                   JAMSESSION_SESSION_ACCOUNTS=str(root / "no-sessions.json"),
+                   JAMSESSION_SPEND=str(root / "no-spend.json"),
+                   JAMSESSION_USAGE_CACHE=str(root / "no-usage-cache.json"))
         reply = subprocess.run([sys.executable, str(ROOT / "usage" / "jamsession_failover.py"), *args],
                                env=env, capture_output=True, text=True, timeout=30)
         calls = [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
@@ -361,6 +366,133 @@ class FailoverRunTests(unittest.TestCase):
         reply, _calls = self.run_helper({}, "route", "project-lead")
         self.assertNotEqual(reply.returncode, 0)
         self.assertIn("names an account twice", reply.stderr)
+
+    def test_an_archetype_route_expands_its_rungs(self):
+        self.routes.write_text(
+            "[archetype.owner]\n"
+            "rungs = [\n"
+            '  { provider = "claude:work", model = "opus@latest", effort = "high" },\n'
+            '  { provider = "codex", model = "sol@latest", effort = "medium" },\n'
+            "]\n"
+            '[route.lead]\n'
+            'archetype = "owner"\n'
+        )
+        reply, _calls = self.run_helper({}, "route", "lead")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(
+            reply.stdout,
+            "claude:work opus@latest high archetype=owner\n"
+            "codex sol@latest medium archetype=owner\n")
+        reply, _calls = self.run_helper({}, "route", "--json", "lead")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        candidates = json.loads(reply.stdout)["candidates"]
+        self.assertEqual(candidates[0]["provider"], "claude")
+        self.assertEqual(candidates[0]["account"], "work")
+        self.assertEqual(candidates[0]["archetype"], "owner")
+        self.assertEqual(candidates[1]["provider"], "codex")
+        self.assertEqual(candidates[1]["effort"], "medium")
+        self.assertNotIn("account", candidates[1])
+
+    def test_an_archetype_effort_override_applies_to_every_rung(self):
+        self.routes.write_text(
+            "[archetype.owner]\n"
+            "rungs = [\n"
+            '  { provider = "claude", model = "opus@latest", effort = "low" },\n'
+            '  { provider = "grok", model = "grok@latest", effort = "low" },\n'
+            "]\n"
+            "[route.lead]\n"
+            'archetype = "owner"\n'
+            'effort = "max"\n'
+        )
+        reply, _calls = self.run_helper({}, "route", "lead")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(
+            reply.stdout,
+            "claude opus@latest max archetype=owner\n"
+            "grok grok@latest high archetype=owner\n")
+
+    def test_a_panel_picks_distinct_providers_from_archetype_heads(self):
+        self.routes.write_text(
+            "[archetype.owner]\n"
+            "rungs = [\n"
+            '  { provider = "claude", model = "opus@latest", effort = "high" },\n'
+            '  { provider = "codex", model = "sol@latest", effort = "high" },\n'
+            "]\n"
+            "[archetype.thinker]\n"
+            "rungs = [\n"
+            '  { provider = "claude", model = "fable@latest", effort = "high" },\n'
+            '  { provider = "grok", model = "grok@latest", effort = "high" },\n'
+            "]\n"
+            "[archetype.extra]\n"
+            "rungs = [\n"
+            '  { provider = "codex", model = "sol@latest", effort = "high" },\n'
+            '  { provider = "muse", model = "spark@latest", effort = "low" },\n'
+            "]\n"
+            "[route.review]\n"
+            'from_archetypes = ["owner", "thinker", "extra"]\n'
+            "size = 3\n"
+            "[route.short]\n"
+            'from_archetypes = ["owner", "thinker", "extra"]\n'
+            "size = 2\n"
+            "[route.listed]\n"
+            "size = 1\n"
+            "from = [\n"
+            '  { provider = "claude", model = "opus@latest", effort = "high" },\n'
+            '  { provider = "codex", model = "sol@latest", effort = "medium" },\n'
+            "]\n"
+        )
+        usage = [
+            {"agent": "claude", "status": "ok", "windows": [
+                {"remaining_percent": 10, "window_minutes": 10080, "bucket_id": "weekly"}]},
+            {"agent": "codex", "status": "ok", "windows": [
+                {"remaining_percent": 80, "window_minutes": 10080, "bucket_id": "weekly"}]},
+            {"agent": "grok", "status": "ok", "windows": [
+                {"remaining_percent": 90, "window_minutes": 10080, "bucket_id": "weekly"}]},
+            {"agent": "muse", "status": "ok", "windows": [
+                {"remaining_percent": 70, "window_minutes": 10080, "bucket_id": "weekly"}]},
+        ]
+        reply, _calls = self.run_helper({}, "route", "review", usage=usage)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(
+            reply.stdout,
+            "panel: 3 of these\n"
+            "codex sol@latest high archetype=owner\n"
+            "grok grok@latest high archetype=thinker\n"
+            "muse spark@latest low archetype=extra\n")
+        short, _calls = self.run_helper({}, "route", "short", usage=usage)
+        self.assertEqual(short.returncode, 0, short.stderr)
+        self.assertEqual(
+            short.stdout,
+            "panel: 2 of these\n"
+            "codex sol@latest high archetype=owner\n"
+            "grok grok@latest high archetype=thinker\n")
+        listed, _calls = self.run_helper({}, "route", "listed")
+        self.assertEqual(listed.returncode, 0, listed.stderr)
+        self.assertEqual(
+            listed.stdout,
+            "panel: 1 of these\n"
+            "claude opus@latest high\n"
+            "codex sol@latest medium\n")
+        self.assertNotIn("archetype=", listed.stdout)
+
+    def test_an_unknown_archetype_is_a_clear_error(self):
+        self.routes.write_text(
+            "[archetype.owner]\n"
+            "rungs = [\n"
+            '  { provider = "claude", model = "opus@latest", effort = "high" },\n'
+            "]\n"
+            "[route.lead]\n"
+            'archetype = "missing"\n'
+            "[route.review]\n"
+            'from_archetypes = ["owner", "missing"]\n'
+        )
+        reply, _calls = self.run_helper({}, "route", "lead")
+        self.assertEqual(reply.returncode, 2, reply.stderr)
+        self.assertIn("unknown archetype 'missing'", reply.stderr)
+        self.assertIn("known: owner", reply.stderr)
+        panel, _calls = self.run_helper({}, "route", "review")
+        self.assertEqual(panel.returncode, 2, panel.stderr)
+        self.assertIn("unknown archetype 'missing'", panel.stderr)
 
 
 if __name__ == "__main__":

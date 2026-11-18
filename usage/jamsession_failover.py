@@ -173,12 +173,21 @@ class Candidate:
     name: str = ""  # tiers-table model name, when known
     tier: str = ""
     account: str = ""  # empty means the provider's default account, if it has one
+    archetype: str = ""  # routes file archetype this rung was copied from
 
     def provider_arg(self) -> str:
         return f"{self.provider}:{self.account}" if self.account else self.provider
 
     def label(self) -> str:
         return f"{self.provider_arg()} {self.model} {self.effort}"
+
+    def route_label(self) -> str:
+        text = self.label()
+        if self.archetype:
+            text += f" archetype={self.archetype}"
+        if not self.meter:
+            text += " meter=false"
+        return text
 
 
 def load_toml(path: Path) -> dict:
@@ -361,15 +370,11 @@ def tier_ladder(table: dict, tier: str, effort: str, prefer: str = "", allow_low
 
 # --- routes ----------------------------------------------------------------
 
-def load_route(name: str) -> tuple[dict, dict]:
+def load_routes() -> dict:
     path = os.environ.get("JAMSESSION_ROUTES")
     if not path:
         raise Failure("set JAMSESSION_ROUTES to a routes.toml file")
-    routes = load_toml(Path(path))
-    route = routes.get("route", {}).get(name)
-    if route is None:
-        raise Failure(f"route '{name}' is not in {path}; known: {', '.join(routes.get('route', {}))}")
-    return route, routes.get("defaults", {})
+    return load_toml(Path(path))
 
 
 def rung(entry: dict) -> Candidate:
@@ -386,12 +391,148 @@ def rung(entry: dict) -> Candidate:
     return Candidate(provider, entry["model"], entry.get("effort", "default"), entry.get("meter", True), account=account)
 
 
+def archetype_tables(routes: dict) -> dict:
+    found = routes.get("archetype") or {}
+    if not isinstance(found, dict):
+        raise Failure("archetype entries must be tables")
+    return found
+
+
+def archetype_candidates(name: str, routes: dict) -> list[Candidate]:
+    """The rungs of `[archetype.<name>]`, in file order."""
+    entry = archetype_tables(routes).get(name)
+    if not isinstance(entry, dict):
+        known = ", ".join(archetype_tables(routes)) or "none"
+        raise Failure(f"unknown archetype '{name}'; known: {known}")
+    rungs = entry.get("rungs")
+    if not isinstance(rungs, list) or not rungs:
+        raise Failure(f"archetype '{name}' needs rungs")
+    found: list[Candidate] = []
+    for item in rungs:
+        if not isinstance(item, dict):
+            raise Failure(f"archetype '{name}' rung must be a table")
+        found.append(rung(item))
+    return found
+
+
+def route_effort(route: dict) -> str:
+    """A route-level effort override, or "" when the rungs keep their own."""
+    if "effort" not in route:
+        return ""
+    effort = route["effort"]
+    if not isinstance(effort, str) or not effort.strip():
+        raise Failure("route effort must be a name")
+    return effort
+
+
+def harness_effort(candidate: Candidate, effort: str, table: dict) -> str:
+    """Map `effort` the way this harness's tiers via does. Unlisted efforts pass through."""
+    name = find_model(table, candidate.provider, candidate.model)
+    if not name:
+        return effort
+    fallback = None
+    for via in table["model"][name]["via"]:
+        if via["harness"] != candidate.provider:
+            continue
+        mapped = str((via.get("efforts") or {}).get(effort, effort))
+        via_account = str(via.get("account") or "")
+        if accounts.pools_match(candidate.account, via_account, candidate.provider):
+            return mapped
+        if fallback is None:
+            fallback = mapped
+    return fallback if fallback is not None else effort
+
+
+def with_effort(candidates: list[Candidate], effort: str) -> list[Candidate]:
+    if not effort:
+        return candidates
+    table = load_tiers()
+    return [replace(item, effort=harness_effort(item, effort, table)) for item in candidates]
+
+
+def tag_archetype(candidates: list[Candidate], name: str) -> list[Candidate]:
+    return [replace(item, archetype=name) for item in candidates]
+
+
+def usage_snapshot() -> "Usage":
+    """Usage already on disk. This never launches a provider or `jamsession usage`."""
+    usage = Usage(os.environ.get("JAMSESSION_CLI", "jamsession"))
+    usage.report = {}
+    raw = os.environ.get("JAMSESSION_USAGE_JSON")
+    path = Path(raw) if raw else accounts.usage_cache_path()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError, UnicodeError):
+        return usage
+    if isinstance(data, dict):
+        usage.report = data
+    return usage
+
+
+def pool_of(candidate: Candidate) -> tuple[str, str]:
+    return candidate.provider, candidate.account or accounts.default_account(candidate.provider)
+
+
+def rung_unavailable(candidate: Candidate, usage: "Usage", min_usage: float) -> bool:
+    """True when this pool is refused or below its usage floor.
+
+    Refused means the account cannot run (budget, keychain, unknown backend,
+    or an account name that is not in the accounts file). Unknown usage is
+    still available.
+    """
+    try:
+        reason = accounts.unavailable_reason(candidate.provider, candidate.account)
+    except accounts.AccountError:
+        return True
+    if reason:
+        return True
+    return bool(skip_reason(candidate, "edit", usage, min_usage))
+
+
+def panel_from_archetypes(names, routes: dict, effort: str, min_usage: float, size: int) -> list[Candidate]:
+    """Each archetype's first available rung, one pool apiece, up to `size`."""
+    if not isinstance(names, list) or not all(isinstance(item, str) and item for item in names):
+        raise Failure("from_archetypes must be a list of archetype names")
+    usage = usage_snapshot()
+    seen: set[tuple[str, str]] = set()
+    picked: list[Candidate] = []
+    for name in names:
+        if len(picked) >= size:
+            break
+        for candidate in with_effort(archetype_candidates(name, routes), effort):
+            candidate = replace(candidate, archetype=name)
+            key = pool_of(candidate)
+            if key in seen or rung_unavailable(candidate, usage, min_usage):
+                continue
+            picked.append(candidate)
+            seen.add(key)
+            break
+    return picked
+
+
 def expand_route(name: str, table: dict | None = None) -> dict:
-    route, defaults = load_route(name)
+    path = os.environ.get("JAMSESSION_ROUTES")
+    routes = load_routes()
+    route = routes.get("route", {}).get(name) if isinstance(routes.get("route"), dict) else None
+    if route is None:
+        known = routes.get("route", {}) if isinstance(routes.get("route"), dict) else {}
+        raise Failure(f"route '{name}' is not in {path}; known: {', '.join(known)}")
+    defaults = routes.get("defaults", {}) if isinstance(routes.get("defaults"), dict) else {}
     result = {"name": name, "skip_below_usage": float(route.get("skip_below_usage", defaults.get("skip_below_usage", DEFAULT_MIN_USAGE)))}
-    if "from" in route:
+    if "from_archetypes" in route:
+        names = route["from_archetypes"]
+        size = int(route.get("size", len(names) if isinstance(names, list) else 0))
+        result.update(kind="panel", size=size, candidates=panel_from_archetypes(
+            names, routes, route_effort(route), result["skip_below_usage"], size))
+    elif "from" in route:
         result.update(kind="panel", size=int(route.get("size", len(route["from"]))),
                       candidates=[rung(entry) for entry in route["from"]])
+    elif "archetype" in route:
+        archetype = route["archetype"]
+        if not isinstance(archetype, str) or not archetype:
+            raise Failure("archetype must be a name")
+        candidates = tag_archetype(with_effort(archetype_candidates(archetype, routes), route_effort(route)), archetype)
+        result.update(kind="ladder", candidates=expand_accounts(candidates, requested_first=False))
     elif "rungs" in route:
         result.update(kind="ladder", candidates=expand_accounts(
             [rung(entry) for entry in route["rungs"]], requested_first=False))
@@ -402,7 +543,7 @@ def expand_route(name: str, table: dict | None = None) -> dict:
             str(route.get("prefer", "")), bool(route.get("allow_lower", False)),
             str(route.get("lowest_tier", ""))))
     else:
-        raise Failure(f"route '{name}' needs rungs, from, or tier")
+        raise Failure(f"route '{name}' needs rungs, from, from_archetypes, archetype, or tier")
     return result
 
 
@@ -723,7 +864,7 @@ def main(argv: list[str]) -> int:
             if route["kind"] == "panel":
                 print(f"panel: {route['size']} of these")
             for candidate in route["candidates"]:
-                print(candidate.label() + ("" if candidate.meter else " meter=false"))
+                print(candidate.route_label())
         return 0
     if command == "tiers":
         table = load_tiers()
