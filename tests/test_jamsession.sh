@@ -346,6 +346,10 @@ case "${1:-}" in
   doctor) printf '%s\n' GROK_DOCTOR_OK; exit 0 ;;
 esac
 printf '%s\n' "$*" >"$FAKE_LOG"
+if [ -n "${FAKE_GROK_402:-}" ]; then
+  printf '%s\n' 'Error: Internal error: {' '  "message": "API error (status 402 Payment Required): Grok Build usage balance exhausted",' '  "http_status": 402' '}' >&2
+  exit 1
+fi
 printf '%s\n' GROK_RESULT
 exit "${FAKE_EXIT:-0}"
 EOF
@@ -537,6 +541,19 @@ check "Copilot reports its latest context count" contains "$stderr_file" "sessio
 run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" JAMSESSION_GROK_BIN="$FAKE_BIN/grok" \
   "$ROOT/jamsession" run grok grok-size default default edit prompt
 check "Grok reports its context count" contains "$stderr_file" "session-size: 300 tokens"
+GROK_MARK="$TEMP_ROOT/grok-out-of-credit"
+run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" FAKE_GROK_402=1 JAMSESSION_GROK_NO_CREDIT_MARK="$GROK_MARK" \
+  JAMSESSION_GROK_BIN="$FAKE_BIN/grok" "$ROOT/jamsession" run grok new default default edit prompt
+check "a spent Grok balance is a usage refusal" test "$status" -eq 75
+check "a spent Grok balance is remembered" test -s "$GROK_MARK"
+rm -f "$LOG"
+run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" JAMSESSION_GROK_NO_CREDIT_MARK="$GROK_MARK" \
+  JAMSESSION_GROK_BIN="$FAKE_BIN/grok" "$ROOT/jamsession" run grok new default default edit prompt
+check "a remembered spent balance refuses without launching Grok" sh -c "[ $status -eq 75 ] && [ ! -e '$LOG' ]"
+printf '%s\n' 0 >"$GROK_MARK"
+run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" JAMSESSION_GROK_NO_CREDIT_MARK="$GROK_MARK" \
+  JAMSESSION_GROK_BIN="$FAKE_BIN/grok" "$ROOT/jamsession" run grok new default default edit prompt
+check "after an hour Grok is tried again and success clears the memory" sh -c "[ $status -eq 0 ] && [ ! -e '$GROK_MARK' ]"
 run_command env HOME="$SIZE_HOME" FAKE_LOG="$LOG" JAMSESSION_MUSE_BIN="$FAKE_BIN/muse" \
   "$ROOT/jamsession" run muse new default default read prompt
 check "Muse reports its latest model call" contains "$stderr_file" "session-size: 405 tokens"

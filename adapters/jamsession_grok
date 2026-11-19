@@ -7,6 +7,12 @@ ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$ADAPTER_DIR/_jamsession_adapter_common"
 jamsession_adapter_setup grok grok JAMSESSION_GROK_BIN
 
+# A spent Grok Build balance (HTTP 402) is a refusal, remembered for an hour so
+# failover skips Grok without paying a failed launch; the next success clears it.
+GROK_NO_CREDIT='balance exhausted|status 402|payment required'
+GROK_NO_CREDIT_MARK="${JAMSESSION_GROK_NO_CREDIT_MARK:-${JAMSESSION_HOME:-$HOME/.agents/jamsession}/state/grok-out-of-credit}"
+GROK_NO_CREDIT_HOLD="${JAMSESSION_GROK_NO_CREDIT_HOLD:-3600}"
+
 GROK_NOT_AUTHENTICATED='^[[:space:]]*(error:[[:space:]]*)?(you are |you.re )?(not authenticated|not logged in|not signed in)([[:space:].!,:;]|$)'
 
 # `grok models` answers from the expired token while its silent refresh is still
@@ -41,6 +47,7 @@ Grok edit mode uses bypassPermissions because headless approval modes can end a
 session without returning its answer. This adapter rejects read mode: Grok's
 current read-only controls do not reliably prevent shell writes. Grok reasoning
 effort stops at high, so xhigh or max is an error rather than a quiet downgrade.
+A spent Grok Build balance (HTTP 402) exits 75 and refuses runs for an hour.
 
 Doctor/status inspect `grok models`, without spending a prompt. A confirmed
 login is reported as ready, not proof a task will run. A failed or unrecognized
@@ -78,8 +85,13 @@ run_agent() {
 $JAMSESSION_PROMPT"
   fi
 
-  local session_id status
+  local session_id status since
   local -a args
+  since="$(head -n 1 "$GROK_NO_CREDIT_MARK" 2>/dev/null)"
+  if [[ "$since" =~ ^[0-9]+$ ]] && [ $(( $(date +%s) - since )) -lt "$GROK_NO_CREDIT_HOLD" ]; then
+    printf 'refusal: limit: Grok usage balance exhausted (remembered; retried after an hour)\n' >&2
+    exit "$JAMSESSION_REFUSAL_STATUS"
+  fi
   args=(-p "$JAMSESSION_PROMPT" --cwd "$JAMSESSION_CWD" --output-format plain --permission-mode bypassPermissions)
   [ "$JAMSESSION_MODEL" = default ] || args+=(-m "$JAMSESSION_MODEL")
   case "$JAMSESSION_EFFORT" in
@@ -104,7 +116,14 @@ $JAMSESSION_PROMPT"
   "$JAMSESSION_PROVIDER_BIN" "${args[@]}" </dev/null >"$JAMSESSION_TEMP_DIR/out" 2>"$JAMSESSION_TEMP_DIR/err" || status=$?
   cat "$JAMSESSION_TEMP_DIR/out"
   cat "$JAMSESSION_TEMP_DIR/err" >&2
-  status="$(jamsession_refusal_status "$status" "$JAMSESSION_TEMP_DIR/out" "$JAMSESSION_TEMP_DIR/err")"
+  if [ "$status" -ne 0 ] && grep -Eiq -- "$GROK_NO_CREDIT" "$JAMSESSION_TEMP_DIR/err"; then
+    mkdir -p "$(dirname "$GROK_NO_CREDIT_MARK")" && date +%s >"$GROK_NO_CREDIT_MARK"
+    printf 'refusal: limit: Grok usage balance exhausted\n' >&2
+    status="$JAMSESSION_REFUSAL_STATUS"
+  else
+    [ "$status" -ne 0 ] || rm -f "$GROK_NO_CREDIT_MARK"
+    status="$(jamsession_refusal_status "$status" "$JAMSESSION_TEMP_DIR/out" "$JAMSESSION_TEMP_DIR/err")"
+  fi
   session_size "$session_id"
   exit "$status"
 }
