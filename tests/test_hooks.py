@@ -145,6 +145,12 @@ class HookHarness(unittest.TestCase):
         self.assertEqual(self.run_cli("hooks", "install", str(self.project)).returncode, 0)
         self.use_cli_on_path()
 
+        # Writing straight to the inbox names the fork too, so a sender sees the mix-up.
+        direct = self.run_cli("inbox", fork, "write", "tester", "direct to the side chat")
+        self.assertEqual(direct.returncode, 0, direct.stderr)
+        self.assertIn("('Side chat'), a fork of " + parent + " ('Performance')", direct.stderr)
+        self.assertIn("direct to the side chat", self.hook(fork, transcripts / f"{fork}.jsonl"))
+
         to_fork = self.run_cli("message", "claude", fork, "for the side chat")
         self.assertEqual(to_fork.returncode, 0, to_fork.stderr)
         self.assertIn("('Side chat'), a fork of " + parent + " ('Performance')", to_fork.stderr)
@@ -166,6 +172,12 @@ class HookHarness(unittest.TestCase):
         self.use_cli_on_path()
         self.assertEqual(self.hook(SESSION, agent_id="a1"), "")
         self.assertEqual(len(self.notes()), 1)
+
+    def test_hook_accepts_a_transcript_kept_in_a_folder_named_for_the_session(self):
+        self.use_cli_on_path()
+        self.assertEqual(self.run_cli("inbox", SESSION, "write", "tester", "grok-shaped").returncode, 0)
+        grok_path = self.home / ".grok" / "sessions" / "%2Frecipient" / SESSION / "messages.jsonl"
+        self.assertIn("grok-shaped", self.hook(SESSION, grok_path))
 
     def test_hook_is_silent_without_notes_helper_or_valid_payload(self):
         installed = 'f="$HOME/.agents/jamsession/bin/jamsession_hooks.py"; [ ! -f "$f" ] || python3 "$f" run; exit 0'

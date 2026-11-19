@@ -69,10 +69,11 @@ def hook_run():
     # A subagent's tool call carries the parent's session id; leave the note for the parent.
     if not session or payload.get("agent_id") or "/" in session:
         return 0
-    # The transcript file is named for the session that owns it. A payload whose
-    # transcript belongs to another session is never handed this session's notes.
+    # A Claude transcript is named for the session that owns it (Grok nests it in a
+    # folder of that name). A payload whose transcript path never mentions this
+    # session belongs to another one and is never handed this session's notes.
     transcript = payload.get("transcript_path") or payload.get("transcriptPath")
-    if isinstance(transcript, str) and transcript and Path(transcript).name.split(".")[0] != session:
+    if isinstance(transcript, str) and transcript and session not in transcript:
         return 0
     try:
         if not any(INBOX.glob(f"agent-note-{session}-*.txt")):
@@ -273,6 +274,14 @@ def known(session):
     rollout = codex_record(session)
     if rollout:
         return "codex", str(rollout)
+    # Providers without a store read here answer through their adapter's `which`.
+    for provider in ("copilot", "cursor", "muse", "antigravity"):
+        try:
+            result = subprocess.run([cli_path(), "which", provider, session], capture_output=True, text=True, timeout=20)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode == 0:
+            return provider, "jamsession which " + provider
     return None
 
 
@@ -313,8 +322,10 @@ def deliver(provider, session, text):
               "session, or use --resume-with once it has exited.", file=sys.stderr)
         return UNAVAILABLE
     sender = os.environ.get("JAMSESSION_SENDER") or "jamsession"
-    result = subprocess.run([cli_path(), "inbox", session, "write", sender, text], stdout=subprocess.DEVNULL)
+    result = subprocess.run([cli_path(), "inbox", session, "write", sender, text],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
+        sys.stderr.write(result.stderr)
         return result.returncode
     print(f"delivery: inbox note for {describe(provider, session)}. It is read after that session's "
           "next tool call (a finished session never reads it)", file=sys.stderr)
@@ -338,7 +349,7 @@ def main(argv):
         found = known(argv[1])
         if not found:
             return 1
-        print("\t".join(found))
+        print("\t".join(found + (describe(found[0], argv[1]),)))
         return 0
     if command == "deliver" and len(argv) == 4:
         return deliver(*argv[1:])

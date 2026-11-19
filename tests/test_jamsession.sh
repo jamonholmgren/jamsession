@@ -26,6 +26,8 @@ control_fixture_pid=""
 trap '[ -z "$control_fixture_pid" ] || kill "$control_fixture_pid" 2>/dev/null; rm -rf "$TEMP_ROOT"' EXIT HUP INT TERM
 JAMSESSION_CONFIG="$TEMP_ROOT/jamsession.conf"
 export JAMSESSION_CONFIG
+# A real Grok out-of-credit marker would make every Grok run here refuse.
+export JAMSESSION_GROK_NO_CREDIT_MARK="$TEMP_ROOT/no-grok-mark"
 : >"$JAMSESSION_CONFIG"
 # A real accounts.toml would retag usage JSON and change every claude run.
 # These paths are intentionally missing.

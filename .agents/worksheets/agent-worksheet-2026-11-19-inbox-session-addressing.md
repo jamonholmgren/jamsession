@@ -17,3 +17,8 @@ Request (Jamon via JamBot, 2026-11-19): "Agents inboxes should use a session ID 
 - The hook drains only the payload's `session_id`, skips subagent calls, and skips a payload whose `transcript_path` belongs to another session.
 - `message` delivery names the recipient's own title and, for a fork, its parent and the ID to use for the original.
 - `hooks install` replaces the legacy `jamsession_inbox` entry; legacy wiring no longer counts as wired.
+- `inbox write` prints the same title/fork line on stderr; today's misaddressed note was sent with `inbox write`, not `message`.
+- Recipients from Copilot, Cursor, Muse and Antigravity are accepted when that adapter's `which` knows the ID.
+- The transcript guard rejects only a path that never mentions the session, so Grok's `<id>/` folders still deliver.
+- Legacy `jamsession_inbox.py` files in jambot and the GunshipOrigins checkouts are now shims to the installed hook, for sessions started before the settings change.
+- The shell suite pins its own Grok out-of-credit marker so a real one cannot fail Grok tests.

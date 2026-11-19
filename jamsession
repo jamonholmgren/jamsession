@@ -1011,7 +1011,7 @@ inbox_cleanup() (
 
 inbox_command() {
   [ $# -ge 2 ] || die "inbox needs <recipient-id> read or <recipient-id> write <sender-id> <note>"
-  local recipient="$1" operation="$2" root file archived user_home
+  local recipient="$1" operation="$2" root file archived user_home found=""
   local id_pattern='^[a-zA-Z0-9][a-zA-Z0-9_-]*$'
   [[ "$recipient" =~ $id_pattern ]] || die "inbox ID must contain only letters, numbers, underscores and hyphens"
   case "$operation" in
@@ -1033,7 +1033,7 @@ inbox_command() {
   done
   if [ "$operation" = write ]; then
     command -v "${JAMSESSION_PYTHON_BIN:-python3}" >/dev/null 2>&1 || die "inbox write needs python3 to look up the recipient"
-    "${JAMSESSION_PYTHON_BIN:-python3}" "$(hooks_helper)" known "$recipient" >/dev/null ||
+    found="$("${JAMSESSION_PYTHON_BIN:-python3}" "$(hooks_helper)" known "$recipient")" ||
       die "inbox recipient '$recipient' is not a session ID recorded by Claude, Codex, Grok or Devin on this machine; nothing was queued. Address notes to the recipient's exact session ID (ask that session for it), not a role or label."
   fi
   if [ "$operation" = write ]; then
@@ -1049,8 +1049,9 @@ inbox_command() {
       mv -n -- "$temporary" "$file" || exit 1
       [ ! -e "$temporary" ] || { printf 'inbox note collision\n' >&2; exit 1; }
       printf '%s\n' "$file"
-    )
-    return $?
+    ) || return $?
+    printf 'inbox: note for %s\n' "${found##*$'\t'}" >&2
+    return 0
   fi
   [ -d "$root" ] || return 0
   mkdir -p -- "$root/archive" || return 1
