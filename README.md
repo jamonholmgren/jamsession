@@ -248,13 +248,15 @@ conflicting headers and unsupported permissions still stop before input.
 Low-priority notes can wait without waking another agent:
 
 ```sh
-jamsession inbox manager-id write worker-id "Slice A is ready for the next review."
-jamsession inbox manager-id read
+jamsession inbox MANAGER_SESSION_ID write worker-id "Slice A is ready for the next review."
+jamsession inbox MY_SESSION_ID read
 ```
 
-Run from the shared project. Notes live in `.agents/jamsession/inbox/`; keep it
-gitignored. Read prints then archives notes, and expires recognized notes older
-than three days. Use direct messages for blockers and final handoffs.
+Notes live in one per-user inbox, `~/.agents/jamsession/inbox/`, whatever the
+project. The recipient must be a real session ID (Claude, Codex, Grok or Devin);
+roles and labels are refused. Read prints then archives notes, and expires
+recognized notes older than three days. Use direct messages for blockers and
+final handoffs.
 
 ### Skills
 

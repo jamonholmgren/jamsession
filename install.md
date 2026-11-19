@@ -97,15 +97,15 @@ Native delivery errors never trigger resume. Run `jamsession help message`.
 `delivery: queued; execution unconfirmed` means the work may not have started.
 An idle desktop owner may leave it pending until its session is focused. Do not resend.
 
-For low-priority notes on the same shared project filesystem:
+For low-priority notes between sessions on this machine:
 
 ```sh
 jamsession inbox <recipient-id> write <sender-id> "<note>"
 jamsession inbox <my-id> read
 ```
 
-The project-local `.agents/jamsession/inbox/` should be gitignored. Reads print
-then archive notes and expire recognized files older than three days. No session
+Notes live in `~/.agents/jamsession/inbox/` and must be addressed to a real
+session ID; labels are refused. Reads print then archive notes and expire recognized files older than three days. No session
 is woken. Use direct messages for blockers and terminal handoffs; see
 `jamsession help inbox`.
 

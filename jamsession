@@ -1011,7 +1011,7 @@ inbox_cleanup() (
 
 inbox_command() {
   [ $# -ge 2 ] || die "inbox needs <recipient-id> read or <recipient-id> write <sender-id> <note>"
-  local recipient="$1" operation="$2" project root file archived user_home="$HOME"
+  local recipient="$1" operation="$2" root file archived user_home
   local id_pattern='^[a-zA-Z0-9][a-zA-Z0-9_-]*$'
   [[ "$recipient" =~ $id_pattern ]] || die "inbox ID must contain only letters, numbers, underscores and hyphens"
   case "$operation" in
@@ -1023,20 +1023,19 @@ inbox_command() {
       ;;
     *) die "inbox action must be read or write" ;;
   esac
-  project="$(cd -- "${JAMSESSION_CWD:-$PWD}" && pwd -P)" || return 1
-  if [ -d "$HOME" ]; then user_home="$(cd -- "$HOME" && pwd -P)" || return 1; fi
-  # Find the project without requiring Git or falling back to global ~/.agents.
-  while [ "$project" != / ] && [ "$project" != "$user_home" ]; do
-    if [ -e "$project/.git" ] || [ -d "$project/.agents" ]; then break; fi
-    project="${project%/*}"
-    [ -n "$project" ] || project=/
-  done
-  [ "$project" != / ] && [ "$project" != "$user_home" ] || die "inbox requires a project with .git or .agents"
-  root="$project/.agents/jamsession/inbox"
-  for file in "$project/.agents" "$project/.agents/jamsession" "$root" "$root/archive"; do
+  [ -d "$HOME" ] || die "inbox needs a home directory: $HOME"
+  user_home="$(cd -- "$HOME" && pwd -P)" || return 1
+  # One inbox per user, independent of project or checkout.
+  root="$user_home/.agents/jamsession/inbox"
+  for file in "$user_home/.agents" "$user_home/.agents/jamsession" "$root" "$root/archive"; do
     [ ! -L "$file" ] || die "inbox refuses symlink directory: $file"
     [ ! -e "$file" ] || [ -d "$file" ] || die "inbox path is not a directory: $file"
   done
+  if [ "$operation" = write ]; then
+    command -v "${JAMSESSION_PYTHON_BIN:-python3}" >/dev/null 2>&1 || die "inbox write needs python3 to look up the recipient"
+    "${JAMSESSION_PYTHON_BIN:-python3}" "$(hooks_helper)" known "$recipient" >/dev/null ||
+      die "inbox recipient '$recipient' is not a session ID recorded by Claude, Codex, Grok or Devin on this machine; nothing was queued. Address notes to the recipient's exact session ID (ask that session for it), not a role or label."
+  fi
   if [ "$operation" = write ]; then
     (
       umask 077
@@ -1279,12 +1278,14 @@ Usage: jamsession inbox <recipient-id> write <sender-id> <note>
 Low-priority asynchronous notes only; no provider is invoked or session woken.
 A project that runs `jamsession hooks install` delivers notes to running
 Claude, Grok and Devin sessions after each tool call; `message` uses this.
-Use exact session IDs, or agreed stable agent IDs when session IDs are unavailable.
-Every note includes its sender, recipient and UTC timestamp. IDs may contain
-letters, numbers, underscores and hyphens; notes are literal text, never executed.
+The recipient must be an exact session ID that Claude, Codex, Grok or Devin
+has recorded on this machine. Roles and labels are refused and nothing is
+queued; ask the recipient for its own session ID. A Claude Desktop fork has
+its own ID even though its transcript begins with the parent's history.
+Every note includes its sender, recipient and UTC timestamp. Sender IDs may be
+any label of letters, numbers, underscores and hyphens; notes are literal text.
 
-Storage: <project>/.agents/jamsession/inbox/ (nearest .git or .agents ancestor).
-Keep it gitignored. Posting and draining need write permission for this path.
+Storage: ~/.agents/jamsession/inbox/, one per user for every project.
 Writes publish unique immutable agent-note-<id>-<timestamp>-<unique>.txt files.
 Read prints only that recipient's notes, then moves each to archive/ after cat
 succeeds. It also permanently deletes recognized notes older than three days
@@ -1322,9 +1323,10 @@ Unloaded sessions restore saved settings first. Policies that cannot be restored
 exactly (such as custom deny rules) fail before sending; use their owning controller.
 Other providers must implement steer themselves; it never means cancel/kill.
 Muse sends with `muse session-message send`.
-Claude, Grok and Devin get an inbox note in the session's own project, read
-after its next tool call. It is refused unless that project wires the hook in
+Claude, Grok and Devin get an inbox note, read after the session's next tool
+call. It is refused unless the session's project wires the hook in
 .claude/settings.json (`jamsession hooks install <project>`, which merges).
+Delivery names the session's own title, and its parent when it is a fork.
 Other bundled providers report unavailable. --resume-with explicitly supplies
 model, effort, and access for one synchronous resume instead. Pass `-` as text
 to read stdin. `new` is not a message target.

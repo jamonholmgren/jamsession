@@ -90,8 +90,9 @@ completion or agreed evidence instead of repeatedly asking for status. Respect
 explicitly requested reporting cadence and substantive planning/review exchanges.
 
 For useful low-priority notes use `jamsession inbox <recipient-id> write
-<sender-id> "<note>"`. Use exact session IDs or agreed stable agent IDs, and
-authorize the shared project-local `.agents/jamsession/inbox/` path explicitly.
+<sender-id> "<note>"`. Notes live in `~/.agents/jamsession/inbox/`. The
+recipient must be its exact session ID; labels are refused. Get the ID from that
+session, not a transcript grep: a Claude Desktop fork copies its parent's titles.
 One coordinator runs `jamsession inbox <my-id> read` at scheduled checkpoints;
 notes print before archiving and expire after three days. Never use this
 disposable inbox for blockers, urgent risks, or terminal handoffs. Run
