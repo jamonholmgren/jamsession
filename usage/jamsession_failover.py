@@ -741,9 +741,22 @@ def attempt(cli: str, worksheet: str, candidate: Candidate, session: str, access
         return status, reply.read()
 
 
+def grok_out_of_credit() -> bool:
+    """The Grok adapter's marker for a spent balance (HTTP 402), within its one-hour hold."""
+    home = Path(os.environ.get("JAMSESSION_HOME") or Path.home() / ".agents" / "jamsession")
+    mark = Path(os.environ.get("JAMSESSION_GROK_NO_CREDIT_MARK") or home / "state" / "grok-out-of-credit")
+    try:
+        since = int(mark.read_text(encoding="utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
+        return False
+    return time.time() - since < float(os.environ.get("JAMSESSION_GROK_NO_CREDIT_HOLD") or 3600)
+
+
 def skip_reason(candidate: Candidate, access: str, usage: Usage, min_usage: float) -> str:
     if access == "read" and candidate.provider in EDIT_ONLY:
         return "read access unsupported"
+    if candidate.provider == "grok" and grok_out_of_credit():
+        return "Grok balance exhausted"
     # --min-usage 0 tries every pool. A per-account floor replaces any other value.
     floor = min_usage
     if min_usage > 0:

@@ -9,6 +9,9 @@ import sys
 import tempfile
 import unittest
 
+# A real spent-Grok marker on this machine must not change these tests.
+os.environ["JAMSESSION_GROK_NO_CREDIT_MARK"] = os.path.join(tempfile.gettempdir(), "jamsession-test-no-grok-mark")
+
 ROOT = Path(__file__).resolve().parents[1]
 REFUSAL = 75
 spec = importlib.util.spec_from_file_location("failover", ROOT / "usage" / "jamsession_failover.py")
@@ -322,6 +325,19 @@ class FailoverRunTests(unittest.TestCase):
         self.assertEqual(reply.stdout, "")
         self.assertIn("all routes refused", reply.stderr)
         self.assertEqual(len(calls), 5)
+
+    def test_a_spent_grok_balance_is_skipped_without_launching_grok(self):
+        mark = Path(self.temp.name) / "grok-out-of-credit"
+        mark.write_text(f"{int(__import__('time').time())}\n")
+        os.environ["JAMSESSION_GROK_NO_CREDIT_MARK"] = str(mark)
+        try:
+            self.routes.write_text('[archetype.clerk]\nrungs = [{ provider = "grok", model = "grok-4.6", effort = "high" },'
+                                   ' { provider = "codex", model = "gpt-6.2-sol", effort = "medium" }]\n[route.chat]\narchetype = "clerk"\n')
+            reply, calls = self.run_helper({}, "run", "--route", "chat", "new", "edit", "hi")
+        finally:
+            os.environ["JAMSESSION_GROK_NO_CREDIT_MARK"] = str(mark) + "-absent"
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual([call[1] for call in calls], ["codex"])
 
     def test_read_runs_skip_edit_only_harnesses(self):
         reply, calls = self.run_helper({"claude": [REFUSAL, ""]},
