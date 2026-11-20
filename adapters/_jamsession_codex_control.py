@@ -210,6 +210,16 @@ class Control:
                 self.events.append(message)
 
 
+def worktree_gitdir(root):
+    """The git directory a linked worktree's .git file names, or None."""
+    try:
+        with open(os.path.join(root, ".git")) as handle:
+            line = handle.readline().strip()
+    except OSError:
+        return None
+    return os.path.join(root, line[len("gitdir: "):]) if line.startswith("gitdir: ") else None
+
+
 def saved_resume_params(thread):
     """Use only the provider's exact rollout and saved, representable policy."""
     session = thread["id"]
@@ -267,6 +277,11 @@ def saved_resume_params(thread):
                 for protected in (".git", ".agents", ".codex", ".aws"):
                     expected.append({"path": {"type": "path", "path": os.path.join(path, protected)},
                                      "access": "read", "missing_path_behavior": "skip"})
+                # Codex also protects a linked worktree's own git directory, named by its .git file.
+                gitdir = worktree_gitdir(path)
+                entry = gitdir and {"path": {"type": "path", "path": gitdir}, "access": "read", "missing_path_behavior": "skip"}
+                if entry and entry in entries:
+                    expected.append(entry)
             for special in ("slash_tmp", "tmpdir"):
                 entry = {"path": {"type": "special", "value": {"kind": special}}, "access": "write"}
                 if entry in entries:
