@@ -269,8 +269,8 @@ def saved_resume_params(thread):
         if entries == [root_read] and not network:
             sandbox = "read-only"
         else:
-            roots = [entry["path"]["path"] for entry in entries
-                     if entry.get("access") == "write" and entry.get("path", {}).get("type") == "path"]
+            roots = list(dict.fromkeys(entry["path"]["path"] for entry in entries
+                                       if entry.get("access") == "write" and entry.get("path", {}).get("type") == "path"))
             expected = [root_read]
             for path in roots:
                 expected.append({"path": {"type": "path", "path": path}, "access": "write"})
@@ -287,7 +287,8 @@ def saved_resume_params(thread):
                 if entry in entries:
                     expected.append(entry)
                 config["sandbox_workspace_write.exclude_" + ("slash_tmp" if special == "slash_tmp" else "tmpdir_env_var")] = entry not in entries
-            canonical = lambda rows: sorted(json.dumps(row, sort_keys=True) for row in rows)
+            # Codex may list a root twice; identical duplicates grant nothing more.
+            canonical = lambda rows: {json.dumps(row, sort_keys=True) for row in rows}
             if cwd not in roots or canonical(entries) != canonical(expected):
                 raise ControlError("cannot safely restore this custom permission profile; use its owning controller")
             sandbox = "workspace-write"

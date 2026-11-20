@@ -670,13 +670,15 @@ class ControlTests(unittest.TestCase):
         self.assertFalse(config["sandbox_workspace_write.exclude_slash_tmp"])
 
     def test_linked_worktree_gitdir_restores_only_when_it_is_the_roots_own(self):
+        # Codex's real shape for a worktree slot: the root listed twice, its protections partly repeated.
         self.peer.scenario = "cold"
         (self.path / ".git").write_text("gitdir: /repo/.git/worktrees/slot\n")
         entries = self.peer.saved["permission_profile"]["file_system"]["entries"]
-        entries.append({"path": {"type": "path", "path": str(self.path)}, "access": "write"})
-        for protected in (".git", ".agents", ".codex", ".aws"):
-            entries.append({"path": {"type": "path", "path": str(self.path / protected)},
-                            "access": "read", "missing_path_behavior": "skip"})
+        for protections in ((".git", ".agents", ".codex", ".aws"), (".git", ".agents")):
+            entries.append({"path": {"type": "path", "path": str(self.path)}, "access": "write"})
+            for protected in protections:
+                entries.append({"path": {"type": "path", "path": str(self.path / protected)},
+                                "access": "read", "missing_path_behavior": "skip"})
         for gitdir, code in (("/repo/.git/worktrees/slot", 0), ("/repo/.git/worktrees/other", 2)):
             with self.subTest(gitdir=gitdir):
                 self.peer.calls.clear()
