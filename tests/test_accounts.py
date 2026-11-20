@@ -851,6 +851,14 @@ class AccountsCommandTests(AccountHarness):
         wrapper = self.home / ".local" / "bin" / "claude-personal"
         self.assertIn("jamsession account wrapper", wrapper.read_text())
         self.assertIn('CLAUDE_CONFIG_DIR="$HOME/.claude-personal"', wrapper.read_text())
+        fake_bin = self.root / "fake-bin"
+        fake_bin.mkdir()
+        (fake_bin / "claude").write_text(
+            "#!/bin/sh\nprintf 'INHERITED=%s%s\\n' \"${CLAUDE_CODE_OAUTH_TOKEN:+oauth}\" \"${ANTHROPIC_API_KEY:+apikey}\"\n")
+        (fake_bin / "claude").chmod(0o755)
+        ran = subprocess.run([str(wrapper)], capture_output=True, text=True, timeout=10,
+                             env=dict(os.environ, **INHERITED_AUTH, PATH=f"{fake_bin}:{os.environ['PATH']}"))
+        self.assertEqual(ran.stdout, "INHERITED=\n")
         self.assertEqual(self.accounts_path.stat().st_mode & 0o777, 0o600)
         table = tomllib.loads(self.accounts_path.read_text())
         self.assertEqual(table["claude"]["personal"]["env"]["CLAUDE_CONFIG_DIR"], "~/.claude-personal")

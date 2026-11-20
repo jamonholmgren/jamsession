@@ -974,6 +974,7 @@ def _install_claude_wrapper(name: str) -> None:
     script = (
         "#!/bin/sh\n"
         "# jamsession account wrapper\n"
+        f"unset {' '.join(auth_overrides('claude'))}\n"
         f'export CLAUDE_CONFIG_DIR="$HOME/.claude-{name}"\n'
         'exec claude "$@"\n'
     )
