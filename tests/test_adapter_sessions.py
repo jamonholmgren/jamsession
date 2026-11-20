@@ -12,6 +12,9 @@ import unittest
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
+# Launches must never start a real background usage refresh.
+os.environ["JAMSESSION_USAGE_REFRESH"] = "0"
+
 
 
 class AdapterSessionTests(unittest.TestCase):

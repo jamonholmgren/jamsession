@@ -8,6 +8,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+# Launches must never start a real background usage refresh.
+os.environ["JAMSESSION_USAGE_REFRESH"] = "0"
+
 CLI = str(ROOT / "jamsession")
 HELPER = str(ROOT / "usage" / "jamsession_hooks.py")
 SESSION = "11111111-2222-3333-4444-555555555555"

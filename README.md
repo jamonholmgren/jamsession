@@ -96,6 +96,8 @@ A new session records its account in `~/.agents/jamsession/session-accounts.json
 
 With two or more accounts, and no `account` field in the tiers file, failover tries them in the order listed, then the other harnesses. A tiers via can still name an account; those vias set the order instead. No per-repo pin is required. One account, or no accounts file, leaves the provider argument unchanged. `min_usage = 5` keeps using that account until its longest window is below 5%. `jamsession usage` and `accounts list` lead with the weekly window. Adding another account is `jamsession accounts add` and, when a tiers file names accounts, one more via in that order.
 
+Every new or resumed `run` prints one stderr line with the chosen account's remaining usage and reset time from that cache, for example `jamsession: usage: claude:personal Current week (all models): 72% left, resets Nov 25 at 11am [12m ago]`. When the cached row is older than 30 minutes (`JAMSESSION_USAGE_TTL`, in seconds) the launch starts `jamsession usage <provider>` in the background and does not wait for it, so a later launch shows the new numbers. `JAMSESSION_USAGE_REFRESH=0` turns the refresh off, and `JAMSESSION_USAGE_LINE=0` hides the line.
+
 Naming a bare provider when several accounts exist prints a one-line warning with each account's weekly remaining usage from the last usage cache (`?` when that cache has none; a budgeted account shows spend against its budget) and runs the first account still above its `min_usage` and budget.
 
 An account can take a secret from the macOS Keychain. The value is a service name, read at run time with `security find-generic-password -s <name> -w`, passed only to that run, and never logged or written. A missing item skips the account with one line.

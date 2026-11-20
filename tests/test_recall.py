@@ -10,6 +10,9 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+# Launches must never start a real background usage refresh.
+os.environ["JAMSESSION_USAGE_REFRESH"] = "0"
+
 CLAUDE_SESSION = "11111111-2222-4333-8444-555555555555"
 CODEX_SESSION = "01a1aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee"
 

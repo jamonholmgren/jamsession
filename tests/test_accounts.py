@@ -6,10 +6,15 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import time
 import tomllib
 import unittest
+import unittest.mock
 
 ROOT = Path(__file__).resolve().parents[1]
+# Launches must never start a real background usage refresh.
+os.environ["JAMSESSION_USAGE_REFRESH"] = "0"
+
 
 FAKE_ADAPTER = """#!/bin/sh
 printf '%s %s\\n' "$1" "${TEST_ACCOUNT_MARKER:-none}" >>"$ACCOUNT_LOG"
@@ -274,6 +279,98 @@ class AccountCLITests(AccountHarness):
         reply = self.jam("run", "claude:token", "new", "default", "default", "edit", "hi", extra=INHERITED_AUTH)
         self.assertEqual(reply.returncode, 0, reply.stderr)
         self.assertIn("INHERITED=oauth\n", reply.stdout)
+
+
+
+class LaunchUsageLineTests(AccountHarness):
+    def write_cache(self, rows, age=0):
+        checked = int(time.time()) - age
+        self.usage_cache.write_text(json.dumps({"schema_version": 1, "status": "complete", "providers": [
+            dict(row, checked_at=checked) for row in rows]}))
+
+    def usage_rows(self):
+        return [
+            {"agent": "claude", "account": "personal", "status": "ok", "windows": [
+                {"label": "Current session", "remaining_percent": 40, "window_minutes": 300, "reset_display": "3pm"},
+                {"label": "Current week (all models)", "remaining_percent": 72, "window_minutes": 10080,
+                 "reset_display": "Nov 25 at 11am"},
+            ]},
+            {"agent": "claude", "account": "work", "status": "ok", "windows": [
+                {"label": "Current week (all models)", "remaining_percent": 9, "window_minutes": 10080,
+                 "reset_display": "Nov 26 at 9am"},
+            ]},
+        ]
+
+    def test_new_and_resumed_runs_print_the_chosen_accounts_cached_usage(self):
+        self.claude_accounts()
+        self.write_cache(self.usage_rows())
+        new = self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi")
+        self.assertEqual(new.returncode, 0, new.stderr)
+        lines = [line for line in new.stderr.splitlines() if line.startswith("jamsession: usage:")]
+        self.assertEqual(lines, ["jamsession: usage: claude:personal Current week (all models): 72% left, "
+                                 "resets Nov 25 at 11am [just now]"])
+        # A bare resume of a personal session reports the recorded account, not the default.
+        resumed = self.jam("run", "claude", "sess-personal", "default", "default", "edit", "hi")
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        self.assertIn("usage: claude:personal Current week (all models): 72% left", resumed.stderr)
+        work = self.jam("run", "claude:work", "new", "default", "default", "edit", "hi")
+        self.assertIn("usage: claude:work Current week (all models): 9% left, resets Nov 26 at 9am", work.stderr)
+        quiet = self.jam("run", "claude:work", "new", "default", "default", "edit", "hi",
+                         extra={"JAMSESSION_USAGE_LINE": "0"})
+        self.assertNotIn("usage:", quiet.stderr)
+
+    def test_a_stale_cache_refreshes_in_the_background_without_blocking(self):
+        self.claude_accounts()
+        self.write_cache(self.usage_rows(), age=7200)
+        stall = self.root / "stall-usage"
+        stall.mkdir()
+        helper_dir = self.root / "usage-bin"
+        helper_dir.mkdir()
+        # Copies, not symlinks: the helper finds jamsession_usage beside its resolved path.
+        for name in ("jamsession_accounts.py", "jamsession_failover.py"):
+            (helper_dir / name).write_text((ROOT / "usage" / name).read_text())
+        started = self.root / "refresh-started"
+        (helper_dir / "jamsession_usage").write_text(
+            "#!/bin/sh\n"
+            f'printf "%s\\n" "$*" >>"{started}"\n'
+            "sleep 8\n"
+            "printf '%s' '{\"providers\":[{\"agent\":\"claude\",\"account\":\"personal\",\"status\":\"ok\","
+            "\"windows\":[{\"label\":\"Current week (all models)\",\"remaining_percent\":55,\"window_minutes\":10080}]}]}' | "
+            f'python3 "{helper_dir / "jamsession_accounts.py"}" store-usage\n'
+        )
+        (helper_dir / "jamsession_usage").chmod(0o755)
+        home = self.root / "jam-home"
+        (home / "bin").mkdir(parents=True)
+        for name in ("jamsession_accounts.py", "jamsession_failover.py", "jamsession_usage"):
+            (home / "bin" / name).write_text((helper_dir / name).read_text())
+        (home / "bin" / "jamsession_usage").chmod(0o755)
+        extra = {"JAMSESSION_HOME": str(home), "JAMSESSION_USAGE_REFRESH": "1"}
+        begin = time.monotonic()
+        first = self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi", extra=extra)
+        self.assertLess(time.monotonic() - begin, 6, "the launch waited for the refresh")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertIn("72% left, resets Nov 25 at 11am [2h ago; refreshing]", first.stderr)
+        second = self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi", extra=extra)
+        self.assertIn("[2h ago]", second.stderr, "a second launch must not start another refresh")
+        deadline = time.time() + 20
+        while time.time() < deadline and "55" not in self.usage_cache.read_text():
+            time.sleep(0.5)
+        self.assertEqual(started.read_text().splitlines(), ["claude --json"])
+        third = self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi", extra=extra)
+        self.assertIn("usage: claude:personal Current week (all models): 55% left [just now]", third.stderr)
+
+    def test_a_fresh_cache_does_not_refresh(self):
+        self.claude_accounts()
+        self.write_cache(self.usage_rows(), age=60)
+        with unittest.mock.patch.dict(os.environ, {"JAMSESSION_USAGE_CACHE": str(self.usage_cache),
+                                                   "JAMSESSION_ACCOUNTS": str(self.accounts_path),
+                                                   "JAMSESSION_USAGE_REFRESH": "1"}):
+            sys.path.insert(0, str(ROOT / "usage"))
+            import jamsession_accounts
+            with unittest.mock.patch.object(jamsession_accounts.subprocess, "Popen") as popen:
+                line = jamsession_accounts.launch_usage("claude", "personal")
+            popen.assert_not_called()
+        self.assertTrue(line.endswith("[1m ago]") or line.endswith("[just now]"), line)
 
 
 class UsageAccountTests(unittest.TestCase):

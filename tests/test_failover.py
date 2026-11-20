@@ -13,6 +13,9 @@ import unittest
 os.environ["JAMSESSION_GROK_NO_CREDIT_MARK"] = os.path.join(tempfile.gettempdir(), "jamsession-test-no-grok-mark")
 
 ROOT = Path(__file__).resolve().parents[1]
+# Launches must never start a real background usage refresh.
+os.environ["JAMSESSION_USAGE_REFRESH"] = "0"
+
 REFUSAL = 75
 spec = importlib.util.spec_from_file_location("failover", ROOT / "usage" / "jamsession_failover.py")
 failover = importlib.util.module_from_spec(spec)

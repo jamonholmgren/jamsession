@@ -16,6 +16,9 @@ import threading
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+# Launches must never start a real background usage refresh.
+os.environ["JAMSESSION_USAGE_REFRESH"] = "0"
+
 
 
 class Peer(socketserver.BaseRequestHandler):

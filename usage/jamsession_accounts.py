@@ -22,6 +22,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 
 try:
     import tomllib
@@ -543,6 +544,121 @@ def cached_weekly_remaining(provider: str, account: str) -> float | None:
     return failover.governing_remaining(windows)
 
 
+USAGE_TTL_SECONDS = 1800
+REFRESH_LOCK_SECONDS = 300
+
+
+def _cached_row(provider: str, account: str) -> dict | None:
+    """The cached usage row for this account, any status, or None."""
+    rows = _load_usage_cache().get("providers")
+    if not isinstance(rows, list):
+        return None
+    tagged = [row for row in rows if isinstance(row, dict) and row.get("agent") == provider
+              and (row.get("account") or "") == account]
+    if tagged:
+        return tagged[0]
+    if not account or account == default_account(provider):
+        untagged = [row for row in rows if isinstance(row, dict) and row.get("agent") == provider
+                    and not row.get("account")]
+        if untagged:
+            return untagged[0]
+    return None
+
+
+def _row_age(row: dict | None) -> float | None:
+    checked = row.get("checked_at") if row else None
+    if isinstance(checked, (int, float)) and not isinstance(checked, bool):
+        return max(0.0, time.time() - checked)
+    try:
+        return max(0.0, time.time() - usage_cache_path().stat().st_mtime) if row else None
+    except OSError:
+        return None
+
+
+def _age_text(seconds: float) -> str:
+    if seconds < 90:
+        return "just now"
+    if seconds < 90 * 60:
+        return f"{round(seconds / 60)}m ago"
+    if seconds < 36 * 3600:
+        return f"{round(seconds / 3600)}h ago"
+    return f"{round(seconds / 86400)}d ago"
+
+
+def _governing_window(windows: list) -> dict | None:
+    """The longest window (lowest remaining among ties), skipping a short session window."""
+    import jamsession_failover as failover
+    usable = [w for w in windows if isinstance(w, dict) and isinstance(w.get("remaining_percent"), (int, float))
+              and not isinstance(w.get("remaining_percent"), bool)]
+    long_ones = [w for w in usable if not failover.is_short_window(w)] or usable
+    if not long_ones:
+        return None
+    return min(long_ones, key=lambda w: (-(failover.window_minutes(w) or 0), w["remaining_percent"]))
+
+
+def refresh_usage_in_background(provider: str) -> bool:
+    """Start a detached `jamsession usage <provider>` that rewrites the cache. Never waits.
+
+    A lock file stops a second refresh of the same provider for a few minutes.
+    JAMSESSION_USAGE_REFRESH=0 turns this off.
+    """
+    if os.environ.get("JAMSESSION_USAGE_REFRESH", "1") == "0":
+        return False
+    lock = usage_cache_path().with_name(f"{usage_cache_path().name}.refresh-{provider}")
+    try:
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        if lock.exists() and time.time() - lock.stat().st_mtime < REFRESH_LOCK_SECONDS:
+            return False
+        lock.write_text(f"{os.getpid()}\n", encoding="utf-8")
+        subprocess.Popen(
+            [str(_usage_helper()), provider, "--json"],
+            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            start_new_session=True, cwd=os.environ.get("JAMSESSION_CWD") or None,
+        )
+    except (OSError, AccountError, subprocess.SubprocessError):
+        return False
+    return True
+
+
+def launch_usage(provider: str, account: str) -> str:
+    """One line for a run that is starting: this account's cached usage.
+
+    Reads the cache only. A missing or stale row starts a background refresh,
+    so the next launch shows newer numbers; this launch never waits for it.
+    """
+    provider = canonical(provider)
+    account = "" if account in ("", "-") else account
+    label = f"{provider}:{account}" if account else provider
+    try:
+        item = _account(provider, account) if account else None
+    except AccountError:
+        item = None
+    if item is not None and item.monthly_budget_usd is not None:
+        spent = month_spend(provider, item.name)
+        return f"usage: {label} {money(spent)} of {money(item.monthly_budget_usd)} this month"
+    row = _cached_row(provider, account)
+    age = _row_age(row)
+    try:
+        ttl = float(os.environ.get("JAMSESSION_USAGE_TTL", USAGE_TTL_SECONDS))
+    except ValueError:
+        ttl = USAGE_TTL_SECONDS
+    refreshing = (age is None or age >= ttl) and refresh_usage_in_background(provider)
+    tail = "; refreshing" if refreshing else ""
+    if row is None:
+        return f"usage: {label} not cached yet{tail}"
+    when = f" [{_age_text(age)}{tail}]" if age is not None else (f" [{tail[2:]}]" if tail else "")
+    if row.get("status") != "ok":
+        return f"usage: {label} unavailable at last check{when}"
+    window = _governing_window(row.get("windows") or [])
+    if window is None:
+        return f"usage: {label} no usage window reported{when}"
+    reset = str(window.get("reset_display") or "").strip()
+    reset = f", resets {reset}" if reset and reset != "not exposed" else ""
+    name = str(window.get("label") or "").strip()
+    name = f" {name}:" if name and name != provider else ""
+    return f"usage: {label}{name} {window['remaining_percent']:g}% left{reset}{when}"
+
+
 def _below_account_floor(provider: str, item: Account) -> bool:
     """True when the cached weekly remaining is below this account's own floor.
 
@@ -647,7 +763,8 @@ def store_usage_report(raw: str) -> None:
             if isinstance(row, dict) and isinstance(row.get("agent"), str)
         }
         kept = [row for row in old_rows if not (isinstance(row, dict) and row.get("agent") in replaced)]
-        fresh = [row for row in new_rows if isinstance(row, dict)]
+        checked = int(time.time())
+        fresh = [dict(row, checked_at=checked) for row in new_rows if isinstance(row, dict)]
         status = incoming.get("status") if isinstance(incoming.get("status"), str) else "partial"
         payload = {"schema_version": 1, "status": status, "providers": kept + fresh}
         temporary = path.with_name(path.name + ".tmp")
@@ -1130,6 +1247,14 @@ def main(argv: list[str]) -> int:
             raise AccountError("env needs <provider> <account>")
         for key, value in env_for(*args).items():
             print(f"{key}={value}")
+        return 0
+    if command == "launch-usage":
+        if len(args) != 2:
+            raise AccountError("launch-usage needs <provider> <account|->")
+        try:
+            print(launch_usage(*args))
+        except Exception:  # A usage line must never stop a launch.
+            pass
         return 0
     if command == "auth-overrides":
         if len(args) != 1:

@@ -886,6 +886,21 @@ account_adapter_hints() {
 }
 
 # Bash 3.2 with nounset cannot expand an empty array, hence the ${a[@]+...} form.
+# One stderr line with the chosen account's cached usage. Reads the cache only;
+# a stale cache refreshes in the background for later launches.
+launch_usage_line() {
+  local helper="" candidate line
+  [ "${JAMSESSION_USAGE_LINE:-1}" != 0 ] || return 0
+  command -v "${JAMSESSION_PYTHON_BIN:-python3}" >/dev/null 2>&1 || return 0
+  for candidate in "$JAMSESSION_HOME/bin/jamsession_accounts.py" "$JAMSESSION_HOME/usage/jamsession_accounts.py" \
+    "$SCRIPT_DIR/jamsession_accounts.py" "$SCRIPT_DIR/usage/jamsession_accounts.py"; do
+    [ -f "$candidate" ] && { helper="$candidate"; break; }
+  done
+  [ -n "$helper" ] || return 0
+  line="$("${JAMSESSION_PYTHON_BIN:-python3}" "$helper" launch-usage "$PROVIDER" "${RESOLVED_ACCOUNT:--}" 2>/dev/null)" || return 0
+  [ -z "$line" ] || printf 'jamsession: %s\n' "$line" >&2
+}
+
 with_account_env() {
   if [ "${#ACCOUNT_ENV[@]}" -eq 0 ] && [ "${#ACCOUNT_UNSET[@]}" -eq 0 ]; then
     "$@"
@@ -1558,6 +1573,7 @@ case "$command_name" in
     case "$4" in read|edit) ;; *) die "access must be read or edit" ;; esac
     adapter="$(require_adapter "$PROVIDER")"
     if [ "$1" = new ]; then prepare_account new "$1"; else prepare_account resume "$1"; fi
+    launch_usage_line
     if [ -n "$WORKSHEET" ]; then
       run_with_worksheet "$adapter" "$PROVIDER" "$@"
     elif [ "$ACCOUNT_RECORD" -eq 1 ]; then

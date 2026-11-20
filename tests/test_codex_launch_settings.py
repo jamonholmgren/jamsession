@@ -37,7 +37,8 @@ print(json.dumps({'type':'thread.started', 'thread_id':'owned-session'}))
                     if not key.startswith('JAMSESSION_') and key not in ('CODEX_THREAD_ID', 'CODEX_HOME')}
         self.env.update(HOME=str(self.root), CODEX_HOME=str(self.root / '.codex'),
                         JAMSESSION_CONFIG=str(self.config), JAMSESSION_CODEX_BIN=str(binary),
-                        JAMSESSION_CWD=str(self.root), LAUNCH_LOG=str(self.log))
+                        JAMSESSION_CWD=str(self.root), LAUNCH_LOG=str(self.log),
+                        JAMSESSION_USAGE_REFRESH='0')
         (self.root / '.codex').mkdir()
 
     def tearDown(self):

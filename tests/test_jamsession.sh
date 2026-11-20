@@ -36,6 +36,8 @@ JAMSESSION_SESSION_ACCOUNTS="$TEMP_ROOT/no-session-accounts.json"
 JAMSESSION_SPEND="$TEMP_ROOT/no-spend.json"
 JAMSESSION_USAGE_CACHE="$TEMP_ROOT/usage-cache.json"
 export JAMSESSION_ACCOUNTS JAMSESSION_SESSION_ACCOUNTS JAMSESSION_SPEND JAMSESSION_USAGE_CACHE
+# Launches must never start a real background usage refresh.
+export JAMSESSION_USAGE_REFRESH=0
 
 passed=0
 failed=0
