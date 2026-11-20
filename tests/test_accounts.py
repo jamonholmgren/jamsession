@@ -241,6 +241,31 @@ class AccountCLITests(AccountHarness):
         self.assertEqual(codex.returncode, 0, codex.stderr)
         self.assertIn("INHERITED=oauthapikeyauthtoken\n", codex.stdout)
 
+    def test_a_config_exported_token_does_not_reach_an_account_run(self):
+        self.claude_accounts()
+        adapter = self.root / "adapters" / "jamsession_claude"
+        adapter.write_text(
+            "#!/usr/bin/env bash\n"
+            f'source "{ROOT / "adapters" / "_jamsession_adapter_common"}"\n'
+            "jamsession_adapter_setup claude claude JAMSESSION_CLAUDE_BIN\n"
+            "printf 'session: sess-%s\\n' \"${TEST_ACCOUNT_MARKER:-none}\" >&2\n"
+            "printf 'MARKER=%s\\n' \"${TEST_ACCOUNT_MARKER:-none}\"\n"
+            "printf 'INHERITED=%s%s\\n' \"${CLAUDE_CODE_OAUTH_TOKEN:+oauth}\" \"${ANTHROPIC_API_KEY:+apikey}\"\n"
+        )
+        adapter.chmod(0o755)
+        self.config.write_text(
+            "export CLAUDE_CODE_OAUTH_TOKEN=config-dummy\n"
+            "TEST_ACCOUNT_MARKER=config\n"
+        )
+        reply = self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertIn("INHERITED=\n", reply.stdout)
+        self.assertIn("MARKER=personal", reply.stdout)
+        self.accounts_path.unlink()
+        plain = self.jam("run", "claude", "new", "default", "default", "edit", "hi")
+        self.assertEqual(plain.returncode, 0, plain.stderr)
+        self.assertIn("INHERITED=oauth\n", plain.stdout)
+
     def test_an_account_may_set_its_own_claude_token(self):
         self.write_accounts(
             "[claude.token]\n"

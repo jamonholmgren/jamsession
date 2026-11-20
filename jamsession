@@ -840,6 +840,8 @@ prepare_account() {
   local kind="$1" session="$2" output line status=0 file env_name env_value=""
   ACCOUNT_ENV=()
   ACCOUNT_UNSET=()
+  # Only this launch may tell the adapter what to drop and keep.
+  unset JAMSESSION_AUTH_UNSET JAMSESSION_ACCOUNT_KEYS
   RESOLVED_ACCOUNT=""
   ACCOUNT_RECORD=0
   SESSION_RECORDED=0
@@ -864,6 +866,23 @@ prepare_account() {
       *) die "accounts helper returned an unexpected line" ;;
     esac
   done <<<"$output"
+  account_adapter_hints
+}
+
+# The bundled adapters source jamsession.conf again, and a config may export a
+# credential (for example by sourcing a token file). Names only, never values:
+# the adapter drops JAMSESSION_AUTH_UNSET and restores JAMSESSION_ACCOUNT_KEYS
+# after that source.
+account_adapter_hints() {
+  local item names="" keys=""
+  [ "${#ACCOUNT_UNSET[@]}" -gt 0 ] || return 0
+  for item in "${ACCOUNT_UNSET[@]}"; do
+    [ "$item" = -u ] || names="${names:+$names }$item"
+  done
+  for item in ${ACCOUNT_ENV[@]+"${ACCOUNT_ENV[@]}"}; do
+    keys="${keys:+$keys }${item%%=*}"
+  done
+  ACCOUNT_ENV+=("JAMSESSION_AUTH_UNSET=$names" "JAMSESSION_ACCOUNT_KEYS=$keys")
 }
 
 # Bash 3.2 with nounset cannot expand an empty array, hence the ${a[@]+...} form.

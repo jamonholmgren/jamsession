@@ -9,12 +9,30 @@ jamsession_adapter_setup() {
   JAMSESSION_BIN_VARIABLE="$3"
   JAMSESSION_CONFIG="${JAMSESSION_CONFIG:-${JAMSESSION_HOME:-$HOME/.agents/jamsession}/jamsession.conf}"
   if [ -f "$JAMSESSION_CONFIG" ]; then
-    # shellcheck source=/dev/null
-    source "$JAMSESSION_CONFIG"
+    jamsession_source_config_keeping_account
   fi
   eval "JAMSESSION_PROVIDER_BIN=\${$JAMSESSION_BIN_VARIABLE:-$JAMSESSION_DEFAULT_BIN}"
   JAMSESSION_CWD="${JAMSESSION_CWD:-$PWD}"
   unset JAMSESSION_PROMPT_LITERAL
+}
+
+# A named account's env wins over jamsession.conf, and credentials the launcher
+# dropped (JAMSESSION_AUTH_UNSET) stay dropped even if the config exports them.
+jamsession_source_config_keeping_account() {
+  local key index=0 kept=()
+  for key in ${JAMSESSION_ACCOUNT_KEYS:-}; do
+    kept+=("${!key-}")
+  done
+  # shellcheck source=/dev/null
+  source "$JAMSESSION_CONFIG"
+  for key in ${JAMSESSION_AUTH_UNSET:-}; do
+    unset "$key"
+  done
+  for key in ${JAMSESSION_ACCOUNT_KEYS:-}; do
+    printf -v "$key" '%s' "${kept[$index]}"
+    export "$key"
+    index=$((index + 1))
+  done
 }
 
 # Adapter scratch files live in a private mktemp directory. A predictable path
