@@ -220,6 +220,11 @@ def worktree_gitdir(root):
     return os.path.join(root, line[len("gitdir: "):]) if line.startswith("gitdir: ") else None
 
 
+def inside(path, root):
+    path, root = os.path.realpath(path), os.path.realpath(root)
+    return os.path.commonpath([path, root]) == root
+
+
 def saved_resume_params(thread):
     """Use only the provider's exact rollout and saved, representable policy."""
     session = thread["id"]
@@ -278,9 +283,10 @@ def saved_resume_params(thread):
                     expected.append({"path": {"type": "path", "path": os.path.join(path, protected)},
                                      "access": "read", "missing_path_behavior": "skip"})
                 # Codex also protects a linked worktree's own git directory, named by its .git file.
+                # Accept it only outside every writable root, where it is read-only anyway and restore cannot lose it.
                 gitdir = worktree_gitdir(path)
                 entry = gitdir and {"path": {"type": "path", "path": gitdir}, "access": "read", "missing_path_behavior": "skip"}
-                if entry and entry in entries:
+                if entry and entry in entries and not any(inside(gitdir, root) for root in roots):
                     expected.append(entry)
             for special in ("slash_tmp", "tmpdir"):
                 entry = {"path": {"type": "special", "value": {"kind": special}}, "access": "write"}

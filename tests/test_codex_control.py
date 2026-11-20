@@ -672,16 +672,18 @@ class ControlTests(unittest.TestCase):
     def test_linked_worktree_gitdir_restores_only_when_it_is_the_roots_own(self):
         # Codex's real shape for a worktree slot: the root listed twice, its protections partly repeated.
         self.peer.scenario = "cold"
-        (self.path / ".git").write_text("gitdir: /repo/.git/worktrees/slot\n")
         entries = self.peer.saved["permission_profile"]["file_system"]["entries"]
         for protections in ((".git", ".agents", ".codex", ".aws"), (".git", ".agents")):
             entries.append({"path": {"type": "path", "path": str(self.path)}, "access": "write"})
             for protected in protections:
                 entries.append({"path": {"type": "path", "path": str(self.path / protected)},
                                 "access": "read", "missing_path_behavior": "skip"})
-        for gitdir, code in (("/repo/.git/worktrees/slot", 0), ("/repo/.git/worktrees/other", 2)):
+        inner = str(self.path / "inner" / "slot")  # inside the writable root: restore could not keep it read-only
+        for named, gitdir, code in (("/repo/.git/worktrees/slot", "/repo/.git/worktrees/slot", 0),
+                                    ("/repo/.git/worktrees/slot", "/repo/.git/worktrees/other", 2), (inner, inner, 2)):
             with self.subTest(gitdir=gitdir):
                 self.peer.calls.clear()
+                (self.path / ".git").write_text(f"gitdir: {named}\n")
                 entries.append({"path": {"type": "path", "path": gitdir}, "access": "read", "missing_path_behavior": "skip"})
                 self.peer.save()
                 result = self.cli("message", "codex", "fixture", "hello")
