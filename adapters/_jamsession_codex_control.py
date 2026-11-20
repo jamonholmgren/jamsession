@@ -222,8 +222,21 @@ def worktree_gitdir(root):
 
 
 def inside(path, root):
-    path, root = os.path.realpath(path), os.path.realpath(root)
-    return os.path.commonpath([path, root]) == root
+    """Whether path is root or under it, by file identity so case-insensitive spellings and symlinks match."""
+    try:
+        target = os.stat(root)
+    except OSError:
+        return True  # unknown is treated as writable
+    path = os.path.realpath(path)
+    while True:
+        try:
+            if os.path.samestat(os.stat(path), target):
+                return True
+        except OSError:
+            pass
+        if os.path.dirname(path) == path:
+            return False
+        path = os.path.dirname(path)
 
 
 def saved_resume_params(thread):
