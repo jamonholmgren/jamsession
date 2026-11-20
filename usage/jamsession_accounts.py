@@ -969,7 +969,7 @@ def _install_claude_wrapper(name: str) -> None:
     wrapper = bindir / f"claude-{name}"
     if wrapper.exists():
         current = wrapper.read_text(encoding="utf-8", errors="replace")
-        if "jamsession account wrapper" not in current.splitlines()[:3]:
+        if "# jamsession account wrapper" not in current.splitlines()[:3]:
             raise AccountError(f"{wrapper} already exists")
     script = (
         "#!/bin/sh\n"

@@ -859,6 +859,13 @@ class AccountsCommandTests(AccountHarness):
         ran = subprocess.run([str(wrapper)], capture_output=True, text=True, timeout=10,
                              env=dict(os.environ, **INHERITED_AUTH, PATH=f"{fake_bin}:{os.environ['PATH']}"))
         self.assertEqual(ran.stdout, "INHERITED=\n")
+        wrapper.write_text("#!/bin/sh\n# jamsession account wrapper\nexec claude \"$@\"\n")
+        refreshed = subprocess.run(
+            [sys.executable, "-c", "import sys; sys.path.insert(0, sys.argv[1]); import jamsession_accounts as a; "
+             "a._install_claude_wrapper('personal')", str(ROOT / "usage")],
+            env=dict(self.env), capture_output=True, text=True, timeout=10)
+        self.assertEqual(refreshed.returncode, 0, refreshed.stderr)
+        self.assertIn("unset CLAUDE_CODE_OAUTH_TOKEN", wrapper.read_text())
         self.assertEqual(self.accounts_path.stat().st_mode & 0o777, 0o600)
         table = tomllib.loads(self.accounts_path.read_text())
         self.assertEqual(table["claude"]["personal"]["env"]["CLAUDE_CONFIG_DIR"], "~/.claude-personal")
