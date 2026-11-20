@@ -333,7 +333,7 @@ class LaunchUsageLineTests(AccountHarness):
         (helper_dir / "jamsession_usage").write_text(
             "#!/bin/sh\n"
             f'printf "%s\\n" "$*" >>"{started}"\n'
-            "sleep 8\n"
+            f'while [ ! -f "{self.root / "gate"}" ]; do sleep 0.2; done\n'
             "printf '%s' '{\"providers\":[{\"agent\":\"claude\",\"account\":\"personal\",\"status\":\"ok\","
             "\"windows\":[{\"label\":\"Current week (all models)\",\"remaining_percent\":55,\"window_minutes\":10080}]}]}' | "
             f'python3 "{helper_dir / "jamsession_accounts.py"}" store-usage\n'
@@ -345,14 +345,14 @@ class LaunchUsageLineTests(AccountHarness):
             (home / "bin" / name).write_text((helper_dir / name).read_text())
         (home / "bin" / "jamsession_usage").chmod(0o755)
         extra = {"JAMSESSION_HOME": str(home), "JAMSESSION_USAGE_REFRESH": "1"}
-        begin = time.monotonic()
+        # The refresh cannot finish until the gate exists, so a launch that returns did not wait for it.
         first = self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi", extra=extra)
-        self.assertLess(time.monotonic() - begin, 6, "the launch waited for the refresh")
         self.assertEqual(first.returncode, 0, first.stderr)
         self.assertIn("72% left, resets Nov 25 at 11am [2h ago; refreshing]", first.stderr)
         second = self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi", extra=extra)
         self.assertIn("[2h ago]", second.stderr, "a second launch must not start another refresh")
-        deadline = time.time() + 20
+        (self.root / "gate").write_text("")
+        deadline = time.time() + 60
         while time.time() < deadline and "55" not in self.usage_cache.read_text():
             time.sleep(0.5)
         self.assertEqual(started.read_text().splitlines(), ["claude --json"])

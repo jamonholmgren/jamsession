@@ -5,3 +5,4 @@ adapters/__pycache__/
 # Local experiment evidence is never part of the public package.
 /AGENT-COMPARISON-RESULTS.md
 /.agents/scratch/
+.DS_Store

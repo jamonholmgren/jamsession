@@ -1122,6 +1122,11 @@ command. --link symlinks Claude settings.json and skills, or Codex config.toml,
 from the default account. list shows each account, its usage, and API spend
 against a monthly budget. Jam Session does not overwrite an existing entry.
 
+Every new or resumed run prints one line with the chosen account's usage from
+the usage cache. A cache older than 30 minutes (JAMSESSION_USAGE_TTL seconds)
+refreshes in the background; the run never waits. JAMSESSION_USAGE_LINE=0 hides
+the line and JAMSESSION_USAGE_REFRESH=0 stops the refresh.
+
   jamsession run claude:personal new opus@latest high edit "..."
   JAMSESSION_CLAUDE_ACCOUNT=personal jamsession run claude new ...
 
