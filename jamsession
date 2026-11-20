@@ -832,11 +832,14 @@ split_provider() {
   provider="$PROVIDER"
 }
 
-# Sets ACCOUNT_ENV, RESOLVED_ACCOUNT and ACCOUNT_RECORD for this invocation.
-# The env is passed only to the adapter process, not exported here.
+# Sets ACCOUNT_ENV, ACCOUNT_UNSET, RESOLVED_ACCOUNT and ACCOUNT_RECORD for this
+# invocation. ACCOUNT_UNSET drops inherited credentials (a desktop app's
+# CLAUDE_CODE_OAUTH_TOKEN) so the account's own login applies. Both reach only
+# the adapter process; nothing is exported here.
 prepare_account() {
   local kind="$1" session="$2" output line status=0 file env_name env_value=""
   ACCOUNT_ENV=()
+  ACCOUNT_UNSET=()
   RESOLVED_ACCOUNT=""
   ACCOUNT_RECORD=0
   SESSION_RECORDED=0
@@ -856,17 +859,19 @@ prepare_account() {
       "account "*) RESOLVED_ACCOUNT="${line#account }" ;;
       "record 1") ACCOUNT_RECORD=1 ;;
       "record 0") ACCOUNT_RECORD=0 ;;
+      "unset "*) ACCOUNT_UNSET+=(-u "${line#unset }") ;;
       "env "*) ACCOUNT_ENV+=("${line#env }") ;;
       *) die "accounts helper returned an unexpected line" ;;
     esac
   done <<<"$output"
 }
 
+# Bash 3.2 with nounset cannot expand an empty array, hence the ${a[@]+...} form.
 with_account_env() {
-  if [ "${#ACCOUNT_ENV[@]}" -eq 0 ]; then
+  if [ "${#ACCOUNT_ENV[@]}" -eq 0 ] && [ "${#ACCOUNT_UNSET[@]}" -eq 0 ]; then
     "$@"
   else
-    env "${ACCOUNT_ENV[@]}" "$@"
+    env ${ACCOUNT_UNSET[@]+"${ACCOUNT_UNSET[@]}"} ${ACCOUNT_ENV[@]+"${ACCOUNT_ENV[@]}"} "$@"
   fi
 }
 
@@ -880,10 +885,10 @@ note_session_line() {
 }
 
 launch_exec() {
-  if [ "${#ACCOUNT_ENV[@]}" -eq 0 ]; then
+  if [ "${#ACCOUNT_ENV[@]}" -eq 0 ] && [ "${#ACCOUNT_UNSET[@]}" -eq 0 ]; then
     exec "$@"
   fi
-  exec env "${ACCOUNT_ENV[@]}" "$@"
+  exec env ${ACCOUNT_UNSET[@]+"${ACCOUNT_UNSET[@]}"} ${ACCOUNT_ENV[@]+"${ACCOUNT_ENV[@]}"} "$@"
 }
 
 account_session_tap() {

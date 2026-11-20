@@ -466,6 +466,17 @@ accounts_toml() {
   fi
 }
 
+# Unsets inherited credentials (a desktop app's CLAUDE_CODE_OAUTH_TOKEN) inside
+# the caller's subshell, so an account's usage is read with its own login.
+clear_auth_overrides() {
+  local provider="$1" helper names key
+  helper="$(accounts_py)" || return 1
+  names="$("${JAMSESSION_PYTHON_BIN:-python3}" "$helper" auth-overrides "$provider")" || return 1
+  for key in $names; do
+    unset "$key"
+  done
+}
+
 # Exports one account's env inside the caller's subshell, so the next account
 # does not inherit it.
 apply_account_env() {
@@ -547,7 +558,7 @@ $requested_account
     if [ "$full_count" -le 1 ]; then
       printf '%s %s %s\n' "$provider" "$provider" "" >>"$TEMP_DIR/manifest"
       (
-        if [ -z "$only_account" ] || apply_account_env "$provider" "$only_account"; then
+        if [ -z "$only_account" ] || { clear_auth_overrides "$provider" && apply_account_env "$provider" "$only_account"; }; then
           collect_provider "$provider" "$provider" "" "$only_account"
         else
           printf '{"agent":"%s","status":"unavailable","windows":[],"error":{"code":"usage_unavailable","message":"could not read account env"}}' \
@@ -564,7 +575,7 @@ $requested_account
           [ -n "$account" ] || continue
           slot="$provider.$account"
           (
-            if apply_account_env "$provider" "$account"; then
+            if clear_auth_overrides "$provider" && apply_account_env "$provider" "$account"; then
               collect_provider "$provider" "$slot" "$account"
             else
               printf '{"agent":"%s","account":"%s","status":"unavailable","windows":[],"error":{"code":"usage_unavailable","message":"could not read account env"}}' \

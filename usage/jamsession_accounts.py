@@ -36,6 +36,27 @@ ENV_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 ALIASES = {"agy": "antigravity", "gemini": "antigravity"}
 # Today's API-key runner. A different backend is unavailable on purpose.
 CLAUDE_CLI_BACKEND = "claude-cli"
+# Credentials a parent process (such as the Claude desktop app) can export.
+# Claude prefers them over CLAUDE_CONFIG_DIR's own login, so an account run
+# drops them first; the account's env and keychain_env still apply after.
+AUTH_OVERRIDES = {
+    "claude": (
+        "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN",
+        "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR", "CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR",
+        "CLAUDE_CODE_SESSION_ACCESS_TOKEN", "CLAUDE_CODE_SESSIONS_OAUTH_TOKEN",
+        "CLAUDE_CODE_GATEWAY_TOKEN", "CLAUDE_CODE_GATEWAY_TOKEN_FILE_DESCRIPTOR",
+        "CLAUDE_CODE_HOST_AUTH_ENV_VAR", "CLAUDE_CODE_HOST_CREDS_FILE",
+        "CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH", "CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH",
+        "CLAUDE_CODE_ACCOUNT_UUID", "CLAUDE_CODE_ORGANIZATION_UUID", "CLAUDE_CODE_USER_EMAIL",
+        "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
+        "ANTHROPIC_IDENTITY_TOKEN", "ANTHROPIC_IDENTITY_TOKEN_FILE",
+    ),
+}
+
+
+def auth_overrides(provider: str) -> tuple[str, ...]:
+    """Inherited variables an account run must not see."""
+    return AUTH_OVERRIDES.get(canonical(provider), ())
 
 
 class AccountError(Exception):
@@ -1080,6 +1101,9 @@ def main(argv: list[str]) -> int:
         # stdout is captured by the CLI and must not be echoed: it may hold a secret.
         print(f"account {account}")
         print(f"record {1 if remember else 0}")
+        if account:
+            for key in auth_overrides(args[1]):
+                print(f"unset {key}")
         for key, value in env.items():
             print(f"env {key}={value}")
         return 0
@@ -1105,6 +1129,12 @@ def main(argv: list[str]) -> int:
             raise AccountError("env needs <provider> <account>")
         for key, value in env_for(*args).items():
             print(f"{key}={value}")
+        return 0
+    if command == "auth-overrides":
+        if len(args) != 1:
+            raise AccountError("auth-overrides needs <provider>")
+        for key in auth_overrides(args[0]):
+            print(key)
         return 0
     if command == "budget-fragment":
         if len(args) != 2:

@@ -23,7 +23,15 @@ esac
 printf 'MARKER=%s\\n' "${TEST_ACCOUNT_MARKER:-none}"
 printf 'CLAUDE_CONFIG_DIR=%s\\n' "${CLAUDE_CONFIG_DIR:-}"
 printf 'CODEX_HOME=%s\\n' "${CODEX_HOME:-}"
+printf 'INHERITED=%s%s%s\\n' "${CLAUDE_CODE_OAUTH_TOKEN:+oauth}" "${ANTHROPIC_API_KEY:+apikey}" "${ANTHROPIC_AUTH_TOKEN:+authtoken}"
 """
+
+# Dummy values standing in for what the Claude desktop app exports.
+INHERITED_AUTH = {
+    "CLAUDE_CODE_OAUTH_TOKEN": "inherited-dummy",
+    "ANTHROPIC_API_KEY": "inherited-dummy",
+    "ANTHROPIC_AUTH_TOKEN": "inherited-dummy",
+}
 
 
 def claude_record(text):
@@ -211,7 +219,81 @@ class AccountCLITests(AccountHarness):
         self.assertEqual(json.loads(self.sessions.read_text())["claude"]["sess-personal"], "personal")
 
 
+    def test_inherited_claude_credentials_never_reach_an_account_run(self):
+        self.claude_accounts()
+        tiers = self.root / "tiers.toml"
+        tiers.write_text(opus_tiers('  { harness = "claude", id = "opus-test" },'))
+        extra = dict(INHERITED_AUTH, JAMSESSION_TIERS=str(tiers),
+                     JAMSESSION_LATEST_CACHE=str(self.root / "latest.json"))
+        runs = {
+            "named": self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi", extra=extra),
+            "bare": self.jam("run", "claude", "new", "default", "default", "edit", "hi", extra=extra),
+            "resume": self.jam("run", "claude", "sess-personal", "default", "default", "edit", "hi", extra=extra),
+            "message": self.jam("message", "claude", "sess-personal", "hi", extra=extra),
+            "failover": self.jam("run", "--failover", "--min-usage", "0", "claude", "new", "opus-test",
+                                 "high", "edit", "hi", extra=extra),
+        }
+        for name, reply in runs.items():
+            self.assertEqual(reply.returncode, 0, f"{name}: {reply.stderr}")
+            self.assertIn("INHERITED=\n", reply.stdout, name)
+            self.assertNotIn("inherited-dummy", reply.stdout + reply.stderr, name)
+        codex = self.jam("run", "codex", "new", "default", "default", "edit", "hi", extra=extra)
+        self.assertEqual(codex.returncode, 0, codex.stderr)
+        self.assertIn("INHERITED=oauthapikeyauthtoken\n", codex.stdout)
+
+    def test_an_account_may_set_its_own_claude_token(self):
+        self.write_accounts(
+            "[claude.token]\n"
+            'env = { CLAUDE_CODE_OAUTH_TOKEN = "account-dummy", TEST_ACCOUNT_MARKER = "token" }\n'
+        )
+        reply = self.jam("run", "claude:token", "new", "default", "default", "edit", "hi", extra=INHERITED_AUTH)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertIn("INHERITED=oauth\n", reply.stdout)
+
+
 class UsageAccountTests(unittest.TestCase):
+    def test_usage_is_read_without_inherited_claude_credentials(self):
+        temp = tempfile.TemporaryDirectory(prefix="jamsession-account-usage-auth-")
+        self.addCleanup(temp.cleanup)
+        root = Path(temp.name)
+        log = root / "usage-launches"
+        fake = root / "claude"
+        fake.write_text(
+            "#!/bin/sh\n"
+            'printf \'%s %s%s%s\\n\' "${TEST_ACCOUNT_MARKER:-none}" "${CLAUDE_CODE_OAUTH_TOKEN:+oauth}" '
+            '"${ANTHROPIC_API_KEY:+apikey}" "${ANTHROPIC_AUTH_TOKEN:+authtoken}" >>"$USAGE_LOG"\n'
+            "printf 'Current week (all models)\\n40%% used\\nResets Sep 7 at 7am\\n"
+            "Current week (Fable)\\n40%% used\\nResets Sep 7 at 7am\\n'\n"
+            "sleep 2\n"
+        )
+        fake.chmod(0o755)
+        accounts = root / "accounts.toml"
+        accounts.write_text(
+            '[claude.work]\nenv = { TEST_ACCOUNT_MARKER = "work" }\n\n'
+            '[claude.personal]\nenv = { TEST_ACCOUNT_MARKER = "personal" }\n'
+        )
+        config = root / "jamsession.conf"
+        config.write_text("")
+        env = os.environ.copy()
+        for name in ("JAMSESSION_HOME", "JAMSESSION_ADAPTER_DIR", "JAMSESSION_USAGE_FIXTURE_DIR",
+                     "JAMSESSION_CLAUDE_ACCOUNT", "TEST_ACCOUNT_MARKER"):
+            env.pop(name, None)
+        env.update(INHERITED_AUTH)
+        env.update({
+            "HOME": str(root / "home"),
+            "JAMSESSION_CONFIG": str(config),
+            "JAMSESSION_ACCOUNTS": str(accounts),
+            "JAMSESSION_SESSION_ACCOUNTS": str(root / "sessions.json"),
+            "JAMSESSION_USAGE_CACHE": str(root / "usage-cache.json"),
+            "JAMSESSION_CLAUDE_BIN": str(fake),
+            "JAMSESSION_USAGE_TIMEOUT": "8",
+            "USAGE_LOG": str(log),
+        })
+        reply = subprocess.run([str(ROOT / "jamsession"), "usage", "claude", "--json"],
+                               env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(sorted(log.read_text().splitlines()), ["personal ", "work "])
+
     def test_each_account_is_reported_from_its_own_env(self):
         temp = tempfile.TemporaryDirectory(prefix="jamsession-account-usage-")
         self.addCleanup(temp.cleanup)
