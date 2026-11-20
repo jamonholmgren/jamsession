@@ -678,9 +678,12 @@ class ControlTests(unittest.TestCase):
             for protected in protections:
                 entries.append({"path": {"type": "path", "path": str(self.path / protected)},
                                 "access": "read", "missing_path_behavior": "skip"})
+        for special in ("slash_tmp", "tmpdir"):
+            entries.append({"path": {"type": "special", "value": {"kind": special}}, "access": "write"})
         inner = str(self.path / "inner" / "slot")  # inside the writable root: restore could not keep it read-only
         for named, gitdir, code in (("/repo/.git/worktrees/slot", "/repo/.git/worktrees/slot", 0),
-                                    ("/repo/.git/worktrees/slot", "/repo/.git/worktrees/other", 2), (inner, inner, 2)):
+                                    ("/repo/.git/worktrees/slot", "/repo/.git/worktrees/other", 2), (inner, inner, 2),
+                                    ("/tmp/slot", "/tmp/slot", 2)):
             with self.subTest(gitdir=gitdir):
                 self.peer.calls.clear()
                 (self.path / ".git").write_text(f"gitdir: {named}\n")

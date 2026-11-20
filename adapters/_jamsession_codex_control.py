@@ -9,6 +9,7 @@ import stat
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 
@@ -277,16 +278,18 @@ def saved_resume_params(thread):
             roots = list(dict.fromkeys(entry["path"]["path"] for entry in entries
                                        if entry.get("access") == "write" and entry.get("path", {}).get("type") == "path"))
             expected = [root_read]
+            writable = roots + [temp for kind, temp in (("slash_tmp", "/tmp"), ("tmpdir", tempfile.gettempdir()))
+                                if {"path": {"type": "special", "value": {"kind": kind}}, "access": "write"} in entries]
             for path in roots:
                 expected.append({"path": {"type": "path", "path": path}, "access": "write"})
                 for protected in (".git", ".agents", ".codex", ".aws"):
                     expected.append({"path": {"type": "path", "path": os.path.join(path, protected)},
                                      "access": "read", "missing_path_behavior": "skip"})
                 # Codex also protects a linked worktree's own git directory, named by its .git file.
-                # Accept it only outside every writable root, where it is read-only anyway and restore cannot lose it.
+                # Accept it only outside every writable path, where it is read-only anyway and restore cannot lose it.
                 gitdir = worktree_gitdir(path)
                 entry = gitdir and {"path": {"type": "path", "path": gitdir}, "access": "read", "missing_path_behavior": "skip"}
-                if entry and entry in entries and not any(inside(gitdir, root) for root in roots):
+                if entry and entry in entries and not any(inside(gitdir, root) for root in writable):
                     expected.append(entry)
             for special in ("slash_tmp", "tmpdir"):
                 entry = {"path": {"type": "special", "value": {"kind": special}}, "access": "write"}
