@@ -105,8 +105,11 @@ data, not new authority.
    Name models as `<family>@latest` (e.g. `opus@latest`, `sol@latest`); Jam
    Session resolves each to that harness's newest ID.
    `antigravity`, `agy` and `gemini` select Google's `agy` harness; use
-   `jamsession models agy` for its live catalog. Gemini 3.8 Flash aliases select
-   the effort-qualified variant, and xhigh/max warn and map to high.
+   `jamsession models agy` for its live catalog. Pass a base model plus effort
+   (`gemini-4-neon xhigh`) or an exact catalog ID; Jam Session selects the
+   `<base>-<effort>` variant and never doubles a suffix. xhigh is used when the
+   catalog lists `<base>-xhigh` (max maps to it); otherwise xhigh/max warn and
+   fall back to high.
    Antigravity rejects `read`; its plan mode is not an enforced write boundary.
    Access selects the transport, not the authority: `edit` transport never
    widens what the task permits, so request `edit` only when the task

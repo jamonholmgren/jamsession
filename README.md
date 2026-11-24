@@ -192,8 +192,11 @@ jamsession run agy new gemini-3.8-flash xhigh edit "Implement the agreed change.
 ```
 
 This selects the installed `gemini-3.8-flash-high` model, warning that `xhigh`
-maps to `high`. Low and medium select their matching variants; exact IDs are
-checked against `agy models`. Antigravity rejects `read` because its plan mode
+maps to `high` because the catalog has no `gemini-3.8-flash-xhigh`. Models with
+an xhigh variant, such as `gemini-4-neon xhigh`, use it (`max` maps there too).
+Low and medium select their matching variants; an effort-qualified ID such as
+`gemini-4-neon-high` is replaced, never doubled, and exact IDs are checked
+against `agy models`. Antigravity rejects `read` because its plan mode
 does not enforce no writes. Usage reads native `/usage` without a model turn,
 keeping Gemini and Claude/GPT quota separate. Messaging requires explicit
 `--resume-with` settings and an exited owner; there is no native queue.
