@@ -145,8 +145,15 @@ class LatestTests(unittest.TestCase):
                    "swe-3-max-lightning\nclaude-opus-5-5-high\ngpt-6.2-sol\nswe-2-max\nswe-2-flash-max\n")
         self.assertEqual(failover.newest(listing, "opus"), "claude-opus-5-5")
         self.assertEqual(failover.newest(listing, "sol"), "gpt-6.2-sol")
-        self.assertEqual(failover.newest(listing, "swe-2"), "swe-2")
+        self.assertEqual(failover.newest(listing, "swe-2.1"), "swe-2")
         self.assertEqual(failover.newest(listing, "swe-2-flash"), "swe-2-flash")
+
+    def test_swe_point_release_beats_its_base_and_old_names_alias_to_it(self):
+        listing = "swe-2-1-max-lightning\nswe-2-max\nswe-2-1-max\nswe-2-flash-max\n"
+        self.assertEqual(failover.newest(listing, "swe-2.1"), "swe-2-1")
+        self.assertEqual(failover.newest(listing, "swe-2-flash"), "swe-2-flash")
+        for name in ("swe@latest", "swe-2@latest", "swe-2.1@latest"):
+            self.assertEqual(failover.family_name(name), "swe-2.1")
 
     def latest(self, listings, ttl=3600.0):
         def lister(harness):

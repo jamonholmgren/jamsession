@@ -62,9 +62,9 @@ FAMILIES = {name: re.compile(pattern.replace("V", _VERSION) + _EFFORT) for name,
     "fable": "claude-fable-V", "opus": "claude-opus-V", "sonnet": "claude-sonnet-V", "haiku": "claude-haiku-V",
     "astra": "gpt-V-astra", "sol": "gpt-V-sol", "terra": "gpt-V-terra", "luna": "gpt-V-luna",
     "grok": "grok-V", "wonder": "muse-wonder-V", "spark": "muse-spark-V",
-    "swe-2": "swe-V", "swe-2-flash": "swe-V-flash",
+    "swe-2.1": "swe-V", "swe-2-flash": "swe-V-flash",
 }.items()}
-FAMILY_ALIASES = {"swe": "swe-2", "swe-flash": "swe-2-flash"}
+FAMILY_ALIASES = {"swe": "swe-2.1", "swe-2": "swe-2.1", "swe-flash": "swe-2-flash"}
 LATEST_TTL = 3600.0
 
 

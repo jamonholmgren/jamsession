@@ -21,8 +21,8 @@
 # each adapter maps it (Devin and Cursor append it to the ID).
 # `efforts` maps a requested effort to one this harness accepts; unlisted
 # efforts pass through. `meter = false` means `jamsession usage` does not track
-# this pool (free SWE-2, Cursor's non-Grok allotment), so low usage never
-# skips it.
+# this pool (SWE-2.1 and SWE-2 Flash, free for now; Cursor's non-Grok
+# allotment), so low usage never skips it.
 
 tiers = [
   { name = "A", models = ["fable", "astra"] },
@@ -30,8 +30,8 @@ tiers = [
   # Grok leads tier C; Wonder is tier C only at high effort; Sonnet and Terra
   # are last-resort failover, never a first choice.
   { name = "C", models = ["grok", "wonder", "sonnet", "terra"] },
-  # SWE-2 leads tier D because it is free; then routes.toml's cheap order.
-  { name = "D", models = ["swe-2", "luna", "haiku"] },
+  # SWE-2.1 leads tier D because it is free for now; then routes.toml's cheap order.
+  { name = "D", models = ["swe-2.1", "luna", "haiku"] },
   { name = "F", models = ["swe-2-flash", "spark"] },
 ]
 
@@ -81,9 +81,9 @@ via = [
   { harness = "codex", id = "terra@latest" },
 ]
 
-[model.swe-2]
+[model."swe-2.1"]
 via = [
-  { harness = "devin", id = "swe-2@latest", meter = false, efforts = { low = "medium", xhigh = "max" } },
+  { harness = "devin", id = "swe-2.1@latest", meter = false },
 ]
 
 [model.luna]

@@ -26,7 +26,7 @@ of equal effort pricing or subscription quota weights:
 | --- | --- | --- | --- |
 | Codex | latest Luna (`luna@latest`) | max | Independent analyst |
 | Claude | latest Haiku (`haiku@latest`) | max | Independent analyst |
-| Devin | latest SWE-2 (`swe-2@latest`) | high | Independent analyst |
+| Devin | latest SWE-2.1 (`swe-2.1@latest`) | high | Independent analyst |
 | Muse | latest Wonder (`wonder@latest`), NOT Full | high | Independent analyst |
 | Antigravity | Gemini 3.8 Flash (`gemini-3.8-flash-high`) | high | Independent analyst |
 | Cursor | latest Grok (`grok@latest`), non-fast | xhigh | Independent critic |

@@ -32,10 +32,10 @@ picker entry alone does not prove a requested model unavailable.
 | Analysis, planning, diagnosis, performance work | latest Sol high | latest Opus medium, native Grok high |
 | Building new things, ordinary task work | latest Opus medium | latest Sol high, native Grok high |
 | Light task work or implementation from a plan | native Grok high | Cursor Grok high |
-| Cheap limited-scope work from a good plan | SWE-2 max, SWE-2 Flash max | latest Luna max, latest Haiku xhigh |
-| Contrarian review | native Grok high | Cursor Grok high, SWE-2 max, latest Wonder high |
+| Cheap limited-scope work from a good plan | SWE-2.1 max, SWE-2 Flash max | latest Luna max, latest Haiku xhigh |
+| Contrarian review | native Grok high | Cursor Grok high, SWE-2.1 max, latest Wonder high |
 
-Cheap work assumes a good supplied plan: SWE-2 and SWE-2 Flash are free, so
+Cheap work assumes a good supplied plan: SWE-2.1 and SWE-2 Flash are free for now, so
 use them as limited-scope spiders with a clear heuristic written by a stronger
 model. Use the difficult-planning or diagnosis defaults when diagnosis is
 needed; review and verification still belong to the task's workflow.
@@ -103,7 +103,7 @@ are grouped; use `jamsession models <provider>` for exact installed IDs.
 | Claude / Anthropic | Opus 5.5, 5, 4.8, 4.7, 4.6 and 4.5; Fable 5.2, 5.1 and 5; Sonnet 5.5, 5 and 4.6; Haiku 5.5 and 4.5. Some known families are omitted by the installed picker. |
 | Grok / xAI | Grok 4.7 (including build-fast), 4.6 and 4.5. Crok/Croc uses these through Cursor; do not duplicate their catalog under Cursor. |
 | Cursor | Composer 2.5 (including fast). Cursor also has access to other providers' models. |
-| Devin / Cognition | SWE-2 (free; paid Lightning variants), SWE-2 Flash (free), SWE-1.7, SWE-1.7 Lightning and SWE-1.6 (including fast). Adaptive selects models; Fusion combines models rather than naming a separate native model. Devin also has access to other providers' models, including through Fusion. |
+| Devin / Cognition | SWE-2.1 (free for now; paid Lightning variants), SWE-2 (free), SWE-2 Flash (free for now), SWE-1.7, SWE-1.7 Lightning and SWE-1.6 (including fast). Adaptive selects models; Fusion combines models rather than naming a separate native model. Devin also has access to other providers' models, including through Fusion. |
 | Muse / Meta | Muse Wonder 1.0 and Muse Wonder Full 1.0; Muse Spark 1.3 and 1.2 (including contributor variants). |
 | Copilot / GitHub | A multi-model harness; no separate GitHub-native base model is identified here. |
 | Antigravity / Google | Gemini 3.8 Flash (low, medium, high) in the installed `agy` catalog. Older harness catalogs retain Gemini 3.7, 3.6 and 3.5 Flash, Gemini 3.1 Pro and Gemini 3 Flash; verify availability. Use provider `antigravity`, `agy` or `gemini`; xhigh is used where the catalog lists a `-xhigh` variant (Gemini 4 Neon and Hydrogen), and max maps to it; otherwise xhigh/max fall back to high with a warning. Antigravity also hosts other providers' models. |
@@ -113,11 +113,12 @@ are grouped; use `jamsession models <provider>` for exact installed IDs.
 * Muse Wonder 1.0 and Muse Wonder Full 1.0 are distinct models; keep their roles
   and requested settings separate
 * Latest Wonder is tier C (with Grok) only at high effort; run it at high
-* Devin's top SWE-2 effort is `swe-2-max` (there is no xhigh). The cheap tier
-  is SWE-2 Flash (`swe-2-flash-max`); there is no "SWE-2 light". The
-  `-lightning` variants are billed, so never pick them by default
-* Devin `swe-2-high` remains a fallback for briefs that explicitly name it when
-  Fusion returns `resource_exhausted`; routine cheap implementation uses max
+* SWE-2.1 (`swe-2.1@latest`, IDs `swe-2-1-<effort>`) has low through max;
+  use max. There is no SWE-2.1 Flash yet, so the cheapest tier stays SWE-2
+  Flash (`swe-2-flash-max`). The `-lightning` variants are billed, so never
+  pick them by default
+* Devin `swe-2-1-high` is the fallback when Fusion returns
+  `resource_exhausted`; routine cheap implementation uses max
 * GPT-5.5, Claude Sonnet before 5.5, and other older models are poor choices;
   use them only when a harness has nothing better
 
