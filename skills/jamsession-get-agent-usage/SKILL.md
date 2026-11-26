@@ -13,8 +13,8 @@ description: "Report provider usage, quotas, remaining capacity and reset times;
 3. Omit session windows and Codex Spark primary/secondary windows. Present the
    remaining useful quota windows in command provider order:
 
-   | Provider | Window | Remaining | Resets |
-   | --- | --- | ---: | --- |
+   | Provider | Window | Remaining | Resets | Forecast |
+   | --- | --- | ---: | --- | --- |
 
    The command lists a weekly window before a 5-hour session window. Failover
    uses that longer window for its threshold.
@@ -35,15 +35,27 @@ description: "Report provider usage, quotas, remaining capacity and reset times;
    unavailable. Do not add a Used column. For Cursor, report Included and Auto
    as separate breakdown rows when available, but omit its API/Other models
    category entirely; never include that category in a usage report.
-5. Normalize every reset to Pacific time. Format dates as `Sept 14 (in 7 days)`.
+5. Fill the Forecast column with one of `📉 Run out`, `🎯 Just right` or
+   `📈 Extra`. It says where usage lands at reset if the pace so far continues.
+   Project `used_percent ÷ fraction of the window elapsed`, using
+   `window_minutes` and the reset time to find the elapsed fraction. A
+   projection of 110% or more is `📉 Run out`, 90% to under 110% is
+   `🎯 Just right`, and under 90% is `📈 Extra`. A window already at 0%
+   remaining is `📉 Run out`. A window with 0% used is `📈 Extra`. Use an em dash
+   when usage is unavailable, or when the window length or reset is unknown and
+   usage is above 0%. Early in a window the projection is noisy; say so in one
+   sentence after the table when a row's window is under 20% elapsed. State the
+   thresholds once after the table.
+6. Normalize every reset to Pacific time. Format dates as `Sept 14 (in 7 days)`.
    For today or tomorrow only, add the compact reset time, such as
    `Sept 8 (tomorrow @ 9:12pm)`. Use calendar-day differences, not elapsed
    24-hour periods. Cursor's monthly plan resets on the 21st; when its CLI does
    not expose a reset, use the next applicable 21st and calculate the day count.
    Devin may expose only a reset countdown; retain it without inventing a
    precise reset timestamp. For Muse, preserve `observed_at` as an “as of” note
-   rather than presenting a retained observation as a live balance.
-6. For a provider whose usage is unavailable, include one row with
+   rather than presenting a retained observation as a live balance. A reset
+   of `1970-01-01T00:00:00Z` is an empty value: show `Not exposed`.
+7. For a provider whose usage is unavailable, include one row with
    `Usage unavailable` in the Window column and em dashes elsewhere. Do not imply
    that the provider itself is unavailable or unauthenticated. Grok and Copilot
    collection opens their supported interactive `/usage` screens through a local
@@ -60,7 +72,7 @@ description: "Report provider usage, quotas, remaining capacity and reset times;
    Antigravity (`agy`/`gemini`) reads the native print-mode `/usage` command
    without a model turn. Keep its Gemini and Claude/GPT quota windows separate;
    neither represents quota in another provider's native harness.
-7. After the table, state how many providers returned usage out of the total.
+8. After the table, state how many providers returned usage out of the total.
    Mention unavailable providers in one concise sentence. If diagnostics show
    why collection failed, state that briefly; distinguish an unreadable usage
    screen from an authentication failure. Do not dump raw JSON unless asked.
