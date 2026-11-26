@@ -749,7 +749,7 @@ for trust in 1 ""; do
   run_command env HOME="$USAGE_HOME" FAKE_LOG="$LOG" FAKE_TRUST="$trust" JAMSESSION_USAGE_TIMEOUT=15 \
     JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude-usage-tui" "$ROOT/jamsession" usage claude --json
   check "Claude usage reads after trust prompt '${trust:-none}'" contains "$stdout_file" '"bucket_id":"weekly_fable"'
-  check "Claude usage reads from its own folder" equals "$LOG.cwd" "$(cd "$USAGE_HOME" && pwd -P)/.agents/jamsession/claude-usage"
+  check "Claude usage reads from its own folder" equals "$LOG.cwd" "$(cd "$USAGE_HOME" && pwd -P)/.cache/jamsession/claude-usage"
   check "Claude usage answers trust only when asked, never at the main prompt" equals "$LOG" "${trust:+y}[/usage]"
 done
 # Accounts read one after another must not see the previous account's screen.

@@ -6,7 +6,7 @@ PROVIDERS="copilot codex claude cursor grok devin muse antigravity"
 TIMEOUT="${JAMSESSION_USAGE_TIMEOUT:-20}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_DIR=""
-CLAUDE_USAGE_DIR="$HOME/.agents/jamsession/claude-usage"
+CLAUDE_USAGE_DIR="$HOME/.cache/jamsession/claude-usage"
 CAPTURE_FILE=""
 CAPTURE_PID=""
 PROVIDER_WINDOWS=""
@@ -225,7 +225,8 @@ capture_tui() {
   rm -f "$output"
   for arg in "$@"; do printf -v command_string '%s %q' "$command_string" "$arg"; done
   # Claude stops at a trust prompt in any folder its account has not trusted,
-  # so it always reads from one empty folder of its own, trusted once.
+  # so it reads from one empty folder of its own, outside any git repository
+  # (Claude trusts a whole repository), trusted once.
   if [ "$provider" = claude ]; then
     mkdir -p -m 700 "$CLAUDE_USAGE_DIR" || return 1
   fi
