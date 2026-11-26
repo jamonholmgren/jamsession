@@ -313,6 +313,7 @@ EOF
 
 cat >"$FAKE_BIN/claude-slow-usage" <<'EOF'
 #!/usr/bin/env bash
+printf 'Claude Code v9\n'
 IFS= read -r command || exit 1
 [ "$command" = /usage ] || exit 1
 for _ in {1..7}; do
@@ -727,6 +728,36 @@ check "aggregate usage includes Antigravity" contains "$stdout_file" '"agent":"a
 run_command env JAMSESSION_USAGE_FIXTURE_DIR="$USAGE_FIXTURES" "$ROOT/jamsession" usage gemini --json
 check "Gemini usage alias resolves to Antigravity" contains "$stdout_file" '"agent":"antigravity","status":"ok"'
 check "Antigravity reports separate model group quota" contains "$stdout_file" '"label":"Claude and GPT models","used_percent":0,"remaining_percent":100'
+
+# A fake Claude usage TUI: an optional trust prompt, then one input line for /usage.
+cat >"$FAKE_BIN/claude-usage-tui" <<'EOF'
+#!/usr/bin/env bash
+pwd -P >"$FAKE_LOG.cwd"
+if [ -n "${FAKE_TRUST:-}" ]; then
+  printf 'Yes, I trust this folder\nEnter y/n: '
+  IFS= read -r -n1 answer; printf '%s' "$answer" >>"$FAKE_LOG"
+fi
+printf 'Claude Code v9\n'
+IFS= read -r line; printf '[%s]' "$line" >>"$FAKE_LOG"
+printf '%s\n' 'Current week (all models)' '35% used' 'Resets Nov 30' 'Current week (Fable)' '0% used' 'Resets Nov 30'
+sleep 30
+EOF
+chmod +x "$FAKE_BIN/claude-usage-tui"
+USAGE_HOME="$TEMP_ROOT/usage-home"; mkdir -p "$USAGE_HOME"
+for trust in 1 ""; do
+  : >"$LOG"
+  run_command env HOME="$USAGE_HOME" FAKE_LOG="$LOG" FAKE_TRUST="$trust" JAMSESSION_USAGE_TIMEOUT=15 \
+    JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude-usage-tui" "$ROOT/jamsession" usage claude --json
+  check "Claude usage reads after trust prompt '${trust:-none}'" contains "$stdout_file" '"bucket_id":"weekly_fable"'
+  check "Claude usage reads from its own folder" equals "$LOG.cwd" "$(cd "$USAGE_HOME" && pwd -P)/.agents/jamsession/claude-usage"
+  check "Claude usage answers trust only when asked, never at the main prompt" equals "$LOG" "${trust:+y}[/usage]"
+done
+# Accounts read one after another must not see the previous account's screen.
+printf '%s\n' '[claude.one]' 'env = { FAKE_TRUST = "" }' '[claude.two]' 'env = { FAKE_TRUST = "" }' >"$TEMP_ROOT/two-accounts.toml"
+run_command env HOME="$USAGE_HOME" FAKE_LOG="$LOG" JAMSESSION_ACCOUNTS="$TEMP_ROOT/two-accounts.toml" JAMSESSION_USAGE_TIMEOUT=15 \
+  JAMSESSION_CLAUDE_BIN="$FAKE_BIN/claude-usage-tui" "$ROOT/jamsession" usage claude --json
+check "every Claude account reads when several are read in one call" \
+  test "$(grep -o '"status":"ok"' "$stdout_file" | wc -l | tr -d ' ')" -eq 2
 
 cat >"$FAKE_BIN/agy" <<'EOF'
 #!/usr/bin/env bash

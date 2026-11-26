@@ -51,6 +51,8 @@ AUTH_OVERRIDES = {
         "CLAUDE_CODE_ACCOUNT_UUID", "CLAUDE_CODE_ORGANIZATION_UUID", "CLAUDE_CODE_USER_EMAIL",
         "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
         "ANTHROPIC_IDENTITY_TOKEN", "ANTHROPIC_IDENTITY_TOKEN_FILE",
+        # An inherited dir would point an account without one at another login.
+        "CLAUDE_CONFIG_DIR",
     ),
 }
 
@@ -266,6 +268,16 @@ def _account(provider: str, account: str) -> Account:
     raise AccountError(f"{provider} has no account '{account}'; known: {known}")
 
 
+def _launch_env(provider: str, env: dict[str, str]) -> dict[str, str]:
+    """Claude set to its own default ~/.claude reads ~/.claude/.claude.json and
+    a hashed Keychain item, not the default login, so that dir stays unset."""
+    env = dict(env)
+    if provider == "claude" and "CLAUDE_CONFIG_DIR" in env and \
+            os.path.realpath(env["CLAUDE_CONFIG_DIR"]) == os.path.realpath(Path.home() / ".claude"):
+        del env["CLAUDE_CONFIG_DIR"]
+    return env
+
+
 def env_for(provider: str, account: str) -> dict[str, str]:
     """Static env only. Keychain values are resolved for the run, not here."""
     provider = canonical(provider)
@@ -273,7 +285,7 @@ def env_for(provider: str, account: str) -> dict[str, str]:
         account = default_account(provider)
     if not account:
         return {}
-    return dict(_account(provider, account).env)
+    return _launch_env(provider, _account(provider, account).env)
 
 
 def resolve(provider: str, named: str) -> str:
@@ -804,7 +816,7 @@ def runtime_env(provider: str, account: str) -> dict[str, str]:
     """Env for one run, including Keychain values. Callers must not print it."""
     provider = canonical(provider)
     item = _account(provider, account)
-    env = dict(item.env)
+    env = _launch_env(provider, item.env)
     for key, service in item.keychain_env.items():
         env[key] = read_keychain(service)
     if item.kind or item.backend:

@@ -6,6 +6,7 @@ PROVIDERS="copilot codex claude cursor grok devin muse antigravity"
 TIMEOUT="${JAMSESSION_USAGE_TIMEOUT:-20}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TEMP_DIR=""
+CLAUDE_USAGE_DIR="$HOME/.agents/jamsession/claude-usage"
 CAPTURE_FILE=""
 CAPTURE_PID=""
 PROVIDER_WINDOWS=""
@@ -220,12 +221,21 @@ capture_tui() {
     return
   fi
   command -v script >/dev/null 2>&1 || return 1
+  # Accounts share this file; a previous account's text would end the wait early.
+  rm -f "$output"
   for arg in "$@"; do printf -v command_string '%s %q' "$command_string" "$arg"; done
+  # Claude stops at a trust prompt in any folder its account has not trusted,
+  # so it always reads from one empty folder of its own, trusted once.
+  if [ "$provider" = claude ]; then
+    mkdir -p -m 700 "$CLAUDE_USAGE_DIR" || return 1
+  fi
   if [ "$(uname -s)" = Darwin ]; then
-    { feed_tui "$provider" | script -qF "$output" "$@"; } \
+    { [ "$provider" != claude ] || cd "$CLAUDE_USAGE_DIR" || exit 1
+      feed_tui "$provider" | script -qF "$output" "$@"; } \
       >"$TEMP_DIR/$provider.stdout" 2>"$TEMP_DIR/$provider.script.err" &
   else
-    { feed_tui "$provider" | script -qf -c "${command_string# }" "$output"; } \
+    { [ "$provider" != claude ] || cd "$CLAUDE_USAGE_DIR" || exit 1
+      feed_tui "$provider" | script -qf -c "${command_string# }" "$output"; } \
       >"$TEMP_DIR/$provider.stdout" 2>"$TEMP_DIR/$provider.script.err" &
   fi
   pid=$!
@@ -272,8 +282,17 @@ tui_usage() {
 }
 
 feed_tui() {
-  local provider="$1"
+  local provider="$1" output="$TEMP_DIR/$1.raw" waited
   sleep 3
+  if [ "$provider" = claude ]; then
+    # Answer the usage folder's trust prompt only once it is on screen, so a
+    # stray "y" never reaches the main prompt.
+    for waited in 1 2 3 4 5 6 7 8 9 10; do
+      grep -q 'Claude Code v' "$output" 2>/dev/null && break
+      if grep -q 'Yes, I trust this folder' "$output" 2>/dev/null; then printf 'y'; sleep 3; break; fi
+      sleep 1
+    done
+  fi
   printf '/usage\r'
   # Claude can render Fable after the other windows. Keep its input stream open
   # until capture_tui sees that final window or reaches its timeout.

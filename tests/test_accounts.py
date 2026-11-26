@@ -157,6 +157,31 @@ class AccountCLITests(AccountHarness):
         self.assertEqual(recorded["claude"]["sess-work"], "work")
         self.assertEqual(self.sessions.stat().st_mode & 0o777, 0o600)
 
+    def test_an_account_on_claudes_default_dir_runs_with_it_unset(self):
+        # Set explicitly, even to ~/.claude, Claude reads another config file and Keychain item: logged out.
+        self.write_accounts(
+            "[claude.work]\n"
+            'env = { CLAUDE_CONFIG_DIR = "~/.claude", TEST_ACCOUNT_MARKER = "work" }\n'
+            "\n"
+            "[claude.personal]\n"
+            f'env = {{ CLAUDE_CONFIG_DIR = "{self.personal_dir}", TEST_ACCOUNT_MARKER = "personal" }}\n'
+        )
+        work = self.jam("run", "claude:work", "new", "default", "default", "edit", "hi")
+        self.assertEqual(work.returncode, 0, work.stderr)
+        self.assertIn("MARKER=work", work.stdout)
+        self.assertIn("CLAUDE_CONFIG_DIR=\n", work.stdout)
+        personal = self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi")
+        self.assertIn(f"CLAUDE_CONFIG_DIR={self.personal_dir}\n", personal.stdout)
+
+        # Usage reads drop the inherited dir and apply only this env.
+        helper = [sys.executable, str(ROOT / "usage" / "jamsession_accounts.py")]
+        env = subprocess.run([*helper, "env", "claude", "work"], env=self.env,
+                             capture_output=True, text=True, timeout=30)
+        self.assertNotIn("CLAUDE_CONFIG_DIR", env.stdout)
+        dropped = subprocess.run([*helper, "auth-overrides", "claude"], env=self.env,
+                                 capture_output=True, text=True, timeout=30)
+        self.assertIn("CLAUDE_CONFIG_DIR", dropped.stdout.split())
+
     def test_resume_message_and_steer_reuse_the_recorded_account(self):
         self.claude_accounts()
         started = self.jam("run", "claude:personal", "new", "default", "default", "edit", "hi")
