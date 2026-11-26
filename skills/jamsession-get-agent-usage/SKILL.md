@@ -27,8 +27,8 @@ description: "Report provider usage, quotas, remaining capacity and reset times;
 4. Use title-case provider names, concise window labels, and percentage signs on
    `remaining_percent`. Do not show `used_percent`. Keep `gpt-reserve`; it is the
    Codex `base_model_inference` weekly bucket, although Codex does not expose which
-   exact models or fallback path consume it. Label Claude's useful windows
-   `All Models (weekly)` and `Fable (weekly)`. Repeat the provider name on every
+   exact models or fallback path consume it. Report only Claude's
+   `All Models (weekly)` window; omit its separate Fable window. Repeat the provider name on every
    row, including when it has multiple windows. Put a remaining-quota indicator
    immediately before the name in the Provider column: 🟢 above 70%, 🟡 above 50%
    through 70%, 🟠 above 0% through 50%, 🔴 at 0%, and ⚪️ when usage is
@@ -70,8 +70,8 @@ description: "Report provider usage, quotas, remaining capacity and reset times;
    is unauthenticated or unused. Do not start a model turn or login/reset to
    manufacture a report.
    Antigravity (`agy`/`gemini`) reads the native print-mode `/usage` command
-   without a model turn. Keep its Gemini and Claude/GPT quota windows separate;
-   neither represents quota in another provider's native harness.
+   without a model turn. Report one row, `Gemini Models`. Its Claude and GPT
+   window matches Gemini, so omit it.
 8. After the table, state how many providers returned usage out of the total.
    Mention unavailable providers in one concise sentence. If diagnostics show
    why collection failed, state that briefly; distinguish an unreadable usage
