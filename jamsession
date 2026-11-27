@@ -1315,7 +1315,9 @@ field includes `:account` when one was selected.
 failover ladder. A route may say `group = "<name>"` (with `prefer = { provider,
 model, effort }` to move one model first, or `size` for a panel of distinct
 models) to use a ladder from groups.toml (JAMSESSION_GROUPS overrides it);
-`group:<name>` also works as a route or archetype name. A read run on
+`group:<name>` also works as a route or archetype name; a group's `balance = N`
+starts new runs on whichever of its first N rungs has the most cached usage left.
+A read run on
 Antigravity uses edit transport with a no-writes line first.
 EOF
       ;;

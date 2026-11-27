@@ -6,6 +6,9 @@ ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=_jamsession_adapter_common
 source "$ADAPTER_DIR/_jamsession_adapter_common"
 jamsession_adapter_setup devin devin JAMSESSION_DEVIN_BIN
+# A model that refused for its quota is refused at once for an hour, so every launch does not fail on it again.
+DEVIN_EXHAUSTED_DIR="${JAMSESSION_DEVIN_EXHAUSTED_DIR:-${JAMSESSION_HOME:-$HOME/.agents/jamsession}/state}"
+DEVIN_EXHAUSTED_HOLD="${JAMSESSION_DEVIN_EXHAUSTED_HOLD:-3600}"
 
 help_text() {
   cat <<'EOF'
@@ -178,9 +181,15 @@ run_agent() {
   [ "$JAMSESSION_ACCESS" = edit ] || \
     jamsession_die "read access is unsupported because Devin cannot guarantee no writes"
 
-  local model status before after new_ids session_id lock_pid precreated
+  local model status before after new_ids session_id lock_pid precreated mark since
   local -a args
   precreated=""
+  mark="$DEVIN_EXHAUSTED_DIR/devin-exhausted-$(printf '%s' "$JAMSESSION_MODEL" | tr -c 'A-Za-z0-9._-' '_')"
+  since="$(head -n 1 "$mark" 2>/dev/null)"
+  if [[ "$since" =~ ^[0-9]+$ ]] && [ $(( $(date +%s) - since )) -lt "$DEVIN_EXHAUSTED_HOLD" ]; then
+    printf 'refusal: limit: Devin %s quota exhausted (remembered; retried after an hour)\n' "$JAMSESSION_MODEL" >&2
+    exit "$JAMSESSION_REFUSAL_STATUS"
+  fi
   model="$(resolve_model "$JAMSESSION_MODEL" "$JAMSESSION_EFFORT")" || exit $?
   args=(-p --permission-mode dangerous --respect-workspace-trust false)
   [ -z "$model" ] || args+=(--model "$model")
@@ -210,6 +219,12 @@ run_agent() {
   cat "$JAMSESSION_TEMP_DIR/out"
   cat "$JAMSESSION_TEMP_DIR/err" >&2
   status="$(jamsession_refusal_status "$status" "$JAMSESSION_TEMP_DIR/out" "$JAMSESSION_TEMP_DIR/err")"
+  if [ "$status" -eq "$JAMSESSION_REFUSAL_STATUS" ] && \
+    grep -Eiq -- "$JAMSESSION_REFUSAL_LIMIT" "$JAMSESSION_TEMP_DIR/err" "$JAMSESSION_TEMP_DIR/out"; then
+    mkdir -p "$DEVIN_EXHAUSTED_DIR" && date +%s >"$mark"
+  elif [ "$status" -eq 0 ]; then
+    rm -f "$mark"
+  fi
   if [ -n "$precreated" ]; then
     jamsession_session "$session_id"
     devin_acp_rename "$session_id"

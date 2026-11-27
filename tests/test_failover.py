@@ -12,6 +12,9 @@ from unittest import mock
 
 # A real spent-Grok marker on this machine must not change these tests.
 os.environ["JAMSESSION_GROK_NO_CREDIT_MARK"] = os.path.join(tempfile.gettempdir(), "jamsession-test-no-grok-mark")
+# Devin quota marks go to a scratch folder and, outside the test that wants one, never hold.
+os.environ["JAMSESSION_DEVIN_EXHAUSTED_DIR"] = tempfile.mkdtemp(prefix="jamsession-test-devin-marks-")
+os.environ["JAMSESSION_DEVIN_EXHAUSTED_HOLD"] = "0"
 
 ROOT = Path(__file__).resolve().parents[1]
 # Launches must never start a real background usage refresh.
@@ -243,7 +246,9 @@ args = sys.argv[1:]
 stdin = sys.stdin.read()
 with open(os.environ["FAKE_CALLS"], "a") as calls:
     calls.write(json.dumps(args + [stdin]) + "\n")
-status, reply = json.loads(os.environ["FAKE_PLAN"]).get(args[1], [0, "ok"])
+plan = json.loads(os.environ["FAKE_PLAN"]).get(args[1], [0, "ok"])
+status, reply = plan[:2]
+sys.stderr.write(plan[2] if len(plan) > 2 else "")
 sys.stdout.write(reply)
 sys.exit(status)
 """
@@ -258,6 +263,7 @@ LISTINGS = {
     "codex": "gpt-6.2-sol - Sol\ngpt-6.1-sol - Sol\ngpt-6.2-astra - Astra\ngpt-6.1-terra - Terra",
     "grok": "* grok-4.7 (default)",
     "muse": "muse-wonder-1.0\nmuse-spark-1.3",
+    "antigravity": "gemini-4-neon",
 }
 
 
@@ -293,7 +299,8 @@ class FailoverRunTests(unittest.TestCase):
                    JAMSESSION_ACCOUNTS=str(root / "no-accounts.toml"),
                    JAMSESSION_SESSION_ACCOUNTS=str(root / "no-sessions.json"),
                    JAMSESSION_SPEND=str(root / "no-spend.json"),
-                   JAMSESSION_USAGE_CACHE=str(root / "no-usage-cache.json"))
+                   JAMSESSION_USAGE_CACHE=str(root / "no-usage-cache.json"),
+                   JAMSESSION_ROUTE_SESSIONS=str(root / "route-sessions.json"))
         reply = subprocess.run([sys.executable, str(ROOT / "usage" / "jamsession_failover.py"), *args],
                                env=env, capture_output=True, text=True, timeout=30)
         calls = [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
@@ -402,10 +409,10 @@ class FailoverRunTests(unittest.TestCase):
         self.assertNotEqual(reply.returncode, 0)
         self.assertIn("names an account twice", reply.stderr)
 
-    def write_groups(self) -> None:
+    def write_groups(self, balance: int = 0) -> None:
         groups = Path(self.temp.name) / "groups.toml"
         groups.write_text(
-            "[group.daily]\nrungs = [\n"
+            f"[group.daily]\nbalance = {balance}\nrungs = [\n"
             '  { provider = "antigravity", model = "neon@latest", effort = "medium" },\n'
             '  { provider = "claude", model = "opus@latest", effort = "medium" },\n'
             '  { provider = "codex", model = "sol@latest", effort = "high" },\n'
@@ -435,6 +442,92 @@ class FailoverRunTests(unittest.TestCase):
         reply, _ = self.run_helper({}, "route", "group:daily")
         self.assertEqual(reply.returncode, 0, reply.stderr)
         self.assertIn("archetype=group:daily", reply.stdout)
+
+    def balanced_order(self, route, usage):
+        reply, _ = self.run_helper({}, "route", route, usage=usage)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        return [line.split()[0] for line in reply.stdout.splitlines()]
+
+    def test_a_balanced_group_starts_on_the_peer_with_the_most_usage_left(self):
+        self.write_groups(balance=2)
+        self.routes.write_text('[route.chat]\ngroup = "daily"\n'
+                               '[route.pm]\ngroup = "daily"\nbalance = false\n'
+                               '[route.lead]\ngroup = "daily"\nprefer = { model = "sol@latest" }\n')
+
+        def pool(agent, *lefts, **extra):
+            return {"agent": agent, "status": "ok", "windows": [{"remaining_percent": left} for left in lefts], **extra}
+
+        self.assertEqual(self.balanced_order("chat", [pool("antigravity", 94), pool("claude", 30)]),
+                         ["antigravity", "claude", "codex"])
+        self.assertEqual(self.balanced_order("chat", [pool("antigravity", 40), pool("claude", 60)]),
+                         ["claude", "antigravity", "codex"])
+        # The lowest window decides a pool, a 5-hour session window included.
+        self.assertEqual(self.balanced_order("chat", [pool("antigravity", 90, 35), pool("claude", 60)])[:2],
+                         ["claude", "antigravity"])
+        # Unread counts as available, after a known healthy pool and ahead of one below its floor.
+        self.assertEqual(self.balanced_order("chat", [pool("claude", 60)])[:2], ["claude", "antigravity"])
+        self.assertEqual(self.balanced_order("chat", [pool("claude", 10)])[:2], ["antigravity", "claude"])
+        stale = pool("claude", 90, checked_at=__import__("time").time() - 5 * 3600)
+        self.assertEqual(self.balanced_order("chat", [pool("antigravity", 40), stale])[:2], ["antigravity", "claude"])
+        # Ties and no readings keep group order.
+        self.assertEqual(self.balanced_order("chat", [pool("antigravity", 50), pool("claude", 50)])[:2],
+                         ["antigravity", "claude"])
+        self.assertEqual(self.balanced_order("chat", [])[:2], ["antigravity", "claude"])
+        # A preference or a route that opts out is never balanced.
+        self.assertEqual(self.balanced_order("lead", [pool("codex", 5), pool("claude", 90)])[0], "codex")
+        self.assertEqual(self.balanced_order("pm", [pool("antigravity", 5), pool("claude", 90)])[0], "antigravity")
+
+    def test_a_balanced_claude_rung_moves_only_its_first_account(self):
+        self.write_groups(balance=2)
+        (Path(self.temp.name) / "no-accounts.toml").write_text("[claude.personal]\n[claude.work]\n")
+        self.routes.write_text('[route.chat]\ngroup = "daily"\n')
+
+        def claude(personal, work):
+            return [{"agent": "antigravity", "status": "ok", "windows": [{"remaining_percent": 40}]},
+                    {"agent": "claude", "account": "personal", "status": "ok", "windows": [{"remaining_percent": personal}]},
+                    {"agent": "claude", "account": "work", "status": "ok", "windows": [{"remaining_percent": work}]}]
+
+        reply, _ = self.run_helper({}, "route", "chat", usage=claude(60, 90))
+        self.assertEqual([line.split()[0] for line in reply.stdout.splitlines()],
+                         ["claude:personal", "antigravity", "claude:work", "codex"], reply.stderr)
+        reply, _ = self.run_helper({}, "route", "chat", usage=claude(10, 95))  # personal out; work never leads
+        self.assertEqual([line.split()[0] for line in reply.stdout.splitlines()],
+                         ["antigravity", "claude:personal", "claude:work", "codex"], reply.stderr)
+
+    def test_a_resumed_route_session_goes_back_to_the_pool_that_started_it(self):
+        self.write_groups(balance=2)
+        self.routes.write_text('[route.lead]\ngroup = "daily"\n')
+        neon_low = [{"agent": "antigravity", "status": "ok", "windows": [{"remaining_percent": 30}]},
+                    {"agent": "claude", "status": "ok", "windows": [{"remaining_percent": 90}]}]
+        reply, calls = self.run_helper({"claude": [0, "started", "session: lead-1\n"]},
+                                       "run", "--route", "lead", "new", "edit", "go", usage=neon_low)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(calls[-1][1:3], ["claude", "new"])
+        claude_low = [{"agent": "antigravity", "status": "ok", "windows": [{"remaining_percent": 95}]},
+                      {"agent": "claude", "status": "ok", "windows": [{"remaining_percent": 30}]}]
+        reply, calls = self.run_helper({}, "run", "--route", "lead", "lead-1", "edit", "more", usage=claude_low)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(calls[-1][1:3], ["claude", "lead-1"])
+        # A session no route run started is not balanced: it resumes on the group's first rung, as before.
+        reply, calls = self.run_helper({}, "run", "--route", "lead", "other-1", "edit", "more", usage=neon_low)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(calls[-1][1:3], ["antigravity", "other-1"])
+
+    def test_an_exhausted_devin_model_is_skipped_without_launching_devin(self):
+        marks = Path(self.temp.name) / "devin-marks"
+        marks.mkdir()
+        (marks / "devin-exhausted-swe-2").write_text(f"{int(__import__('time').time())}\n")
+        saved = os.environ["JAMSESSION_DEVIN_EXHAUSTED_DIR"]
+        os.environ.update(JAMSESSION_DEVIN_EXHAUSTED_DIR=str(marks), JAMSESSION_DEVIN_EXHAUSTED_HOLD="3600")
+        try:
+            self.routes.write_text('[archetype.cheap]\nrungs = [{ provider = "devin", model = "swe-2.1@latest", effort = "max", meter = false },'
+                                   ' { provider = "codex", model = "gpt-6.2-sol", effort = "medium" }]\n[route.cheap]\narchetype = "cheap"\n')
+            reply, calls = self.run_helper({}, "run", "--route", "cheap", "new", "edit", "hi")
+        finally:
+            os.environ.update(JAMSESSION_DEVIN_EXHAUSTED_DIR=saved, JAMSESSION_DEVIN_EXHAUSTED_HOLD="0")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual([call[1] for call in calls], ["codex"])
+        self.assertIn("Devin quota exhausted", reply.stderr)
 
     def test_a_group_panel_seats_distinct_models_skipping_spent_pools(self):
         self.write_groups()

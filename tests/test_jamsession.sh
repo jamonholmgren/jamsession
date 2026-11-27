@@ -28,6 +28,8 @@ JAMSESSION_CONFIG="$TEMP_ROOT/jamsession.conf"
 export JAMSESSION_CONFIG
 # A real Grok out-of-credit marker would make every Grok run here refuse.
 export JAMSESSION_GROK_NO_CREDIT_MARK="$TEMP_ROOT/no-grok-mark"
+# Likewise a real Devin quota marker, and a test run must not clear one.
+export JAMSESSION_DEVIN_EXHAUSTED_DIR="$TEMP_ROOT/devin-exhausted"
 : >"$JAMSESSION_CONFIG"
 # A real accounts.toml would retag usage JSON and change every claude run.
 # These paths are intentionally missing.
@@ -407,6 +409,7 @@ case " $* " in
   *) : >"$FAKE_DEVIN_STATE" ;;
 esac
 printf '%s\n' DEVIN_RESULT
+[ -z "${FAKE_DEVIN_ERR:-}" ] || printf '%s\n' "$FAKE_DEVIN_ERR" >&2
 exit "${FAKE_EXIT:-0}"
 EOF
 
@@ -1207,6 +1210,25 @@ run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" \
   "$ROOT/adapters/jamsession_devin" run saved-devin-session default default edit prompt
 check "Devin resumes the exact requested session" contains "$LOG" "--resume saved-devin-session"
 check "Devin reports the resumed session" contains "$stderr_file" "session: saved-devin-session"
+
+rm -f "$LOG"
+run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" FAKE_EXIT=1 FAKE_DEVIN_ERR="resource_exhausted: weekly quota" \
+  JAMSESSION_DEVIN_AUTOMATION=0 JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit prompt
+check "an exhausted Devin model is a usage refusal and is remembered" \
+  sh -c "[ $status -eq 75 ] && [ -s '$JAMSESSION_DEVIN_EXHAUSTED_DIR/devin-exhausted-grok-4.6' ]"
+rm -f "$LOG"
+run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" \
+  JAMSESSION_DEVIN_AUTOMATION=0 JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit prompt
+check "a remembered exhausted Devin model refuses without launching Devin" sh -c "[ $status -eq 75 ] && [ ! -e '$LOG' ]"
+printf '%s\n' 0 >"$JAMSESSION_DEVIN_EXHAUSTED_DIR/devin-exhausted-grok-4.6"
+rm -f "$DEVIN_STATE"
+run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" \
+  JAMSESSION_DEVIN_AUTOMATION=0 JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit prompt
+check "after an hour Devin is tried again and success clears the memory" \
+  sh -c "[ $status -eq 0 ] && [ ! -e '$JAMSESSION_DEVIN_EXHAUSTED_DIR/devin-exhausted-grok-4.6' ]"
 
 rm -f "$LOG"
 run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" \

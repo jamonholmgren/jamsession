@@ -25,6 +25,8 @@ configs say `<family>@latest`. Prefer each model's native harness. Jam Session's
 | --- | --- | --- | --- | --- |
 | premium | Fable (latest) medium | Astra (latest) high | Neon xhigh | Wonder Full 1.0 high |
 | daily | Neon medium | Opus (latest) medium | Sol (latest) high | |
+
+Daily's first two are interchangeable: new work starts on whichever has more usage left.
 | efficient | Devin SWE-2.1 max | Sonnet (latest) high | Terra (latest) high | |
 | cheap | Devin SWE-2.1 max | Luna (latest) max | Haiku (latest) max | |
 | token-burners | Grok 4.7 high (native) | Muse Wonder 1.0 high | | |

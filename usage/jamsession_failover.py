@@ -405,15 +405,116 @@ def groups_path() -> Path:
     raise Failure("groups.toml not found; reinstall Jam Session or set JAMSESSION_GROUPS")
 
 
-def group_candidates(name: str) -> list[Candidate]:
-    """The rungs of `[group.<name>]` in groups.toml, in rank order."""
+def load_group(name: str) -> tuple[list[Candidate], int]:
+    """The rungs of `[group.<name>]` in groups.toml, in rank order, and how many lead as balanced peers."""
     path = groups_path()
     groups = load_toml(path).get("group") or {}
-    rungs = (groups.get(name) or {}).get("rungs") if isinstance(groups, dict) else None
+    table = (groups.get(name) or {}) if isinstance(groups, dict) else {}
+    rungs = table.get("rungs") if isinstance(table, dict) else None
     if not isinstance(rungs, list) or not rungs or not all(isinstance(item, dict) for item in rungs):
         known = ", ".join(groups) if isinstance(groups, dict) else "none"
         raise Failure(f"unknown or empty group '{name}' in {path}; known: {known}")
-    return [rung(item) for item in rungs]
+    peers = table.get("balance", 0)
+    if isinstance(peers, bool) or not isinstance(peers, int) or peers < 0:
+        raise Failure(f"group '{name}' balance must be a count of leading rungs")
+    return [rung(item) for item in rungs], min(peers, len(rungs))
+
+
+def group_candidates(name: str) -> list[Candidate]:
+    return load_group(name)[0]
+
+
+# --- balance ---------------------------------------------------------------
+# A group's `balance = N` makes its first N rungs peers: a new run starts on the
+# peer whose pool has the most usage left. Only each peer's first pool moves, so a
+# plain `claude` rung still means personal, with work and api left as fallbacks.
+
+BALANCE_MAX_AGE = 4 * 3600  # an older cached row counts as unread
+
+
+def balance_rank(candidate: Candidate, usage: "Usage", min_usage: float) -> tuple[int, float]:
+    """(0, -left) known and healthy, (1, 0) unread or stale, (2, 0) refused or below its floor.
+    Reads the usage cache only; a stale row starts the lock-guarded background refresh."""
+    if rung_unavailable(candidate, usage, min_usage):
+        return 2, 0.0
+    if not candidate.meter:
+        return 1, 0.0
+    rows = usage.rows(candidate.provider, candidate.account)
+    checked = [row.get("checked_at") for row in rows]
+    ages = [time.time() - float(item) if isinstance(item, (int, float)) and not isinstance(item, bool)
+            else usage.age for item in checked]
+    age = max((item for item in ages if item is not None), default=None) if rows else None
+    if age is not None and age >= accounts.USAGE_TTL_SECONDS:
+        accounts.refresh_usage_in_background(candidate.provider)  # lock-guarded; never waits
+    if age is None or age >= BALANCE_MAX_AGE:
+        return 1, 0.0
+    lefts = [float(window["remaining_percent"]) for row in rows for window in row.get("windows") or []
+             if isinstance(window, dict) and isinstance(window.get("remaining_percent"), (int, float))
+             and not isinstance(window.get("remaining_percent"), bool)]
+    return (0, -min(lefts)) if lefts else (1, 0.0)
+
+
+def balance_order(heads: list[Candidate], min_usage: float) -> list[int]:
+    """Indices of `heads` best first: most usage left (lowest window per pool), then unread, then
+    refused or low. Ties keep group order."""
+    usage = usage_snapshot()
+    ranks = [balance_rank(item, usage, min_usage) for item in heads]
+    return sorted(range(len(heads)), key=lambda index: ranks[index])
+
+
+def balance(candidates: list[Candidate], rungs: list[Candidate], peers: int, min_usage: float) -> list[Candidate]:
+    """Move the best of the first `peers` rungs' first pools to the front, in rank order."""
+    if peers < 2:
+        return candidates
+    heads: list[int] = []
+    for item in rungs[:peers]:
+        found = next((index for index, candidate in enumerate(candidates)
+                      if index not in heads and (candidate.provider, candidate.model, candidate.effort)
+                      == (item.provider, item.model, item.effort) and (not item.account or candidate.account == item.account)),
+                     None)
+        if found is not None:
+            heads.append(found)
+    if len(heads) < 2:
+        return candidates
+    order = balance_order([candidates[index] for index in heads], min_usage)
+    return [candidates[heads[index]] for index in order] + [item for index, item in enumerate(candidates) if index not in heads]
+
+
+# --- sessions a route started ----------------------------------------------
+# A route run records which pool owns each new session, so a resume goes back to it.
+
+def route_sessions_path() -> Path:
+    return Path(os.environ.get("JAMSESSION_ROUTE_SESSIONS")
+                or os.path.expanduser("~/.cache/jamsession/route-sessions.json"))
+
+
+def load_route_sessions() -> dict:
+    try:
+        data = json.loads(route_sessions_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def remember_route_session(session: str, candidate: Candidate) -> None:
+    path = route_sessions_path()
+    try:
+        data = load_route_sessions()
+        data[session] = {"provider": candidate.provider_arg(), "at": time.time()}
+        data = dict(sorted(data.items(), key=lambda item: item[1].get("at", 0) if isinstance(item[1], dict) else 0)[-2000:])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix(f".{os.getpid()}.tmp")
+        temporary.write_text(json.dumps(data) + "\n", encoding="utf-8")
+        temporary.replace(path)
+    except OSError:
+        pass  # a lost record only means a later resume follows group order
+
+
+def owner_first(candidates: list[Candidate], session: str) -> list[Candidate]:
+    """A resumed route session goes back to the pool that started it, when known."""
+    owner = (load_route_sessions().get(session) or {}).get("provider") if session != "new" else None
+    found = next((item for item in candidates if owner and item.provider_arg() == owner), None)
+    return [found] + [item for item in candidates if item is not found] if found is not None else candidates
 
 
 def apply_prefer(candidates: list[Candidate], prefer) -> list[Candidate]:
@@ -509,6 +610,7 @@ def usage_snapshot() -> "Usage":
     path = Path(raw) if raw else accounts.usage_cache_path()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
+        usage.age = max(0.0, time.time() - path.stat().st_mtime)
     except (OSError, json.JSONDecodeError, UnicodeError):
         return usage
     if isinstance(data, dict):
@@ -575,7 +677,8 @@ def panel_from_ladder(candidates: list[Candidate], min_usage: float, size: int) 
     return picked
 
 
-def expand_route(name: str, table: dict | None = None) -> dict:
+def expand_route(name: str, table: dict | None = None, balanced: bool = True) -> dict:
+    """A route's candidates. `balanced` False keeps a group's rank order (a resumed session)."""
     path = os.environ.get("JAMSESSION_ROUTES")
     if name.startswith("group:"):  # a group runs as its own route; no routes file needed
         routes, route = {}, {"group": name[len("group:"):]}
@@ -599,9 +702,12 @@ def expand_route(name: str, table: dict | None = None) -> dict:
         group = route["group"]
         if not isinstance(group, str) or not group:
             raise Failure("group must be a name")
-        candidates = with_effort(group_candidates(group), route_effort(route))
-        candidates = expand_accounts(tag_archetype(apply_prefer(candidates, route.get("prefer")), f"group:{group}"),
-                                     requested_first=False)
+        rungs, peers = load_group(group)
+        rungs = tag_archetype(with_effort(rungs, route_effort(route)), f"group:{group}")
+        candidates = expand_accounts(apply_prefer(rungs, route.get("prefer")), requested_first=False)
+        # A preference, a panel, a route that opts out, or a resume keeps the group's order.
+        if balanced and not route.get("prefer") and "size" not in route and route.get("balance", True) is not False:
+            candidates = balance(candidates, rungs, peers, result["skip_below_usage"])
         if "size" in route:
             size = int(route["size"])
             result.update(kind="panel", size=size,
@@ -755,6 +861,7 @@ class Usage:
 
     def __init__(self, cli: str):
         self.cli, self.report = cli, None
+        self.age: float | None = None  # seconds since a snapshot file was written
 
     def load(self) -> dict:
         if self.report is None:
@@ -778,19 +885,23 @@ class Usage:
         and the untagged provider row when they are not. A 5-hour session
         window does not count when a weekly or monthly window is present.
         """
+        return governing_remaining([window for row in self.rows(provider, account) for window in row.get("windows", [])])
+
+    def rows(self, provider: str, account: str = "") -> list[dict]:
+        """This pool's readable usage rows; an empty account is the default account (or the untagged row)."""
         rows = [row for row in self.load().get("providers", [])
-                if row.get("agent") == provider and row.get("status") == "ok"]
+                if isinstance(row, dict) and row.get("agent") == provider and row.get("status") == "ok"]
         if account:
-            chosen = [row for row in rows if (row.get("account") or "") == account]
-        else:
-            default = accounts.default_account(provider)
-            tagged = [row for row in rows if default and (row.get("account") or "") == default]
-            chosen = tagged or [row for row in rows if not (row.get("account") or "")]
-        windows = [window for row in chosen for window in row.get("windows", [])]
-        return governing_remaining(windows)
+            return [row for row in rows if (row.get("account") or "") == account]
+        default = accounts.default_account(provider)
+        tagged = [row for row in rows if default and (row.get("account") or "") == default]
+        return tagged or [row for row in rows if not (row.get("account") or "")]
 
 
 # --- run -------------------------------------------------------------------
+
+LAST_SESSION: dict[str, str] = {}  # the `session:` line of the latest attempt
+
 
 def attempt(cli: str, worksheet: str, candidate: Candidate, session: str, access: str, prompt: bytes) -> tuple[int, bytes]:
     command = [cli, "run"] + (["--worksheet", worksheet] if worksheet else []) + [
@@ -813,7 +924,10 @@ def attempt(cli: str, worksheet: str, candidate: Candidate, session: str, access
 
         writer = threading.Thread(target=feed, daemon=True)
         writer.start()
+        LAST_SESSION.clear()
         for line in process.stderr:
+            if line.startswith(b"session: "):
+                LAST_SESSION["id"] = line[len(b"session: "):].decode(errors="replace").strip()
             sys.stderr.buffer.write(line)
             sys.stderr.buffer.flush()
         status = process.wait()
@@ -833,11 +947,24 @@ def grok_out_of_credit() -> bool:
     return time.time() - since < float(os.environ.get("JAMSESSION_GROK_NO_CREDIT_HOLD") or 3600)
 
 
+def devin_exhausted(model: str) -> bool:
+    """The Devin adapter's marker for a model that refused for its quota, within its one-hour hold."""
+    home = Path(os.environ.get("JAMSESSION_HOME") or Path.home() / ".agents" / "jamsession")
+    folder = Path(os.environ.get("JAMSESSION_DEVIN_EXHAUSTED_DIR") or home / "state")
+    try:
+        since = int((folder / ("devin-exhausted-" + re.sub(r"[^A-Za-z0-9._-]", "_", model))).read_text(encoding="utf-8").split()[0])
+    except (OSError, ValueError, IndexError):
+        return False
+    return time.time() - since < float(os.environ.get("JAMSESSION_DEVIN_EXHAUSTED_HOLD") or 3600)
+
+
 def skip_reason(candidate: Candidate, access: str, usage: Usage, min_usage: float) -> str:
     if access == "read" and candidate.provider in EDIT_ONLY - READ_BY_PROMPT:
         return "read access unsupported"
     if candidate.provider == "grok" and grok_out_of_credit():
         return "Grok balance exhausted"
+    if candidate.provider == "devin" and devin_exhausted(candidate.model):
+        return "Devin quota exhausted"
     # --min-usage 0 tries every pool. A per-account floor replaces any other value.
     floor = min_usage
     if min_usage > 0:
@@ -855,7 +982,7 @@ def skip_reason(candidate: Candidate, access: str, usage: Usage, min_usage: floa
 
 
 def run(candidates: list[Candidate], session: str, access: str, prompt: bytes, *, cli: str, worksheet: str,
-        min_usage: float, latest: "Latest | None" = None) -> int:
+        min_usage: float, latest: "Latest | None" = None, remember: bool = False) -> int:
     usage = Usage(cli)
     latest = latest or Latest()
     requested = candidates[0]
@@ -896,6 +1023,8 @@ def run(candidates: list[Candidate], session: str, access: str, prompt: bytes, *
             continue
         sys.stdout.buffer.write(reply)
         sys.stdout.buffer.flush()
+        if remember and LAST_SESSION.get("id"):
+            remember_route_session(LAST_SESSION["id"], candidate)
         moved = candidate is not requested
         print(f"ran: provider={candidate.provider_arg()} model={candidate.model} effort={candidate.effort} "
               f"session={'resumed' if this_session != 'new' else 'new'}"
@@ -987,10 +1116,10 @@ def main(argv: list[str]) -> int:
             if len(rest) != 3:
                 raise Failure("run --route needs <name> <new|session> <read|edit> <prompt>")
             session, access, prompt = rest
-            route = expand_route(options["route"])
+            route = expand_route(options["route"], balanced=session == "new")
             if route["kind"] == "panel":
                 raise Failure(f"route '{options['route']}' is a panel; run its members with `jamsession route`")
-            candidates = route["candidates"]
+            candidates = owner_first(route["candidates"], session)
             min_usage = route["skip_below_usage"] if options["min_usage"] is None else options["min_usage"]
         else:
             if len(rest) != 6:
@@ -1010,7 +1139,7 @@ def main(argv: list[str]) -> int:
         if access not in ("read", "edit"):
             raise Failure("access must be read or edit")
         return run(candidates, session, access, read_prompt(prompt), cli=cli, worksheet=options["worksheet"],
-                   min_usage=min_usage)
+                   min_usage=min_usage, remember=bool(options["route"]))
     raise Failure(f"unknown command '{command}'")
 
 

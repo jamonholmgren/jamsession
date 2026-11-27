@@ -2,6 +2,8 @@
 # A route names a group (`group = "daily"`, optional `prefer = { provider, model, effort }` to move one model
 # to the front); `group:<name>` also works wherever an archetype name or a route name is accepted.
 # A plain `claude` rung walks the accounts in accounts.toml order. Keep this in step with tiers.toml.
+# `balance = N` makes the first N rungs peers: a new run starts on the one whose first pool has the most
+# usage left (cached reads; unread pools after known healthy ones). Prefer, panels and resumes keep this order.
 
 [group.premium]
 rungs = [
@@ -12,6 +14,7 @@ rungs = [
 ]
 
 [group.daily]
+balance = 2  # Neon and Opus are interchangeable for daily work
 rungs = [
   { provider = "antigravity", model = "neon@latest", effort = "medium" },
   { provider = "claude", model = "opus@latest", effort = "medium" },
