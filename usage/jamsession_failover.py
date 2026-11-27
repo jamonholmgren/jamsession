@@ -483,36 +483,41 @@ def balance(candidates: list[Candidate], rungs: list[Candidate], peers: int, min
 # --- sessions a route started ----------------------------------------------
 # A route run records which pool owns each new session, so a resume goes back to it.
 
-def route_sessions_path() -> Path:
-    return Path(os.environ.get("JAMSESSION_ROUTE_SESSIONS")
-                or os.path.expanduser("~/.cache/jamsession/route-sessions.json"))
+ROUTE_SESSION_DAYS = 30
 
 
-def load_route_sessions() -> dict:
-    try:
-        data = json.loads(route_sessions_path().read_text(encoding="utf-8"))
-    except (OSError, ValueError, UnicodeError):
-        return {}
-    return data if isinstance(data, dict) else {}
+def route_session_file(session: str) -> Path:
+    """One small file per session (its owner's provider argument), so parallel runs never drop each other's."""
+    folder = Path(os.environ.get("JAMSESSION_ROUTE_SESSIONS")
+                  or os.path.expanduser("~/.cache/jamsession/route-sessions"))
+    return folder / re.sub(r"[^A-Za-z0-9._-]", "_", session)[:200]
 
 
 def remember_route_session(session: str, candidate: Candidate) -> None:
-    path = route_sessions_path()
+    path = route_session_file(session)
     try:
-        data = load_route_sessions()
-        data[session] = {"provider": candidate.provider_arg(), "at": time.time()}
-        data = dict(sorted(data.items(), key=lambda item: item[1].get("at", 0) if isinstance(item[1], dict) else 0)[-2000:])
         path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(f".{os.getpid()}.tmp")
-        temporary.write_text(json.dumps(data) + "\n", encoding="utf-8")
+        temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+        temporary.write_text(candidate.provider_arg() + "\n", encoding="utf-8")
         temporary.replace(path)
+        cutoff = time.time() - ROUTE_SESSION_DAYS * 86400
+        for old in path.parent.iterdir():
+            if old.stat().st_mtime < cutoff:
+                old.unlink(missing_ok=True)
     except OSError:
         pass  # a lost record only means a later resume follows group order
 
 
+def route_session_owner(session: str) -> str:
+    try:
+        return route_session_file(session).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def owner_first(candidates: list[Candidate], session: str) -> list[Candidate]:
     """A resumed route session goes back to the pool that started it, when known."""
-    owner = (load_route_sessions().get(session) or {}).get("provider") if session != "new" else None
+    owner = route_session_owner(session) if session != "new" else ""
     found = next((item for item in candidates if owner and item.provider_arg() == owner), None)
     return [found] + [item for item in candidates if item is not found] if found is not None else candidates
 
@@ -903,7 +908,8 @@ class Usage:
 LAST_SESSION: dict[str, str] = {}  # the `session:` line of the latest attempt
 
 
-def attempt(cli: str, worksheet: str, candidate: Candidate, session: str, access: str, prompt: bytes) -> tuple[int, bytes]:
+def attempt(cli: str, worksheet: str, candidate: Candidate, session: str, access: str, prompt: bytes,
+            remember: bool = False) -> tuple[int, bytes]:
     command = [cli, "run"] + (["--worksheet", worksheet] if worksheet else []) + [
         candidate.provider_arg(), session, candidate.model, candidate.effort, access, "-"]
     # The selector that chose the first account must not veto a later account.
@@ -928,6 +934,8 @@ def attempt(cli: str, worksheet: str, candidate: Candidate, session: str, access
         for line in process.stderr:
             if line.startswith(b"session: "):
                 LAST_SESSION["id"] = line[len(b"session: "):].decode(errors="replace").strip()
+                if remember and LAST_SESSION["id"]:  # now, so a run stopped midway can still be resumed
+                    remember_route_session(LAST_SESSION["id"], candidate)
             sys.stderr.buffer.write(line)
             sys.stderr.buffer.flush()
         status = process.wait()
@@ -1015,16 +1023,14 @@ def run(candidates: list[Candidate], session: str, access: str, prompt: bytes, *
                   file=sys.stderr)
         tried += 1
         if access == "read" and candidate.provider in READ_BY_PROMPT:  # no read mode: say so in the prompt
-            status, reply = attempt(cli, worksheet, candidate, this_session, "edit", NO_WRITES + prompt)
+            status, reply = attempt(cli, worksheet, candidate, this_session, "edit", NO_WRITES + prompt, remember)
         else:
-            status, reply = attempt(cli, worksheet, candidate, this_session, access, prompt)
+            status, reply = attempt(cli, worksheet, candidate, this_session, access, prompt, remember)
         if status == REFUSAL:
             print(f"failover: {candidate.label()} refused", file=sys.stderr)
             continue
         sys.stdout.buffer.write(reply)
         sys.stdout.buffer.flush()
-        if remember and LAST_SESSION.get("id"):
-            remember_route_session(LAST_SESSION["id"], candidate)
         moved = candidate is not requested
         print(f"ran: provider={candidate.provider_arg()} model={candidate.model} effort={candidate.effort} "
               f"session={'resumed' if this_session != 'new' else 'new'}"

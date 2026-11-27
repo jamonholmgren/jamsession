@@ -300,7 +300,7 @@ class FailoverRunTests(unittest.TestCase):
                    JAMSESSION_SESSION_ACCOUNTS=str(root / "no-sessions.json"),
                    JAMSESSION_SPEND=str(root / "no-spend.json"),
                    JAMSESSION_USAGE_CACHE=str(root / "no-usage-cache.json"),
-                   JAMSESSION_ROUTE_SESSIONS=str(root / "route-sessions.json"))
+                   JAMSESSION_ROUTE_SESSIONS=str(root / "route-sessions"))
         reply = subprocess.run([sys.executable, str(ROOT / "usage" / "jamsession_failover.py"), *args],
                                env=env, capture_output=True, text=True, timeout=30)
         calls = [json.loads(line) for line in self.calls.read_text().splitlines()] if self.calls.exists() else []
@@ -499,9 +499,10 @@ class FailoverRunTests(unittest.TestCase):
         self.routes.write_text('[route.lead]\ngroup = "daily"\n')
         neon_low = [{"agent": "antigravity", "status": "ok", "windows": [{"remaining_percent": 30}]},
                     {"agent": "claude", "status": "ok", "windows": [{"remaining_percent": 90}]}]
-        reply, calls = self.run_helper({"claude": [0, "started", "session: lead-1\n"]},
+        # The owner is known from the session line, even when that run then dies.
+        reply, calls = self.run_helper({"claude": [1, "", "session: lead-1\n"]},
                                        "run", "--route", "lead", "new", "edit", "go", usage=neon_low)
-        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(reply.returncode, 1, reply.stderr)
         self.assertEqual(calls[-1][1:3], ["claude", "new"])
         claude_low = [{"agent": "antigravity", "status": "ok", "windows": [{"remaining_percent": 95}]},
                       {"agent": "claude", "status": "ok", "windows": [{"remaining_percent": 30}]}]

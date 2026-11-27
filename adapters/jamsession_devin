@@ -218,13 +218,14 @@ run_agent() {
     >"$JAMSESSION_TEMP_DIR/out" 2>"$JAMSESSION_TEMP_DIR/err") || status=$?
   cat "$JAMSESSION_TEMP_DIR/out"
   cat "$JAMSESSION_TEMP_DIR/err" >&2
-  status="$(jamsession_refusal_status "$status" "$JAMSESSION_TEMP_DIR/out" "$JAMSESSION_TEMP_DIR/err")"
-  if [ "$status" -eq "$JAMSESSION_REFUSAL_STATUS" ] && \
-    grep -Eiq -- "$JAMSESSION_REFUSAL_LIMIT" "$JAMSESSION_TEMP_DIR/err" "$JAMSESSION_TEMP_DIR/out"; then
+  # Only Devin's own quota failure is remembered; a passing rate limit is not.
+  if [ "$status" -ne 0 ] && grep -Eiq -- 'quota|resource[ _-]exhausted|out of (credits|tokens)' \
+    "$JAMSESSION_TEMP_DIR/err" "$JAMSESSION_TEMP_DIR/out"; then
     mkdir -p "$DEVIN_EXHAUSTED_DIR" && date +%s >"$mark"
   elif [ "$status" -eq 0 ]; then
     rm -f "$mark"
   fi
+  status="$(jamsession_refusal_status "$status" "$JAMSESSION_TEMP_DIR/out" "$JAMSESSION_TEMP_DIR/err")"
   if [ -n "$precreated" ]; then
     jamsession_session "$session_id"
     devin_acp_rename "$session_id"

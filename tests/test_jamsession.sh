@@ -1212,6 +1212,12 @@ check "Devin resumes the exact requested session" contains "$LOG" "--resume save
 check "Devin reports the resumed session" contains "$stderr_file" "session: saved-devin-session"
 
 rm -f "$LOG"
+run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" FAKE_EXIT=1 FAKE_DEVIN_ERR="too many requests" \
+  JAMSESSION_DEVIN_AUTOMATION=0 JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
+  "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit prompt
+check "a passing Devin rate limit refuses but is not remembered" \
+  sh -c "[ $status -eq 75 ] && [ ! -e '$JAMSESSION_DEVIN_EXHAUSTED_DIR/devin-exhausted-grok-4.6' ]"
+rm -f "$LOG"
 run_command env FAKE_LOG="$LOG" FAKE_DEVIN_STATE="$DEVIN_STATE" FAKE_EXIT=1 FAKE_DEVIN_ERR="resource_exhausted: weekly quota" \
   JAMSESSION_DEVIN_AUTOMATION=0 JAMSESSION_DEVIN_BIN="$FAKE_BIN/devin" \
   "$ROOT/adapters/jamsession_devin" run new grok-4.6 high edit prompt
