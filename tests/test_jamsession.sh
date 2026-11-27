@@ -765,7 +765,7 @@ case "$1" in
   --version) printf '1.3.4\n'; exit 0 ;;
   models)
     [ "${FAKE_AGY_AUTH_ERROR:-0}" -eq 0 ] || { printf 'authentication failed\n'; exit 1; }
-    printf '%s\n' 'gemini-3.8-flash-high Gemini 3.8 Flash (High)' 'gemini-3.8-flash-medium Gemini 3.8 Flash (Medium)' 'gemini-3.8-flash-low Gemini 3.8 Flash (Low)' 'gemini-4-neon-high Gemini 4 Neon (High)' 'gemini-4-neon-xhigh Gemini 4 Neon (XHigh)' 'gemini-4-neon-low Gemini 4 Neon (Low)' 'gemini-pro-orchestrator-neon Orchestrator (Neon)' 'gpt-oss-120b-medium GPT-OSS 120B (Medium)' 'claude-opus-4-6-thinking Claude Opus 4.6'; exit 0 ;;
+    printf '%s\n' 'gemini-3.8-flash-high Gemini 3.8 Flash (High)' 'gemini-3.8-flash-medium Gemini 3.8 Flash (Medium)' 'gemini-3.8-flash-low Gemini 3.8 Flash (Low)' 'gemini-4-neon-high Gemini 4 Neon (High)' 'gemini-4-neon-xhigh Gemini 4 Neon (XHigh)' 'gemini-4-neon-medium Gemini 4 Neon (Medium)' 'gemini-4-neon-low Gemini 4 Neon (Low)' 'gemini-pro-orchestrator-neon Orchestrator (Neon)' 'gpt-oss-120b-medium GPT-OSS 120B (Medium)' 'claude-opus-4-6-thinking Claude Opus 4.6'; exit 0 ;;
 esac
 printf '%s\n' "$@" >"$FAKE_LOG"
 if [ "$2" = /usage ]; then
@@ -1467,8 +1467,10 @@ check "Antigravity replaces the model effort suffix" contains "$LOG" 'gemini-3.8
 check "Antigravity never doubles effort suffixes" sh -c "! grep -Fq 'high-medium' '$LOG'"
 run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new flash low edit prompt
 check "Antigravity flash shorthand selects low variant" contains "$LOG" 'gemini-3.8-flash-low'
-run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new default max edit prompt
-check "Antigravity default model remains Gemini" contains "$LOG" 'gemini-3.8-flash-high'
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new default default edit prompt
+check "Antigravity default is Neon medium" contains "$LOG" 'gemini-4-neon-medium'
+run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new flash max edit prompt
+check "Antigravity max on Flash falls back to high" contains "$LOG" 'gemini-3.8-flash-high'
 check "Antigravity max downgrade warns" contains "$stderr_file" 'using high instead of max'
 run_command env FAKE_LOG="$LOG" JAMSESSION_ANTIGRAVITY_BIN="$FAKE_BIN/agy" "$ROOT/jamsession" run agy new gemini-4-neon xhigh edit prompt
 check "Antigravity uses the catalog xhigh variant" contains "$LOG" 'gemini-4-neon-xhigh'

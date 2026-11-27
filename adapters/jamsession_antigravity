@@ -26,8 +26,8 @@ select gemini-3.8-flash-<effort>. Any model with effort variants in the live
 `agy models` catalog (gemini-4-neon, gemini-4-neon-high, ...) resolves to
 <base>-<effort>; an existing suffix is replaced, never doubled. xhigh is used
 when the catalog lists <base>-xhigh; max maps to xhigh there; otherwise both
-fall back to high with a warning. default model selects Gemini 3.8 Flash;
-default effort preserves an explicit suffix, otherwise selects high. Exact
+fall back to high with a warning. default model (or neon) selects Gemini 4 Neon;
+default effort preserves an explicit suffix, otherwise selects medium. Exact
 other catalog IDs (e.g. gemini-pro-orchestrator) are used as given.
 Usage reads native `agy -p /usage`, without a model turn. Session IDs are
 Antigravity conversation UUIDs. `agy` and `gemini` are provider aliases.
@@ -101,7 +101,8 @@ resolve_model() {
     *) jamsession_die "effort must be low, medium, high, xhigh, max, or default" ;;
   esac
   case "$model" in
-    default|gemini|flash) model=gemini-3.8-flash ;;
+    default|neon) model=gemini-4-neon ;;
+    gemini|flash) model=gemini-3.8-flash ;;
   esac
   catalog="$("$JAMSESSION_PROVIDER_BIN" models)" || jamsession_die "could not read the Antigravity model catalog"
   base="$model"
@@ -113,7 +114,7 @@ resolve_model() {
     if catalog_has "$catalog" "$base-$level"; then family=1; break; fi
   done
   if [ "$family" -eq 1 ]; then
-    [ "$effort" != default ] || effort="${suffix:-high}"
+    [ "$effort" != default ] || effort="${suffix:-medium}"
     case "$effort" in
       xhigh|max)
         if catalog_has "$catalog" "$base-xhigh"; then

@@ -30,7 +30,7 @@ args = sys.argv[1:]
 if args[:1] == ["create-chat"]:
     print("chat-1"); sys.exit(0)
 if args[:1] == ["models"]:
-    print(os.environ.get("FAKE_MODELS", "gemini-3.8-flash-high")); sys.exit(0)
+    print(os.environ.get("FAKE_MODELS", "gemini-3.8-flash-high\ngemini-4-neon-medium")); sys.exit(0)
 if os.environ.get("FAKE_ECHO_ARGS"):
     print(" ".join(args)); sys.exit(0)
 if args[:2] == ["list", "--format"]:
