@@ -1269,7 +1269,7 @@ Usage: jamsession run [--worksheet <path>] <provider[:account]> <new|session> <m
 Use `new` to create a session or pass an exact provider-native session ID to
 resume. Use `default` to let the provider choose its model or effort. A model
 of `<family>@latest` (opus, fable, sonnet, haiku, sol, astra, terra, luna, grok,
-wonder, spark, swe-2.1, swe-2-flash) resolves to that harness's newest listed ID,
+wonder, spark, neon, swe-2.1, swe-2-flash) resolves to that harness's newest listed ID,
 cached for an hour (JAMSESSION_LATEST_TTL), and prints `model: ... -> <id>`. `read`
 must be enforced by the adapter; `edit` permits unattended workspace changes.
 Pass `-` as the prompt to read stdin.
@@ -1312,7 +1312,11 @@ answer. Failover starts a new session, buffers the reply, and ends with
 field includes `:account` when one was selected.
 `--route <name>` runs a JAMSESSION_ROUTES route the same way; `jamsession route
 <name>` prints its candidates and `jamsession tiers` the table or a model's
-failover ladder.
+failover ladder. A route may say `group = "<name>"` (with `prefer = { provider,
+model, effort }` to move one model first, or `size` for a panel of distinct
+models) to use a ladder from groups.toml (JAMSESSION_GROUPS overrides it);
+`group:<name>` also works as a route or archetype name. A read run on
+Antigravity uses edit transport with a no-writes line first.
 EOF
       ;;
     inbox)

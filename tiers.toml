@@ -8,7 +8,7 @@
 #
 # Each model's `via` lists the harnesses that serve it, in the order failover
 # tries them after the one requested: Devin first, then the native harness,
-# then Cursor, except where a harness serves a newer version. With two or more
+# except where a harness serves a newer version. With two or more
 # accounts in accounts.toml, and no via here naming an account, failover tries
 # that provider's accounts in the order listed, each as its own usage pool.
 # A via may still name an account, for example
@@ -21,17 +21,17 @@
 # each adapter maps it (Devin and Cursor append it to the ID).
 # `efforts` maps a requested effort to one this harness accepts; unlisted
 # efforts pass through. `meter = false` means `jamsession usage` does not track
-# this pool (SWE-2.1 and SWE-2 Flash, free for now; Cursor's non-Grok
-# allotment), so low usage never skips it.
+# this pool (SWE-2.1 and SWE-2 Flash, free for now), so low usage never skips it.
 
 tiers = [
-  { name = "A", models = ["fable", "astra"] },
+  # Tiers follow groups.toml: A premium, B daily, C efficient, D cheap, E token burners.
+  # A model sits in one tier only, so Neon (premium and daily) is in A, and SWE-2.1 in C.
+  { name = "A", models = ["fable", "astra", "neon"] },
   { name = "B", models = ["opus", "sol"] },
-  # Grok leads tier C; Wonder is tier C only at high effort; Sonnet and Terra
-  # are last-resort failover, never a first choice.
-  { name = "C", models = ["grok", "wonder", "sonnet", "terra"] },
-  # SWE-2.1 leads tier D because it is free for now; then routes.toml's cheap order.
-  { name = "D", models = ["swe-2.1", "luna", "haiku"] },
+  { name = "C", models = ["swe-2.1", "sonnet", "terra"] },
+  { name = "D", models = ["luna", "haiku"] },
+  # Grok and Wonder have their own pools; Wonder runs only at high.
+  { name = "E", models = ["grok", "wonder"] },
   { name = "F", models = ["swe-2-flash", "spark"] },
 ]
 
@@ -39,7 +39,6 @@ tiers = [
 via = [
   { harness = "devin", id = "fable@latest" },
   { harness = "claude", id = "fable@latest" },
-  { harness = "cursor", id = "fable@latest", meter = false },
 ]
 
 [model.astra]  # Codex first: it serves a newer Astra than Devin
@@ -52,7 +51,11 @@ via = [
 via = [
   { harness = "devin", id = "opus@latest" },
   { harness = "claude", id = "opus@latest" },
-  { harness = "cursor", id = "opus@latest", meter = false },
+]
+
+[model.neon]  # Antigravity's Gemini 4 Neon
+via = [
+  { harness = "antigravity", id = "neon@latest" },
 ]
 
 [model.sol]  # Codex first: it serves a newer Sol than Devin
@@ -65,14 +68,12 @@ via = [
 via = [
   { harness = "devin", id = "grok@latest", efforts = { max = "xhigh" } },
   { harness = "grok", id = "grok@latest", efforts = { xhigh = "high", max = "high" } },
-  { harness = "cursor", id = "grok@latest", efforts = { max = "xhigh" } },
 ]
 
 [model.sonnet]
 via = [
   { harness = "devin", id = "sonnet@latest" },
   { harness = "claude", id = "sonnet@latest" },
-  { harness = "cursor", id = "sonnet@latest", meter = false },
 ]
 
 [model.terra]
@@ -96,14 +97,12 @@ via = [
 via = [
   { harness = "devin", id = "haiku@latest" },
   { harness = "claude", id = "haiku@latest" },
-  { harness = "cursor", id = "haiku@latest", meter = false },
 ]
 
-[model.wonder]  # always high: Wonder is tier C only at high effort
+[model.wonder]  # always high
 via = [
   { harness = "devin", id = "wonder@latest", efforts = { default = "high", none = "high", minimal = "high", low = "high", medium = "high", xhigh = "high", max = "high" } },
   { harness = "muse", id = "wonder@latest", efforts = { default = "high", none = "high", minimal = "high", low = "high", medium = "high", xhigh = "high", max = "high" } },
-  { harness = "cursor", id = "wonder@latest", meter = false, efforts = { default = "high", none = "high", minimal = "high", low = "high", medium = "high", xhigh = "high", max = "high" } },
 ]
 
 [model.swe-2-flash]
@@ -114,5 +113,4 @@ via = [
 [model.spark]
 via = [
   { harness = "muse", id = "spark@latest" },
-  { harness = "cursor", id = "spark@latest", meter = false },
 ]

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Council Panel"
+  short_description: "PPP / Noble Court: premium cross-model planning and review"
+  default_prompt: "Use $jamsession-council-panel (PPP / Noble Court) to analyze, plan, or review this problem through independent drafts and revision rounds."

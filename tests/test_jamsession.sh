@@ -1615,7 +1615,7 @@ RESOURCE_SKILL=jamsession-work-over-ssh
 RESOURCE_PACKAGE="$RESOURCE_SOURCE/skills/$RESOURCE_SKILL"
 RESOURCE_TARGET="$INSTALL_HOME/.agents/skills/$RESOURCE_SKILL"
 mkdir -p "$RESOURCE_SOURCE"
-cp "$ROOT/jamsession" "$ROOT/tiers.toml" "$ROOT/accounts.toml.example" "$RESOURCE_SOURCE/"
+cp "$ROOT/jamsession" "$ROOT/tiers.toml" "$ROOT/groups.toml" "$ROOT/accounts.toml.example" "$RESOURCE_SOURCE/"
 cp -R "$ROOT/adapters" "$ROOT/usage" "$ROOT/skills" "$RESOURCE_SOURCE/"
 mkdir -p "$RESOURCE_PACKAGE/references" "$RESOURCE_PACKAGE/assets"
 printf '%s\n' references/guide.md assets/template.json >"$RESOURCE_PACKAGE/resources.txt"

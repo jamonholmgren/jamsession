@@ -12,6 +12,7 @@ LINK_DIR="$HOME/.local/bin"
 PROVIDERS="codex claude cursor grok copilot devin muse antigravity"
 DEFAULT_SKILLS="jamsession-summon-agent jamsession-get-agent-usage"
 OPTIONAL_SKILLS="jamsession-model-recommendations jamsession-ping-pong-planning
+jamsession-council-panel
 jamsession-peasant-mob
 jamsession-contrarian-review jamsession-ask-agent-panel
 jamsession-orchestrate-agent-work jamsession-use-agent-worksheet
@@ -148,6 +149,7 @@ fetch usage/jamsession_accounts.py usage/jamsession_accounts.py
 fetch usage/jamsession_hooks.py usage/jamsession_hooks.py
 fetch accounts.toml.example accounts.toml.example
 fetch tiers.toml tiers.toml
+fetch groups.toml groups.toml
 fetch adapters/_jamsession_adapter_common adapters/_jamsession_adapter_common
 fetch adapters/_jamsession_devin_acp.py adapters/_jamsession_devin_acp.py
 fetch adapters/_jamsession_codex_control.py adapters/_jamsession_codex_control.py
@@ -170,6 +172,11 @@ for rename in $RENAMED_SKILLS; do
     skills="$skills $new"
   fi
 done
+# Ping-pong planning is now an alias of the council panel, so it brings the council along.
+case " $skills " in
+  *" jamsession-council-panel "*) ;;
+  *" jamsession-ping-pong-planning "*) skills="$skills jamsession-council-panel" ;;
+esac
 for skill in $skills; do
   fetch "skills/$skill/SKILL.md" "skills/$skill/SKILL.md"
   fetch "skills/$skill/agents/openai.yaml" "skills/$skill/agents/openai.yaml"
@@ -187,6 +194,7 @@ require_script usage/jamsession_accounts.py
 require_script usage/jamsession_hooks.py
 require_line accounts.toml.example 'CLAUDE_CONFIG_DIR' "its account example"
 require_line tiers.toml '^tiers = ' "its tiers list"
+require_line groups.toml '^\[group\.' "its groups"
 for provider in $PROVIDERS; do
   require_script "adapters/jamsession_$provider"
 done
@@ -214,6 +222,7 @@ install_file usage/jamsession_accounts.py "$BIN_DIR/jamsession_accounts.py" 755
 install_file usage/jamsession_hooks.py "$BIN_DIR/jamsession_hooks.py" 755
 install_file accounts.toml.example "$INSTALL_ROOT/accounts.toml.example" 644
 install_file tiers.toml "$INSTALL_ROOT/tiers.toml" 644
+install_file groups.toml "$INSTALL_ROOT/groups.toml" 644
 install_file adapters/_jamsession_adapter_common "$ADAPTER_DIR/_jamsession_adapter_common" 644
 install_file adapters/_jamsession_devin_acp.py "$ADAPTER_DIR/_jamsession_devin_acp.py" 644
 install_file adapters/_jamsession_codex_control.py "$ADAPTER_DIR/_jamsession_codex_control.py" 644

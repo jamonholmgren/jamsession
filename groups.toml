@@ -1,0 +1,39 @@
+# Model groups: Jamon's ranked fallback ladders, best first. The effort on each rung is its default.
+# A route names a group (`group = "daily"`, optional `prefer = { provider, model, effort }` to move one model
+# to the front); `group:<name>` also works wherever an archetype name or a route name is accepted.
+# A plain `claude` rung walks the accounts in accounts.toml order. Keep this in step with tiers.toml.
+
+[group.premium]
+rungs = [
+  { provider = "claude", model = "fable@latest", effort = "medium" },
+  { provider = "codex", model = "astra@latest", effort = "high" },
+  { provider = "antigravity", model = "neon@latest", effort = "xhigh" },
+  # Wonder Full 1.0 high goes here once a CLI catalog lists it; none does yet.
+]
+
+[group.daily]
+rungs = [
+  { provider = "antigravity", model = "neon@latest", effort = "medium" },
+  { provider = "claude", model = "opus@latest", effort = "medium" },
+  { provider = "codex", model = "sol@latest", effort = "high" },
+]
+
+[group.efficient]
+rungs = [
+  { provider = "devin", model = "swe-2.1@latest", effort = "max", meter = false },
+  { provider = "claude", model = "sonnet@latest", effort = "high" },
+  { provider = "codex", model = "terra@latest", effort = "high" },
+]
+
+[group.cheap]
+rungs = [
+  { provider = "devin", model = "swe-2.1@latest", effort = "max", meter = false },
+  { provider = "codex", model = "luna@latest", effort = "max" },
+  { provider = "claude", model = "haiku@latest", effort = "max" },
+]
+
+[group.token-burners]
+rungs = [
+  { provider = "grok", model = "grok@latest", effort = "high" },
+  { provider = "muse", model = "wonder@latest", effort = "high" },
+]

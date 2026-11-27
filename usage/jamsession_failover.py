@@ -30,6 +30,10 @@ REFUSAL = 75
 EFFORTS = ("none", "minimal", "low", "medium", "high", "xhigh", "max")
 # Adapters that refuse read access outright; failover skips them for read runs.
 EDIT_ONLY = {"devin", "copilot", "antigravity"}
+# Of those, a read run here uses edit transport with this line first instead of skipping.
+READ_BY_PROMPT = {"antigravity"}
+NO_WRITES = (b"Do not modify, create, delete, rename, format, stage, or commit files; "
+             b"do not run state-changing commands.\n\n")
 DEFAULT_MIN_USAGE = 25.0
 # A 5-hour Claude session is 300 minutes. Anything up to 6 hours is that short
 # window. Weekly is 7 days; a monthly window is longer than that.
@@ -61,7 +65,7 @@ _EFFORT = r"(?:-(?:none|minimal|low|medium|high|xhigh|max|ultra))?"
 FAMILIES = {name: re.compile(pattern.replace("V", _VERSION) + _EFFORT) for name, pattern in {
     "fable": "claude-fable-V", "opus": "claude-opus-V", "sonnet": "claude-sonnet-V", "haiku": "claude-haiku-V",
     "astra": "gpt-V-astra", "sol": "gpt-V-sol", "terra": "gpt-V-terra", "luna": "gpt-V-luna",
-    "grok": "grok-V", "wonder": "muse-wonder-V", "spark": "muse-spark-V",
+    "grok": "grok-V", "wonder": "muse-wonder-V", "spark": "muse-spark-V", "neon": "gemini-V-neon",
     "swe-2.1": "swe-V", "swe-2-flash": "swe-V-flash",
 }.items()}
 FAMILY_ALIASES = {"swe": "swe-2.1", "swe-2": "swe-2.1", "swe-flash": "swe-2-flash"}
@@ -391,6 +395,47 @@ def rung(entry: dict) -> Candidate:
     return Candidate(provider, entry["model"], entry.get("effort", "default"), entry.get("meter", True), account=account)
 
 
+def groups_path() -> Path:
+    if os.environ.get("JAMSESSION_GROUPS"):
+        return Path(os.environ["JAMSESSION_GROUPS"])
+    here = Path(__file__).resolve().parent
+    for candidate in (Path(os.environ.get("JAMSESSION_HOME", "")) / "groups.toml", here.parent / "groups.toml"):
+        if candidate.is_file():
+            return candidate
+    raise Failure("groups.toml not found; reinstall Jam Session or set JAMSESSION_GROUPS")
+
+
+def group_candidates(name: str) -> list[Candidate]:
+    """The rungs of `[group.<name>]` in groups.toml, in rank order."""
+    path = groups_path()
+    groups = load_toml(path).get("group") or {}
+    rungs = (groups.get(name) or {}).get("rungs") if isinstance(groups, dict) else None
+    if not isinstance(rungs, list) or not rungs or not all(isinstance(item, dict) for item in rungs):
+        known = ", ".join(groups) if isinstance(groups, dict) else "none"
+        raise Failure(f"unknown or empty group '{name}' in {path}; known: {known}")
+    return [rung(item) for item in rungs]
+
+
+def apply_prefer(candidates: list[Candidate], prefer) -> list[Candidate]:
+    """Move the rungs matching `prefer` (model, optional provider) to the front, with its effort if given.
+    A preference the group does not hold becomes a new first rung."""
+    if not prefer:
+        return candidates
+    if not isinstance(prefer, dict) or not prefer.get("model"):
+        raise Failure("prefer needs at least a model")
+    wanted = rung({"provider": prefer.get("provider", "-"), **prefer})
+    effort = str(prefer["effort"]) if prefer.get("effort") else ""
+    matches = [item for item in candidates if item.model == wanted.model
+               and (not prefer.get("provider") or (item.provider, item.account) == (wanted.provider, wanted.account)
+                    or (item.provider == wanted.provider and not wanted.account))]
+    if not matches:
+        if not prefer.get("provider"):
+            raise Failure(f"prefer model '{wanted.model}' is not in the group; name its provider too")
+        return [wanted] + candidates
+    front = [replace(item, effort=effort) if effort else item for item in matches]
+    return front + [item for item in candidates if item not in matches]
+
+
 def archetype_tables(routes: dict) -> dict:
     found = routes.get("archetype") or {}
     if not isinstance(found, dict):
@@ -399,7 +444,9 @@ def archetype_tables(routes: dict) -> dict:
 
 
 def archetype_candidates(name: str, routes: dict) -> list[Candidate]:
-    """The rungs of `[archetype.<name>]`, in file order."""
+    """The rungs of `[archetype.<name>]`, in file order; `group:<name>` is that group's ladder."""
+    if name.startswith("group:"):
+        return group_candidates(name[len("group:"):])
     entry = archetype_tables(routes).get(name)
     if not isinstance(entry, dict):
         known = ", ".join(archetype_tables(routes)) or "none"
@@ -510,10 +557,31 @@ def panel_from_archetypes(names, routes: dict, effort: str, min_usage: float, si
     return picked
 
 
+def panel_from_ladder(candidates: list[Candidate], min_usage: float, size: int) -> list[Candidate]:
+    """The first available rung of each distinct model, one pool apiece, up to `size`."""
+    usage = usage_snapshot()
+    pools: set[tuple[str, str]] = set()
+    models: set[str] = set()
+    picked: list[Candidate] = []
+    for candidate in candidates:
+        if len(picked) >= size:
+            break
+        key = pool_of(candidate)
+        if candidate.model in models or key in pools or rung_unavailable(candidate, usage, min_usage):
+            continue
+        picked.append(candidate)
+        pools.add(key)
+        models.add(candidate.model)
+    return picked
+
+
 def expand_route(name: str, table: dict | None = None) -> dict:
     path = os.environ.get("JAMSESSION_ROUTES")
-    routes = load_routes()
-    route = routes.get("route", {}).get(name) if isinstance(routes.get("route"), dict) else None
+    if name.startswith("group:"):  # a group runs as its own route; no routes file needed
+        routes, route = {}, {"group": name[len("group:"):]}
+    else:
+        routes = load_routes()
+        route = routes.get("route", {}).get(name) if isinstance(routes.get("route"), dict) else None
     if route is None:
         known = routes.get("route", {}) if isinstance(routes.get("route"), dict) else {}
         raise Failure(f"route '{name}' is not in {path}; known: {', '.join(known)}")
@@ -527,6 +595,19 @@ def expand_route(name: str, table: dict | None = None) -> dict:
     elif "from" in route:
         result.update(kind="panel", size=int(route.get("size", len(route["from"]))),
                       candidates=[rung(entry) for entry in route["from"]])
+    elif "group" in route:
+        group = route["group"]
+        if not isinstance(group, str) or not group:
+            raise Failure("group must be a name")
+        candidates = with_effort(group_candidates(group), route_effort(route))
+        candidates = expand_accounts(tag_archetype(apply_prefer(candidates, route.get("prefer")), f"group:{group}"),
+                                     requested_first=False)
+        if "size" in route:
+            size = int(route["size"])
+            result.update(kind="panel", size=size,
+                          candidates=panel_from_ladder(candidates, result["skip_below_usage"], size))
+        else:
+            result.update(kind="ladder", candidates=candidates)
     elif "archetype" in route:
         archetype = route["archetype"]
         if not isinstance(archetype, str) or not archetype:
@@ -543,7 +624,7 @@ def expand_route(name: str, table: dict | None = None) -> dict:
             str(route.get("prefer", "")), bool(route.get("allow_lower", False)),
             str(route.get("lowest_tier", ""))))
     else:
-        raise Failure(f"route '{name}' needs rungs, from, from_archetypes, archetype, or tier")
+        raise Failure(f"route '{name}' needs group, rungs, from, from_archetypes, archetype, or tier")
     return result
 
 
@@ -753,7 +834,7 @@ def grok_out_of_credit() -> bool:
 
 
 def skip_reason(candidate: Candidate, access: str, usage: Usage, min_usage: float) -> str:
-    if access == "read" and candidate.provider in EDIT_ONLY:
+    if access == "read" and candidate.provider in EDIT_ONLY - READ_BY_PROMPT:
         return "read access unsupported"
     if candidate.provider == "grok" and grok_out_of_credit():
         return "Grok balance exhausted"
@@ -806,7 +887,10 @@ def run(candidates: list[Candidate], session: str, access: str, prompt: bytes, *
             print(f"failover: session {session} cannot move across providers; starting new with only this prompt",
                   file=sys.stderr)
         tried += 1
-        status, reply = attempt(cli, worksheet, candidate, this_session, access, prompt)
+        if access == "read" and candidate.provider in READ_BY_PROMPT:  # no read mode: say so in the prompt
+            status, reply = attempt(cli, worksheet, candidate, this_session, "edit", NO_WRITES + prompt)
+        else:
+            status, reply = attempt(cli, worksheet, candidate, this_session, access, prompt)
         if status == REFUSAL:
             print(f"failover: {candidate.label()} refused", file=sys.stderr)
             continue

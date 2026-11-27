@@ -28,8 +28,8 @@ of equal effort pricing or subscription quota weights:
 | Claude | latest Haiku (`haiku@latest`) | max | Independent analyst |
 | Devin | latest SWE-2.1 (`swe-2.1@latest`) | high | Independent analyst |
 | Muse | latest Wonder (`wonder@latest`), NOT Full | high | Independent analyst |
-| Antigravity | Gemini 3.8 Flash (`gemini-3.8-flash-high`) | high | Independent analyst |
-| Cursor | latest Grok (`grok@latest`), non-fast | xhigh | Independent critic |
+| Antigravity | Gemini 4 Neon (`neon@latest`) | medium | Independent analyst |
+| Devin | latest SWE-2 Flash (`swe-2-flash@latest`) | max | Independent critic |
 | Copilot | MAI-Code-1.1-Flash (`mai-code-1.1-flash`) | high, support unverified | Independent analyst |
 | Native Grok | latest Grok (`grok@latest`) | high | Jester / contrarian |
 

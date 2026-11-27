@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 # A real spent-Grok marker on this machine must not change these tests.
 os.environ["JAMSESSION_GROK_NO_CREDIT_MARK"] = os.path.join(tempfile.gettempdir(), "jamsession-test-no-grok-mark")
@@ -212,10 +213,10 @@ class LadderTests(unittest.TestCase):
                             self.assertTrue(all(rank[c.tier] == start for c in candidates))
 
     def test_same_model_through_other_harnesses_comes_first_devin_first(self):
-        candidates = failover.ladder(table(), "claude", "claude-opus-5-5", "medium")
-        self.assertEqual([(c.provider, c.name) for c in candidates[:3]],
-                         [("claude", "opus"), ("devin", "opus"), ("cursor", "opus")])
-        self.assertEqual({c.name for c in candidates[3:]}, {"sol"})
+        with mock.patch.object(failover.accounts, "load", return_value={}):
+            candidates = failover.ladder(table(), "claude", "claude-opus-5-5", "medium")
+        self.assertEqual([(c.provider, c.name) for c in candidates[:2]], [("claude", "opus"), ("devin", "opus")])
+        self.assertEqual({c.name for c in candidates[2:]}, {"sol"})
 
     def test_lower_tiers_only_with_allow_lower(self):
         tiers = table()
@@ -230,7 +231,7 @@ class LadderTests(unittest.TestCase):
         self.assertEqual(len(failover.ladder(table(), "copilot", "gpt-4.1", "high")), 1)
 
     def test_effort_folded_into_a_model_id_carries_to_fallbacks(self):
-        candidates = failover.ladder(table(), "cursor", "grok-4.7-high", "default")
+        candidates = failover.ladder(table(), "devin", "grok-4.7-high", "default")
         self.assertEqual(candidates[1].effort, "high")
 
 
@@ -239,10 +240,10 @@ class LadderTests(unittest.TestCase):
 FAKE_CLI = r"""#!/usr/bin/env python3
 import json, os, sys
 args = sys.argv[1:]
+stdin = sys.stdin.read()
 with open(os.environ["FAKE_CALLS"], "a") as calls:
-    calls.write(json.dumps(args) + "\n")
+    calls.write(json.dumps(args + [stdin]) + "\n")
 status, reply = json.loads(os.environ["FAKE_PLAN"]).get(args[1], [0, "ok"])
-sys.stdin.read()
 sys.stdout.write(reply)
 sys.exit(status)
 """
@@ -321,20 +322,19 @@ class FailoverRunTests(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
     def test_low_usage_pools_are_skipped_but_unmetered_and_unread_pools_are_not(self):
-        low = [{"agent": "devin", "status": "ok", "windows": [{"remaining_percent": 10}]},
-               {"agent": "cursor", "status": "ok", "windows": [{"remaining_percent": 5}]}]
+        low = [{"agent": "devin", "status": "ok", "windows": [{"remaining_percent": 10}]}]
         reply, calls = self.run_helper({"claude": [REFUSAL, ""]},
                                        "run", "claude", "new", "claude-opus-5-5", "medium", "edit", "do it", usage=low)
-        self.assertEqual([call[1] for call in calls], ["claude", "cursor"])  # cursor's Opus pool is unmetered
+        self.assertEqual([call[1] for call in calls], ["claude", "codex"])  # codex usage is unread
         self.assertIn("skipping devin claude-opus-5-5 medium (usage 10% left", reply.stderr)
 
     def test_every_refusal_exits_75_without_printing_a_refusal_as_the_answer(self):
-        plan = {name: [REFUSAL, "limit reached"] for name in ("claude", "devin", "cursor", "codex")}
+        plan = {name: [REFUSAL, "limit reached"] for name in ("claude", "devin", "codex")}
         reply, calls = self.run_helper(plan, "run", "claude", "new", "claude-opus-5-5", "medium", "edit", "do it")
         self.assertEqual(reply.returncode, REFUSAL)
         self.assertEqual(reply.stdout, "")
         self.assertIn("all routes refused", reply.stderr)
-        self.assertEqual(len(calls), 5)
+        self.assertEqual(len(calls), 4)
 
     def test_a_spent_grok_balance_is_skipped_without_launching_grok(self):
         mark = Path(self.temp.name) / "grok-out-of-credit"
@@ -352,7 +352,16 @@ class FailoverRunTests(unittest.TestCase):
     def test_read_runs_skip_edit_only_harnesses(self):
         reply, calls = self.run_helper({"claude": [REFUSAL, ""]},
                                        "run", "claude", "new", "claude-opus-5-5", "medium", "read", "look")
-        self.assertEqual([call[1] for call in calls], ["claude", "cursor"])
+        self.assertEqual([call[1] for call in calls], ["claude", "codex"])
+
+    def test_a_read_run_on_antigravity_uses_edit_with_a_no_writes_line(self):
+        reply, calls = self.run_helper({}, "run", "antigravity", "new", "gemini-4-neon", "medium", "read", "look")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual(calls[0][1], "antigravity")
+        self.assertEqual(calls[0][5], "edit")
+        self.assertEqual(calls[0][6], "-")
+        self.assertTrue(calls[0][-1].startswith("Do not modify"))
+        self.assertTrue(calls[0][-1].endswith("look"))
 
     def test_a_route_capped_at_tier_c_never_reaches_d_or_f(self):
         self.routes.write_text('[route.night]\ntier = "B"\neffort = "medium"\nlowest_tier = "C"\n')
@@ -361,7 +370,7 @@ class FailoverRunTests(unittest.TestCase):
         self.assertEqual(reply.returncode, REFUSAL)
         self.assertIn("all routes refused", reply.stderr)
         tried = {failover.find_model(table(), call[1], call[3]) for call in calls}
-        self.assertIn("grok", tried)
+        self.assertIn("terra", tried)
         self.assertEqual({failover.tier_of(table())[name][1] for name in tried}, {"B", "C"})
 
     def test_a_tier_route_expands_and_fails_over(self):
@@ -392,6 +401,49 @@ class FailoverRunTests(unittest.TestCase):
         reply, _calls = self.run_helper({}, "route", "project-lead")
         self.assertNotEqual(reply.returncode, 0)
         self.assertIn("names an account twice", reply.stderr)
+
+    def write_groups(self) -> None:
+        groups = Path(self.temp.name) / "groups.toml"
+        groups.write_text(
+            "[group.daily]\nrungs = [\n"
+            '  { provider = "antigravity", model = "neon@latest", effort = "medium" },\n'
+            '  { provider = "claude", model = "opus@latest", effort = "medium" },\n'
+            '  { provider = "codex", model = "sol@latest", effort = "high" },\n'
+            "]\n[group.premium]\nrungs = [\n"
+            '  { provider = "claude", model = "fable@latest", effort = "medium" },\n'
+            '  { provider = "codex", model = "astra@latest", effort = "high" },\n'
+            '  { provider = "codex", model = "sol@latest", effort = "high" },\n'
+            '  { provider = "antigravity", model = "neon@latest", effort = "xhigh" },\n'
+            "]\n")
+        os.environ["JAMSESSION_GROUPS"] = str(groups)
+        self.addCleanup(os.environ.pop, "JAMSESSION_GROUPS", None)
+
+    def test_a_group_route_and_prefer_reorder_the_ladder(self):
+        self.write_groups()
+        self.routes.write_text('[route.chat]\ngroup = "daily"\n'
+                               '[route.lead]\ngroup = "daily"\nprefer = { model = "sol@latest", effort = "xhigh" }\n'
+                               '[route.new]\ngroup = "daily"\nprefer = { provider = "grok", model = "grok@latest" }\n')
+        reply, _ = self.run_helper({}, "route", "chat")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertEqual([line.split()[:2] for line in reply.stdout.splitlines()],
+                         [["antigravity", "neon@latest"], ["claude", "opus@latest"], ["codex", "sol@latest"]])
+        reply, _ = self.run_helper({}, "route", "lead")
+        self.assertEqual(reply.stdout.splitlines()[0].split()[:3], ["codex", "sol@latest", "xhigh"])
+        self.assertEqual(len(reply.stdout.splitlines()), 3)
+        reply, _ = self.run_helper({}, "route", "new")
+        self.assertEqual(reply.stdout.splitlines()[0].split()[:2], ["grok", "grok@latest"])
+        reply, _ = self.run_helper({}, "route", "group:daily")
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        self.assertIn("archetype=group:daily", reply.stdout)
+
+    def test_a_group_panel_seats_distinct_models_skipping_spent_pools(self):
+        self.write_groups()
+        self.routes.write_text('[route.council]\ngroup = "premium"\nsize = 3\n')
+        spent = [{"agent": "claude", "status": "ok", "windows": [{"remaining_percent": 1}]}]
+        reply, _ = self.run_helper({}, "route", "council", usage=spent)
+        self.assertEqual(reply.returncode, 0, reply.stderr)
+        seats = [line.split()[0] for line in reply.stdout.splitlines()[1:]]
+        self.assertEqual(seats, ["codex", "antigravity"])  # Fable is spent; Sol shares Astra's pool
 
     def test_an_archetype_route_expands_its_rungs(self):
         self.routes.write_text(
